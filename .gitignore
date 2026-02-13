@@ -1,3 +1,9 @@
 # macOS
 .DS_Store
 
+# backend
+backend/target
+
+# frontend
+frontend/node_modules
+frontend/dist

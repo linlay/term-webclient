@@ -1,0 +1,340 @@
+@import "xterm/css/xterm.css";
+
+:root {
+  --bg: #0b0f18;
+  --bg-soft: #111827;
+  --panel: #101723;
+  --panel-2: #162030;
+  --line: #273247;
+  --text: #d6e2f0;
+  --muted: #8da2be;
+  --ok: #2dd4bf;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --info: #60a5fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(circle at 80% 0%, #1a2a44 0%, var(--bg) 50%);
+  color: var(--text);
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.layout {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr;
+}
+
+.controls {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(16, 23, 35, 0.95), rgba(16, 23, 35, 0.84));
+  backdrop-filter: blur(4px);
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quick-row {
+  margin-bottom: 8px;
+}
+
+.create-row {
+  flex-wrap: wrap;
+}
+
+.advanced-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+button,
+input,
+select {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 8px 10px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #3a4d69;
+}
+
+label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tool-btn {
+  background: var(--panel-2);
+}
+
+.primary-btn {
+  background: #1f334f;
+  border-color: #36527a;
+}
+
+.primary-btn:hover {
+  border-color: #5a7aad;
+}
+
+.ghost-btn {
+  background: transparent;
+}
+
+input,
+select {
+  min-width: 130px;
+}
+
+.create-row input,
+.create-row select {
+  height: 34px;
+}
+
+#workdirInput {
+  min-width: 260px;
+  flex: 1;
+}
+
+#titleInput {
+  min-width: 180px;
+}
+
+#commandInput {
+  min-width: 180px;
+}
+
+#argsInput {
+  min-width: 230px;
+  flex: 1;
+}
+
+#advancedWorkdirInput {
+  min-width: 180px;
+  flex: 1;
+}
+
+.notice {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notice.info {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--info);
+}
+
+.notice.warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warn);
+}
+
+.notice.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--err);
+}
+
+.notice.success {
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--ok);
+}
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(17, 24, 39, 0.62);
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 148px;
+  max-width: 260px;
+  border-radius: 10px;
+  border: 1px solid #2a394f;
+  background: #111b2b;
+}
+
+.tab-item.active {
+  border-color: #5f86be;
+  background: #1d2e45;
+}
+
+.tab-main {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1;
+}
+
+.tab-close {
+  all: unset;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--muted);
+}
+
+.tab-close:hover {
+  color: #fff;
+}
+
+.tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+  flex: 0 0 auto;
+}
+
+.tab-dot.connected {
+  background: var(--ok);
+}
+
+.tab-dot.connecting {
+  background: var(--info);
+}
+
+.tab-dot.disconnected {
+  background: var(--warn);
+}
+
+.tab-dot.exited,
+.tab-dot.error {
+  background: var(--err);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(17, 24, 39, 0.55);
+  overflow-x: auto;
+}
+
+.pill {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pill strong {
+  color: var(--text);
+}
+
+.pill.connected strong {
+  color: var(--ok);
+}
+
+.pill.connecting strong {
+  color: var(--info);
+}
+
+.pill.disconnected strong {
+  color: var(--warn);
+}
+
+.pill.exited strong,
+.pill.error strong {
+  color: var(--err);
+}
+
+.terminal-area {
+  position: relative;
+  min-height: 0;
+  padding: 8px;
+}
+
+.terminal-panel {
+  position: absolute;
+  inset: 8px;
+  border: 1px solid #223149;
+  border-radius: 10px;
+  background: #09101a;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.terminal-panel.hidden {
+  display: none;
+}
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .controls-row {
+    flex-wrap: wrap;
+  }
+
+  #workdirInput,
+  #argsInput,
+  #advancedWorkdirInput {
+    min-width: 100%;
+  }
+
+  .tab-item {
+    min-width: 128px;
+  }
+}

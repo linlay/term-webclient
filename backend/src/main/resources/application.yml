@@ -1,0 +1,13 @@
+server:
+  port: 11948
+
+terminal:
+  default-command: codex
+  default-args: []
+  default-workdir: .
+  allowed-origins:
+    - http://localhost:11949
+  session-idle-timeout-seconds: 60
+  ws-disconnect-grace-seconds: 30
+  max-cols: 500
+  max-rows: 200

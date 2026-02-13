@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PTY Web Terminal</title>
+</head>
+<body>
+  <div id="app">
+    <div class="layout">
+      <header class="controls">
+        <div class="controls-row quick-row">
+          <button type="button" class="tool-btn" data-tool="terminal">+ Terminal</button>
+          <button type="button" class="tool-btn" data-tool="claude">+ Claude</button>
+          <button type="button" class="tool-btn" data-tool="codex">+ Codex</button>
+          <div class="spacer"></div>
+          <button type="button" id="toggleAdvancedBtn" class="ghost-btn">Advanced</button>
+        </div>
+
+        <div class="controls-row create-row">
+          <label for="workdirInput">Workdir</label>
+          <input id="workdirInput" type="text" value="." placeholder="/path/to/project or .">
+
+          <label for="toolSelect">Tool</label>
+          <select id="toolSelect">
+            <option value="terminal">terminal</option>
+            <option value="claude">claude</option>
+            <option value="codex">codex</option>
+          </select>
+
+          <button type="button" id="newWindowBtn" class="primary-btn">New Window</button>
+        </div>
+
+        <form id="advancedForm" class="controls-row advanced-row hidden">
+          <input id="titleInput" type="text" placeholder="Tab title (optional)">
+          <input id="commandInput" type="text" placeholder="Command (required)">
+          <input id="argsInput" type="text" placeholder="Args, e.g. --model gpt-5">
+          <input id="advancedWorkdirInput" type="text" placeholder="Workdir (defaults to main workdir)">
+          <button type="submit" class="primary-btn">Create Custom</button>
+        </form>
+      </header>
+
+      <div id="noticeBar" class="notice hidden"></div>
+
+      <div id="tabBar" class="tab-bar"></div>
+
+      <div class="status">
+        <span id="sessionPill" class="pill">Session: <strong>-</strong></span>
+        <span id="connPill" class="pill disconnected">Connection: <strong>disconnected</strong></span>
+        <span id="exitPill" class="pill">Exit: <strong>-</strong></span>
+        <span id="toolPill" class="pill">Tool: <strong>-</strong></span>
+        <button type="button" id="rebuildBtn" class="ghost-btn hidden">Rebuild Session</button>
+      </div>
+
+      <main id="terminalArea" class="terminal-area">
+        <div id="emptyState" class="empty-state hidden">No terminal windows. Create one above.</div>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
