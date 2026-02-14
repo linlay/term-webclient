@@ -1,61 +1,71 @@
 package com.linlay.ptyjava.model;
 
-import com.pty4j.PtyProcess;
-import java.io.InputStream;
-import java.io.OutputStream;
+import com.linlay.ptyjava.service.TerminalOutputRingBuffer;
+import com.linlay.ptyjava.service.TerminalRuntime;
 import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.web.socket.WebSocketSession;
 
 public class TerminalSession {
 
     private final String sessionId;
-    private final PtyProcess process;
-    private final OutputStream processIn;
-    private final InputStream processOut;
+    private final SessionType sessionType;
+    private final TerminalRuntime runtime;
     private final ExecutorService ioExecutor;
+    private final TerminalOutputRingBuffer ringBuffer;
+    private final AtomicLong nextSeq = new AtomicLong(0L);
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final ReentrantLock wsSendLock = new ReentrantLock();
     private final Instant startedAt;
+    private final ConcurrentMap<String, WebSocketSession> attachedClients = new ConcurrentHashMap<>();
 
-    private volatile WebSocketSession wsSession;
-    private volatile ScheduledFuture<?> gcTask;
+    private volatile Instant lastActiveAt;
+    private volatile Instant detachedAt;
+    private volatile ScheduledFuture<?> killTask;
 
     public TerminalSession(String sessionId,
-                           PtyProcess process,
-                           OutputStream processIn,
-                           InputStream processOut,
+                           SessionType sessionType,
+                           TerminalRuntime runtime,
                            ExecutorService ioExecutor,
+                           TerminalOutputRingBuffer ringBuffer,
                            Instant startedAt) {
         this.sessionId = sessionId;
-        this.process = process;
-        this.processIn = processIn;
-        this.processOut = processOut;
+        this.sessionType = sessionType;
+        this.runtime = runtime;
         this.ioExecutor = ioExecutor;
+        this.ringBuffer = ringBuffer;
         this.startedAt = startedAt;
+        this.lastActiveAt = startedAt;
     }
 
     public String getSessionId() {
         return sessionId;
     }
 
-    public PtyProcess getProcess() {
-        return process;
+    public SessionType getSessionType() {
+        return sessionType;
     }
 
-    public OutputStream getProcessIn() {
-        return processIn;
-    }
-
-    public InputStream getProcessOut() {
-        return processOut;
+    public TerminalRuntime getRuntime() {
+        return runtime;
     }
 
     public ExecutorService getIoExecutor() {
         return ioExecutor;
+    }
+
+    public TerminalOutputRingBuffer getRingBuffer() {
+        return ringBuffer;
+    }
+
+    public AtomicLong getNextSeq() {
+        return nextSeq;
     }
 
     public AtomicBoolean getClosed() {
@@ -70,19 +80,31 @@ public class TerminalSession {
         return startedAt;
     }
 
-    public WebSocketSession getWsSession() {
-        return wsSession;
+    public ConcurrentMap<String, WebSocketSession> getAttachedClients() {
+        return attachedClients;
     }
 
-    public void setWsSession(WebSocketSession wsSession) {
-        this.wsSession = wsSession;
+    public Instant getLastActiveAt() {
+        return lastActiveAt;
     }
 
-    public ScheduledFuture<?> getGcTask() {
-        return gcTask;
+    public void touchLastActiveAt() {
+        this.lastActiveAt = Instant.now();
     }
 
-    public void setGcTask(ScheduledFuture<?> gcTask) {
-        this.gcTask = gcTask;
+    public Instant getDetachedAt() {
+        return detachedAt;
+    }
+
+    public void setDetachedAt(Instant detachedAt) {
+        this.detachedAt = detachedAt;
+    }
+
+    public ScheduledFuture<?> getKillTask() {
+        return killTask;
+    }
+
+    public void setKillTask(ScheduledFuture<?> killTask) {
+        this.killTask = killTask;
     }
 }

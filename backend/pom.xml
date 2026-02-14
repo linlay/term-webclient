@@ -33,6 +33,11 @@
             <artifactId>pty4j</artifactId>
             <version>0.13.4</version>
         </dependency>
+        <dependency>
+            <groupId>com.hierynomus</groupId>
+            <artifactId>sshj</artifactId>
+            <version>0.39.0</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

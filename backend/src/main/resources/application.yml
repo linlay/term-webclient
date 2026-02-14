@@ -12,5 +12,19 @@ terminal:
     - https://*
   session-idle-timeout-seconds: 60
   ws-disconnect-grace-seconds: 30
+  detached-session-ttl-seconds: 3600
+  ring-buffer-max-bytes: 4194304
+  ring-buffer-max-chunks: 4096
   max-cols: 500
   max-rows: 200
+  ssh:
+    enabled: true
+    default-port: 22
+    default-term: xterm-256color
+    connect-timeout-millis: 10000
+    connection-idle-ttl-seconds: 3600
+    exec-default-timeout-seconds: 120
+    exec-max-output-bytes: 1048576
+    credentials-file: ${user.home}/.pty-web/ssh-credentials.json
+    known-hosts-file: ${user.home}/.pty-web/known-hosts.json
+    master-key-env: TERMINAL_SSH_MASTER_KEY

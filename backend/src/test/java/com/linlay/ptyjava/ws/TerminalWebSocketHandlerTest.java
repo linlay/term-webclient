@@ -2,6 +2,7 @@ package com.linlay.ptyjava.ws;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -83,17 +84,33 @@ class TerminalWebSocketHandlerTest {
         WebSocketSession session = wsSession("missing");
 
         doThrow(new SessionNotFoundException("missing"))
-            .when(service).attachWebSocket(eq("missing"), any());
+            .when(service).attachWebSocket(eq("missing"), any(), any(), anyLong());
 
         handler.afterConnectionEstablished(session);
 
         verify(session).close(CloseStatus.POLICY_VIOLATION);
     }
 
+    @Test
+    void connectPassesClientIdAndLastSeenSeq() throws Exception {
+        TerminalSessionService service = mock(TerminalSessionService.class);
+        TerminalWebSocketHandler handler = new TerminalWebSocketHandler(service, new ObjectMapper());
+        WebSocketSession session = mock(WebSocketSession.class);
+        when(session.getUri()).thenReturn(URI.create("ws://localhost/ws/s1?clientId=tab-1&lastSeenSeq=42"));
+        when(session.getAttributes()).thenReturn(new java.util.HashMap<>());
+        when(session.getId()).thenReturn("ws-1");
+
+        handler.afterConnectionEstablished(session);
+
+        verify(service).attachWebSocket("s1", "tab-1", session, 42L);
+    }
+
     private WebSocketSession wsSession(String sessionId) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getUri()).thenReturn(URI.create("ws://localhost/ws/" + sessionId));
         when(session.isOpen()).thenReturn(true);
+        when(session.getAttributes()).thenReturn(new java.util.HashMap<>());
+        when(session.getId()).thenReturn("ws-" + sessionId);
         return session;
     }
 }

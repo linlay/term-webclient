@@ -5,12 +5,30 @@ import java.util.Map;
 
 public class CreateSessionRequest {
 
+    private SessionType sessionType;
+    private SshSessionRequest ssh;
     private String command;
     private List<String> args;
     private String workdir;
     private Map<String, String> env;
     private Integer cols;
     private Integer rows;
+
+    public SessionType getSessionType() {
+        return sessionType;
+    }
+
+    public void setSessionType(SessionType sessionType) {
+        this.sessionType = sessionType;
+    }
+
+    public SshSessionRequest getSsh() {
+        return ssh;
+    }
+
+    public void setSsh(SshSessionRequest ssh) {
+        this.ssh = ssh;
+    }
 
     public String getCommand() {
         return command;

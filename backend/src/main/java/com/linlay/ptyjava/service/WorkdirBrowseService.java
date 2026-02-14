@@ -63,6 +63,7 @@ public class WorkdirBrowseService {
         try (Stream<Path> stream = Files.list(target)) {
             return stream
                 .filter(Files::isDirectory)
+                .filter(this::isVisibleName)
                 .sorted(Comparator.comparing(
                     path -> path.getFileName().toString().toLowerCase(Locale.ROOT)
                 ))
@@ -83,9 +84,20 @@ public class WorkdirBrowseService {
 
     private boolean hasSubDirectory(Path dirPath) {
         try (Stream<Path> stream = Files.list(dirPath)) {
-            return stream.anyMatch(Files::isDirectory);
+            return stream
+                .filter(Files::isDirectory)
+                .anyMatch(this::isVisibleName);
         } catch (IOException ex) {
             return false;
         }
+    }
+
+    private boolean isVisibleName(Path path) {
+        Path fileName = path.getFileName();
+        if (fileName == null) {
+            return true;
+        }
+        String name = fileName.toString();
+        return !name.startsWith(".");
     }
 }

@@ -31,11 +31,29 @@
             <option value="terminal">terminal</option>
             <option value="claude">claude</option>
             <option value="codex">codex</option>
+            <option value="ssh">ssh</option>
           </select>
 
           <label class="field-label" for="workdirTree">Workdir</label>
           <div id="workdirTree" class="workdir-tree" role="tree"></div>
           <div class="selected-workdir">Selected: <code id="selectedWorkdirLabel">-</code></div>
+
+          <section id="sshSection" class="advanced-section hidden">
+            <label class="field-label" for="sshCredentialIdInput">SSH Credential ID</label>
+            <input id="sshCredentialIdInput" type="text" placeholder="credential id (required)">
+
+            <label class="field-label" for="sshHostInput">Host (optional override)</label>
+            <input id="sshHostInput" type="text" placeholder="e.g. 10.0.0.2">
+
+            <label class="field-label" for="sshPortInput">Port (optional override)</label>
+            <input id="sshPortInput" type="number" min="1" max="65535" placeholder="22">
+
+            <label class="field-label" for="sshUsernameInput">Username (optional override)</label>
+            <input id="sshUsernameInput" type="text" placeholder="e.g. ubuntu">
+
+            <label class="field-label" for="sshTermInput">TERM</label>
+            <input id="sshTermInput" type="text" placeholder="xterm-256color">
+          </section>
 
           <section id="advancedSection" class="advanced-section hidden">
             <label class="field-label" for="titleInput">Title (optional)</label>

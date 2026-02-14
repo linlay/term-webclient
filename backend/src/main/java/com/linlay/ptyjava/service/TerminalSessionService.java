@@ -5,9 +5,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.SessionSnapshotResponse;
+import com.linlay.ptyjava.model.SessionType;
+import com.linlay.ptyjava.model.SshSessionRequest;
+import com.linlay.ptyjava.model.TerminalOutputChunk;
 import com.linlay.ptyjava.model.TerminalSession;
+import com.linlay.ptyjava.service.TerminalOutputRingBuffer.OutputChunk;
+import com.linlay.ptyjava.service.TerminalOutputRingBuffer.Snapshot;
+import com.linlay.ptyjava.service.ssh.ResolvedSshCredential;
+import com.linlay.ptyjava.service.ssh.SshConnectionPool;
+import com.linlay.ptyjava.service.ssh.SshCredentialStore;
+import com.linlay.ptyjava.service.ssh.SshShellRuntime;
 import com.pty4j.PtyProcess;
-import com.pty4j.WinSize;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -40,70 +50,94 @@ public class TerminalSessionService {
 
     private final TerminalProperties properties;
     private final PtyProcessLauncher processLauncher;
+    private final SshCredentialStore sshCredentialStore;
+    private final SshConnectionPool sshConnectionPool;
     private final ObjectMapper objectMapper;
+
     private final ConcurrentMap<String, TerminalSession> sessions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     public TerminalSessionService(TerminalProperties properties,
                                   PtyProcessLauncher processLauncher,
+                                  SshCredentialStore sshCredentialStore,
+                                  SshConnectionPool sshConnectionPool,
                                   ObjectMapper objectMapper) {
         this.properties = properties;
         this.processLauncher = processLauncher;
+        this.sshCredentialStore = sshCredentialStore;
+        this.sshConnectionPool = sshConnectionPool;
         this.objectMapper = objectMapper;
     }
 
     public CreateSessionResponse createSession(CreateSessionRequest request) {
-        SessionCreateParams params = normalize(request);
+        SessionType sessionType = resolveSessionType(request);
         String sessionId = UUID.randomUUID().toString();
 
         try {
-            PtyProcess process = processLauncher.start(params.command(), params.env(), params.workdir(), params.cols(), params.rows());
+            SessionCreateParams params = normalize(request, sessionType);
+            TerminalRuntime runtime = createRuntime(request, params, sessionType);
             ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "pty-read-" + sessionId);
+                Thread t = new Thread(r, "terminal-read-" + sessionId);
                 t.setDaemon(true);
                 return t;
             });
+
             TerminalSession session = new TerminalSession(
                 sessionId,
-                process,
-                process.getOutputStream(),
-                process.getInputStream(),
+                sessionType,
+                runtime,
                 ioExecutor,
+                new TerminalOutputRingBuffer(properties.getRingBufferMaxBytes(), properties.getRingBufferMaxChunks()),
                 Instant.now()
             );
 
             sessions.put(sessionId, session);
             startReadLoop(session);
-            scheduleSessionTimeout(session, properties.getSessionIdleTimeoutSeconds());
-
             return new CreateSessionResponse(sessionId, "/ws/" + sessionId, session.getStartedAt());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to start PTY process", e);
+            throw new RuntimeException("Failed to start terminal runtime", e);
         }
     }
 
-    public void attachWebSocket(String sessionId, WebSocketSession wsSession) {
+    public void attachWebSocket(String sessionId, String clientId, WebSocketSession wsSession, long lastSeenSeq) {
         TerminalSession session = getRequired(sessionId);
+
         synchronized (session) {
-            WebSocketSession existing = session.getWsSession();
-            if (existing != null && existing.isOpen() && !existing.getId().equals(wsSession.getId())) {
-                throw new InvalidSessionRequestException("Session already has an active WebSocket connection");
+            cancelKillTask(session);
+            session.setDetachedAt(null);
+
+            WebSocketSession previous = session.getAttachedClients().put(clientId, wsSession);
+            if (previous != null && previous.isOpen() && !previous.getId().equals(wsSession.getId())) {
+                try {
+                    previous.close(CloseStatus.NORMAL);
+                } catch (IOException ignored) {
+                }
             }
-            cancelGcTask(session);
-            session.setWsSession(wsSession);
+            session.touchLastActiveAt();
         }
+
+        replayBufferedOutput(session, wsSession, lastSeenSeq);
     }
 
-    public void detachWebSocket(String sessionId, WebSocketSession wsSession) {
+    public void detachWebSocket(String sessionId, String clientId, WebSocketSession wsSession) {
         TerminalSession session = sessions.get(sessionId);
         if (session == null) {
             return;
         }
+
         synchronized (session) {
-            WebSocketSession current = session.getWsSession();
-            if (current != null && current.getId().equals(wsSession.getId())) {
-                session.setWsSession(null);
-                scheduleSessionTimeout(session, properties.getWsDisconnectGraceSeconds());
+            if (!StringUtils.hasText(clientId)) {
+                session.getAttachedClients().entrySet().removeIf(entry -> entry.getValue().getId().equals(wsSession.getId()));
+            } else {
+                WebSocketSession existing = session.getAttachedClients().get(clientId);
+                if (existing != null && existing.getId().equals(wsSession.getId())) {
+                    session.getAttachedClients().remove(clientId, existing);
+                }
+            }
+
+            if (session.getAttachedClients().isEmpty()) {
+                session.setDetachedAt(Instant.now());
+                scheduleKillTask(session, properties.getDetachedSessionTtlSeconds());
             }
         }
     }
@@ -113,11 +147,13 @@ public class TerminalSessionService {
         if (data == null) {
             return;
         }
+
         try {
-            session.getProcessIn().write(data.getBytes(StandardCharsets.UTF_8));
-            session.getProcessIn().flush();
+            session.getRuntime().inputStream().write(data.getBytes(StandardCharsets.UTF_8));
+            session.getRuntime().inputStream().flush();
+            session.touchLastActiveAt();
         } catch (IOException e) {
-            sendMessage(session, Map.of("type", "error", "message", "Failed writing to terminal process"));
+            broadcastPayload(session, Map.of("type", "error", "message", "Failed writing to terminal process"));
             closeSession(sessionId, "write error", true);
         }
     }
@@ -125,18 +161,68 @@ public class TerminalSessionService {
     public void resize(String sessionId, int cols, int rows) {
         validateSize(cols, rows);
         TerminalSession session = getRequired(sessionId);
-        session.getProcess().setWinSize(new WinSize(cols, rows));
+        try {
+            session.getRuntime().resize(cols, rows);
+            session.touchLastActiveAt();
+        } catch (IOException e) {
+            throw new InvalidSessionRequestException("Failed to resize session");
+        }
+    }
+
+    public SessionSnapshotResponse getSnapshot(String sessionId, long afterSeq) {
+        TerminalSession session = getRequired(sessionId);
+        Snapshot snapshot = session.getRingBuffer().snapshotAfter(afterSeq);
+        List<TerminalOutputChunk> chunks = snapshot.chunks().stream()
+            .map(chunk -> new TerminalOutputChunk(chunk.seq(), new String(chunk.data(), StandardCharsets.UTF_8)))
+            .toList();
+
+        long fromSeq = chunks.isEmpty() ? snapshot.firstAvailableSeq() : chunks.get(0).seq();
+        long toSeq = chunks.isEmpty() ? snapshot.latestSeq() : chunks.get(chunks.size() - 1).seq();
+
+        return new SessionSnapshotResponse(sessionId, fromSeq, toSeq, chunks, snapshot.truncated());
     }
 
     public void closeSession(String sessionId, String reason, boolean sendExit) {
-        TerminalSession session = sessions.remove(sessionId);
-        if (session != null) {
-            closeInternal(session, reason, sendExit, null);
-        }
+        closeSession(sessionId, reason, sendExit, null);
     }
 
     public boolean exists(String sessionId) {
         return sessions.containsKey(sessionId);
+    }
+
+    private void closeSession(String sessionId, String reason, boolean sendExit, Integer exitCodeOverride) {
+        TerminalSession session = sessions.remove(sessionId);
+        if (session != null) {
+            closeInternal(session, reason, sendExit, exitCodeOverride);
+        }
+    }
+
+    private TerminalRuntime createRuntime(CreateSessionRequest request,
+                                          SessionCreateParams params,
+                                          SessionType sessionType) throws IOException {
+        if (sessionType == SessionType.SSH_SHELL) {
+            SshSessionRequest sshRequest = request == null ? null : request.getSsh();
+            if (sshRequest == null) {
+                throw new InvalidSessionRequestException("ssh config is required for SSH_SHELL session");
+            }
+
+            ResolvedSshCredential credential = sshCredentialStore.resolveCredential(
+                sshRequest.getCredentialId(),
+                sshRequest.getHost(),
+                sshRequest.getPort(),
+                sshRequest.getUsername(),
+                sshRequest.getTerm()
+            );
+            return SshShellRuntime.open(sshConnectionPool, credential, params.cols(), params.rows());
+        }
+
+        PtyProcess process = processLauncher.start(params.command(), params.env(), params.workdir(), params.cols(), params.rows());
+        return new PtyTerminalRuntime(process);
+    }
+
+    private SessionType resolveSessionType(CreateSessionRequest request) {
+        SessionType requested = request == null ? null : request.getSessionType();
+        return SessionType.normalize(requested);
     }
 
     private void startReadLoop(TerminalSession session) {
@@ -144,19 +230,26 @@ public class TerminalSessionService {
             byte[] buffer = new byte[8192];
             try {
                 int read;
-                while ((read = session.getProcessOut().read(buffer)) != -1) {
-                    if (read > 0) {
-                        String data = new String(buffer, 0, read, StandardCharsets.UTF_8);
-                        sendMessage(session, Map.of("type", "output", "data", data));
+                while ((read = session.getRuntime().outputStream().read(buffer)) != -1) {
+                    if (read <= 0) {
+                        continue;
                     }
+
+                    byte[] output = new byte[read];
+                    System.arraycopy(buffer, 0, output, 0, read);
+
+                    long seq = session.getNextSeq().incrementAndGet();
+                    session.getRingBuffer().append(seq, output);
+                    session.touchLastActiveAt();
+                    broadcastOutput(session, seq, output);
                 }
-                int exitCode = session.getProcess().waitFor();
-                closeSession(session.getSessionId(), "process exited", false);
-                sendMessage(session, Map.of("type", "exit", "exitCode", exitCode));
+
+                int exitCode = session.getRuntime().awaitExit();
+                closeSession(session.getSessionId(), "runtime exited", true, exitCode);
             } catch (Exception e) {
                 if (!session.getClosed().get()) {
                     log.warn("Terminal stream read failed for session {}", session.getSessionId(), e);
-                    sendMessage(session, Map.of("type", "error", "message", "Terminal stream error"));
+                    broadcastPayload(session, Map.of("type", "error", "message", "Terminal stream error"));
                     closeSession(session.getSessionId(), "stream read error", true);
                 }
             }
@@ -168,85 +261,133 @@ public class TerminalSessionService {
             return;
         }
 
-        cancelGcTask(session);
-
-        try {
-            session.getProcessIn().close();
-        } catch (IOException ignored) {
-        }
-
-        try {
-            session.getProcessOut().close();
-        } catch (IOException ignored) {
-        }
-
-        try {
-            session.getProcess().destroyForcibly();
-        } catch (Exception ex) {
-            log.debug("Failed to destroy process for session {}", session.getSessionId(), ex);
-        }
-
-        session.getIoExecutor().shutdownNow();
+        cancelKillTask(session);
 
         if (sendExit) {
             Integer exitCode = exitCodeOverride;
             if (exitCode == null) {
+                exitCode = session.getRuntime().exitCodeOrNull();
+            }
+            broadcastPayload(session, Map.of("type", "exit", "exitCode", exitCode == null ? -1 : exitCode));
+        }
+
+        session.getRuntime().close();
+        session.getIoExecutor().shutdownNow();
+
+        session.getAttachedClients().values().forEach(ws -> {
+            if (ws != null && ws.isOpen()) {
                 try {
-                    exitCode = session.getProcess().exitValue();
-                } catch (IllegalThreadStateException e) {
-                    exitCode = -1;
+                    ws.close(CloseStatus.NORMAL);
+                } catch (IOException ignored) {
                 }
             }
-            sendMessage(session, Map.of("type", "exit", "exitCode", exitCode));
-        }
+        });
+        session.getAttachedClients().clear();
 
         log.info("Closed session {}: {}", session.getSessionId(), reason);
     }
 
-    private void scheduleSessionTimeout(TerminalSession session, int seconds) {
-        cancelGcTask(session);
-        if (seconds <= 0) {
-            return;
-        }
-        ScheduledFuture<?> task = scheduler.schedule(
-            () -> closeSession(session.getSessionId(), "session timeout", true),
-            seconds,
-            TimeUnit.SECONDS
-        );
-        session.setGcTask(task);
-    }
-
-    private void cancelGcTask(TerminalSession session) {
-        ScheduledFuture<?> task = session.getGcTask();
-        if (task != null) {
-            task.cancel(false);
-            session.setGcTask(null);
-        }
-    }
-
-    private void sendMessage(TerminalSession session, Map<String, Object> payload) {
-        WebSocketSession ws = session.getWsSession();
-        if (ws == null || !ws.isOpen()) {
-            return;
-        }
-
-        String json;
+    private void replayBufferedOutput(TerminalSession session, WebSocketSession wsSession, long lastSeenSeq) {
+        session.getWsSendLock().lock();
         try {
-            json = objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            log.debug("Failed to serialize websocket payload for session {}", session.getSessionId(), e);
+            Snapshot snapshot = session.getRingBuffer().snapshotAfter(lastSeenSeq);
+            if (snapshot.truncated()) {
+                sendMessage(wsSession, Map.of(
+                    "type", "truncated",
+                    "requestedAfterSeq", lastSeenSeq,
+                    "firstAvailableSeq", snapshot.firstAvailableSeq(),
+                    "latestSeq", snapshot.latestSeq()
+                ));
+            }
+
+            for (OutputChunk chunk : snapshot.chunks()) {
+                sendMessage(wsSession, Map.of(
+                    "type", "output",
+                    "seq", chunk.seq(),
+                    "data", new String(chunk.data(), StandardCharsets.UTF_8)
+                ));
+            }
+        } finally {
+            session.getWsSendLock().unlock();
+        }
+    }
+
+    private void broadcastOutput(TerminalSession session, long seq, byte[] output) {
+        broadcastPayload(session, Map.of(
+            "type", "output",
+            "seq", seq,
+            "data", new String(output, StandardCharsets.UTF_8)
+        ));
+    }
+
+    private void broadcastPayload(TerminalSession session, Map<String, Object> payload) {
+        String json = serialize(payload, session.getSessionId());
+        if (json == null) {
             return;
         }
 
         session.getWsSendLock().lock();
         try {
-            if (ws.isOpen()) {
-                ws.sendMessage(new TextMessage(json));
-            }
-        } catch (IOException e) {
-            log.debug("Failed to send websocket message for session {}", session.getSessionId(), e);
+            session.getAttachedClients().forEach((clientId, wsSession) -> {
+                if (wsSession == null || !wsSession.isOpen()) {
+                    session.getAttachedClients().remove(clientId, wsSession);
+                    return;
+                }
+                try {
+                    wsSession.sendMessage(new TextMessage(json));
+                } catch (IOException e) {
+                    log.debug("Failed to send websocket message for session {} client {}", session.getSessionId(), clientId, e);
+                }
+            });
         } finally {
             session.getWsSendLock().unlock();
+        }
+    }
+
+    private void sendMessage(WebSocketSession wsSession, Map<String, Object> payload) {
+        if (wsSession == null || !wsSession.isOpen()) {
+            return;
+        }
+
+        String json = serialize(payload, "single-client");
+        if (json == null) {
+            return;
+        }
+
+        try {
+            wsSession.sendMessage(new TextMessage(json));
+        } catch (IOException ignored) {
+        }
+    }
+
+    private String serialize(Map<String, Object> payload, String sessionId) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            log.debug("Failed to serialize websocket payload for session {}", sessionId, e);
+            return null;
+        }
+    }
+
+    private void scheduleKillTask(TerminalSession session, int seconds) {
+        cancelKillTask(session);
+        if (seconds <= 0) {
+            return;
+        }
+
+        ScheduledFuture<?> task = scheduler.schedule(
+            () -> closeSession(session.getSessionId(), "detached ttl exceeded", true),
+            seconds,
+            TimeUnit.SECONDS
+        );
+        session.setKillTask(task);
+    }
+
+    private void cancelKillTask(TerminalSession session) {
+        ScheduledFuture<?> task = session.getKillTask();
+        if (task != null) {
+            task.cancel(false);
+            session.setKillTask(null);
         }
     }
 
@@ -258,8 +399,16 @@ public class TerminalSessionService {
         return session;
     }
 
-    private SessionCreateParams normalize(CreateSessionRequest request) {
+    private SessionCreateParams normalize(CreateSessionRequest request, SessionType sessionType) {
         CreateSessionRequest effective = request == null ? new CreateSessionRequest() : request;
+
+        int cols = effective.getCols() == null ? DEFAULT_COLS : effective.getCols();
+        int rows = effective.getRows() == null ? DEFAULT_ROWS : effective.getRows();
+        validateSize(cols, rows);
+
+        if (sessionType == SessionType.SSH_SHELL) {
+            return new SessionCreateParams(List.of(), Map.of(), ".", cols, rows);
+        }
 
         String command = StringUtils.hasText(effective.getCommand()) ? effective.getCommand() : properties.getDefaultCommand();
         if (!StringUtils.hasText(command)) {
@@ -278,10 +427,6 @@ public class TerminalSessionService {
         if (!workdirFile.exists() || !workdirFile.isDirectory()) {
             throw new InvalidSessionRequestException("workdir must be an existing directory");
         }
-
-        int cols = effective.getCols() == null ? DEFAULT_COLS : effective.getCols();
-        int rows = effective.getRows() == null ? DEFAULT_ROWS : effective.getRows();
-        validateSize(cols, rows);
 
         Map<String, String> env = new HashMap<>(System.getenv());
         if (effective.getEnv() != null) {

@@ -38,7 +38,7 @@ class WorkdirControllerTest {
                 List.of(new WorkdirEntry("repo", "/home/user/repo", true))
             ));
 
-        mockMvc.perform(get("/api/workdirs"))
+        mockMvc.perform(get("/api/workdirTree"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.rootPath").value("/home/user"))
             .andExpect(jsonPath("$.currentPath").value("/home/user"))
@@ -52,7 +52,7 @@ class WorkdirControllerTest {
         when(workdirBrowseService.browse("/outside"))
             .thenThrow(new InvalidWorkdirBrowseRequestException("path must be inside browse root"));
 
-        mockMvc.perform(get("/api/workdirs").queryParam("path", "/outside"))
+        mockMvc.perform(get("/api/workdirTree").queryParam("path", "/outside"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error").value("path must be inside browse root"));
     }

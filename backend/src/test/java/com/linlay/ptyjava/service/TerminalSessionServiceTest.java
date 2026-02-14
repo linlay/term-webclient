@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.service.ssh.SshConnectionPool;
+import com.linlay.ptyjava.service.ssh.SshCredentialStore;
 import com.pty4j.PtyProcess;
 import java.io.ByteArrayOutputStream;
 import java.io.PipedInputStream;
@@ -36,7 +38,13 @@ class TerminalSessionServiceTest {
         when(process.getInputStream()).thenReturn(new PipedInputStream(new PipedOutputStream()));
         when(launcher.start(any(), any(), any(), eq(120), eq(30))).thenReturn(process);
 
-        TerminalSessionService service = new TerminalSessionService(props, launcher, new ObjectMapper());
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            launcher,
+            mock(SshCredentialStore.class),
+            mock(SshConnectionPool.class),
+            new ObjectMapper()
+        );
 
         CreateSessionResponse response = service.createSession(new CreateSessionRequest());
 
@@ -49,7 +57,13 @@ class TerminalSessionServiceTest {
     void createSessionRejectsInvalidWorkdir(@TempDir Path tempDir) throws Exception {
         TerminalProperties props = baseProps(tempDir);
         PtyProcessLauncher launcher = mock(PtyProcessLauncher.class);
-        TerminalSessionService service = new TerminalSessionService(props, launcher, new ObjectMapper());
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            launcher,
+            mock(SshCredentialStore.class),
+            mock(SshConnectionPool.class),
+            new ObjectMapper()
+        );
 
         CreateSessionRequest req = new CreateSessionRequest();
         req.setWorkdir(tempDir.resolve("missing").toString());
@@ -71,7 +85,13 @@ class TerminalSessionServiceTest {
         when(process.exitValue()).thenReturn(0);
         when(launcher.start(any(), any(), any(), any(Integer.class), any(Integer.class))).thenReturn(process);
 
-        TerminalSessionService service = new TerminalSessionService(props, launcher, new ObjectMapper());
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            launcher,
+            mock(SshCredentialStore.class),
+            mock(SshConnectionPool.class),
+            new ObjectMapper()
+        );
         CreateSessionResponse response = service.createSession(new CreateSessionRequest());
 
         assertDoesNotThrow(() -> service.closeSession(response.sessionId(), "test", true));
@@ -85,7 +105,13 @@ class TerminalSessionServiceTest {
     void createSessionRejectsOversizedRows(@TempDir Path tempDir) {
         TerminalProperties props = baseProps(tempDir);
         PtyProcessLauncher launcher = mock(PtyProcessLauncher.class);
-        TerminalSessionService service = new TerminalSessionService(props, launcher, new ObjectMapper());
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            launcher,
+            mock(SshCredentialStore.class),
+            mock(SshConnectionPool.class),
+            new ObjectMapper()
+        );
 
         CreateSessionRequest req = new CreateSessionRequest();
         req.setRows(9999);

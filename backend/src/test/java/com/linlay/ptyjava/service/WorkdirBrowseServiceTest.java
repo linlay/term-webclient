@@ -18,18 +18,23 @@ class WorkdirBrowseServiceTest {
     void browseWithoutPathReturnsRootEntries(@TempDir Path tempDir) throws Exception {
         Files.createDirectories(tempDir.resolve("alpha"));
         Files.createDirectories(tempDir.resolve("beta/sub"));
+        Files.createDirectories(tempDir.resolve(".hidden-dir/child"));
+        Files.createDirectories(tempDir.resolve("gamma/.only-hidden"));
         Files.createFile(tempDir.resolve("ignore.txt"));
+        Files.createFile(tempDir.resolve(".hidden-file"));
 
         WorkdirBrowseService service = new WorkdirBrowseService(baseProps(tempDir));
         WorkdirBrowseResponse response = service.browse(null);
 
         assertEquals(tempDir.toString(), response.rootPath());
         assertEquals(tempDir.toString(), response.currentPath());
-        assertEquals(2, response.entries().size());
+        assertEquals(3, response.entries().size());
         assertEquals("alpha", response.entries().get(0).name());
         assertFalse(response.entries().get(0).hasChildren());
         assertEquals("beta", response.entries().get(1).name());
         assertTrue(response.entries().get(1).hasChildren());
+        assertEquals("gamma", response.entries().get(2).name());
+        assertFalse(response.entries().get(2).hasChildren());
     }
 
     @Test
