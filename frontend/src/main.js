@@ -2,10 +2,11 @@ import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "./style.css";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "http://localhost:8080").replace(/\/+$/, "");
+const rawApiBase = typeof import.meta.env.VITE_API_BASE === "string"
+  ? import.meta.env.VITE_API_BASE.trim()
+  : "";
+const API_BASE = rawApiBase.replace(/\/+$/, "");
 const MAX_TABS = 10;
-const STORAGE_TABS_KEY = "pty.tabs.v1";
-const STORAGE_ACTIVE_TAB_KEY = "pty.activeTab.v1";
 
 const TOOL_PRESETS = {
   terminal: {
@@ -32,27 +33,31 @@ const tabBar = document.getElementById("tabBar");
 const terminalArea = document.getElementById("terminalArea");
 const emptyState = document.getElementById("emptyState");
 const noticeBar = document.getElementById("noticeBar");
-const sessionPill = document.getElementById("sessionPill");
-const connPill = document.getElementById("connPill");
-const exitPill = document.getElementById("exitPill");
-const toolPill = document.getElementById("toolPill");
-const rebuildBtn = document.getElementById("rebuildBtn");
-const workdirInput = document.getElementById("workdirInput");
+
+const newWindowModal = document.getElementById("newWindowModal");
+const newWindowForm = document.getElementById("newWindowForm");
+const cancelNewWindowBtn = document.getElementById("cancelNewWindowBtn");
 const toolSelect = document.getElementById("toolSelect");
-const newWindowBtn = document.getElementById("newWindowBtn");
-const toggleAdvancedBtn = document.getElementById("toggleAdvancedBtn");
-const advancedForm = document.getElementById("advancedForm");
+const workdirTree = document.getElementById("workdirTree");
+const selectedWorkdirLabel = document.getElementById("selectedWorkdirLabel");
+const advancedToggleBtn = document.getElementById("advancedToggleBtn");
+const advancedSection = document.getElementById("advancedSection");
 const titleInput = document.getElementById("titleInput");
 const commandInput = document.getElementById("commandInput");
 const argsInput = document.getElementById("argsInput");
-const advancedWorkdirInput = document.getElementById("advancedWorkdirInput");
-const quickToolButtons = document.querySelectorAll(".tool-btn[data-tool]");
+
+const tabContextMenu = document.getElementById("tabContextMenu");
+const contextRebuildBtn = document.getElementById("contextRebuildBtn");
+const contextCloseBtn = document.getElementById("contextCloseBtn");
 
 const tabs = new Map();
 let tabOrder = [];
 let activeTabId = null;
 let noticeTimer = null;
 let resizeTimer = null;
+let fitTimer = null;
+let layoutObserver = null;
+let contextTabId = null;
 
 const toolCounters = {
   terminal: 0,
@@ -61,12 +66,24 @@ const toolCounters = {
   custom: 0
 };
 
+const modalState = {
+  advancedOpen: false,
+  rootPath: null,
+  selectedPath: null,
+  nodes: new Map(),
+  loadingPaths: new Set()
+};
+
 function apiUrl(path) {
   return `${API_BASE}${path}`;
 }
 
 function wsBaseFromApiBase() {
-  const apiUrlObj = new URL(API_BASE);
+  if (!API_BASE) {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProtocol}//${window.location.host}`;
+  }
+  const apiUrlObj = new URL(API_BASE, window.location.origin);
   const wsProtocol = apiUrlObj.protocol === "https:" ? "wss:" : "ws:";
   return `${wsProtocol}//${apiUrlObj.host}`;
 }
@@ -105,154 +122,103 @@ function getActiveTab() {
   return tabs.get(activeTabId) || null;
 }
 
-function getWorkdirValue() {
-  const value = (workdirInput.value || "").trim();
-  return value || ".";
-}
-
 function showNotice(message, type = "info", timeoutMs = 3000) {
   clearTimeout(noticeTimer);
   noticeBar.classList.remove("hidden", "info", "warn", "error", "success");
   noticeBar.classList.add(type);
   noticeBar.textContent = message;
+
   noticeTimer = setTimeout(() => {
     noticeBar.classList.add("hidden");
   }, timeoutMs);
 }
 
-function setPillValue(pill, value, stateClass) {
-  pill.classList.remove("connected", "connecting", "disconnected", "exited", "error");
-  if (stateClass) {
-    pill.classList.add(stateClass);
-  }
-  pill.querySelector("strong").textContent = value;
-}
-
-function updateStatusBar() {
-  const tab = getActiveTab();
-  if (!tab) {
-    setPillValue(sessionPill, "-", "");
-    setPillValue(connPill, "disconnected", "disconnected");
-    setPillValue(exitPill, "-", "");
-    setPillValue(toolPill, "-", "");
-    rebuildBtn.classList.add("hidden");
-    return;
-  }
-
-  const connText = tab.lost && tab.connectionState === "disconnected"
-    ? "disconnected/lost"
-    : tab.connectionState;
-
-  setPillValue(sessionPill, tab.sessionId || "-", "");
-  setPillValue(connPill, connText, tab.connectionState);
-  setPillValue(exitPill, String(tab.exitCode ?? "-"), "");
-  setPillValue(toolPill, tab.toolId || "custom", "");
-
-  if (canRebuild(tab)) {
-    rebuildBtn.classList.remove("hidden");
-  } else {
-    rebuildBtn.classList.add("hidden");
-  }
+function scheduleActiveFit(delay = 80) {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => {
+    const active = getActiveTab();
+    if (!active) {
+      return;
+    }
+    fitAndResize(active);
+  }, delay);
 }
 
 function updateEmptyState() {
-  if (tabOrder.length === 0) {
-    emptyState.classList.remove("hidden");
-  } else {
-    emptyState.classList.add("hidden");
-  }
+  emptyState.classList.toggle("hidden", tabOrder.length > 0);
 }
 
 function canRebuild(tab) {
-  return tab.lost || tab.connectionState === "disconnected" || tab.connectionState === "error" || tab.connectionState === "exited";
+  return tab && (
+    tab.lost
+    || tab.connectionState === "disconnected"
+    || tab.connectionState === "error"
+    || tab.connectionState === "exited"
+  );
 }
 
-function serializeTab(tab) {
-  return {
-    tabId: tab.tabId,
-    title: tab.title,
-    toolId: tab.toolId,
-    command: tab.command,
-    args: tab.args,
-    workdir: tab.workdir,
-    sessionId: tab.sessionId,
-    wsUrl: tab.wsUrl,
-    connectionState: tab.connectionState,
-    exitCode: tab.exitCode,
-    isRestored: tab.isRestored,
-    lost: tab.lost
-  };
+function buildTabTooltip(tab) {
+  const lines = [
+    `Session: ${tab.sessionId || "-"}`,
+    `Connection: ${tab.lost && tab.connectionState === "disconnected" ? "disconnected/lost" : tab.connectionState}`,
+    `Exit: ${tab.exitCode ?? "-"}`,
+    `Tool: ${tab.toolId || "custom"}`,
+    `Workdir: ${tab.workdir || "."}`
+  ];
+  return lines.join("\n");
 }
 
-function persistState() {
-  try {
-    const persistedTabs = tabOrder
-      .map((tabId) => tabs.get(tabId))
-      .filter(Boolean)
-      .map(serializeTab);
+function createTabElement(tab) {
+  const item = document.createElement("div");
+  item.className = `tab-item${tab.tabId === activeTabId ? " active" : ""}`;
+  item.dataset.tabId = tab.tabId;
 
-    localStorage.setItem(STORAGE_TABS_KEY, JSON.stringify(persistedTabs));
-    if (activeTabId) {
-      localStorage.setItem(STORAGE_ACTIVE_TAB_KEY, activeTabId);
-    } else {
-      localStorage.removeItem(STORAGE_ACTIVE_TAB_KEY);
-    }
-  } catch {
-    // Ignore localStorage failures in private mode or restricted contexts.
-  }
+  const mainBtn = document.createElement("button");
+  mainBtn.type = "button";
+  mainBtn.className = "tab-main";
+  mainBtn.title = buildTabTooltip(tab);
+
+  const dot = document.createElement("span");
+  dot.className = `tab-dot ${tab.connectionState}`;
+
+  const title = document.createElement("span");
+  title.className = "tab-title";
+  title.textContent = tab.lost ? `${tab.title} [lost]` : tab.title;
+
+  mainBtn.appendChild(dot);
+  mainBtn.appendChild(title);
+  mainBtn.addEventListener("click", () => activateTab(tab.tabId));
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "tab-close";
+  closeBtn.textContent = "x";
+  closeBtn.title = "Close tab";
+  closeBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void closeTab(tab.tabId);
+  });
+
+  item.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    openTabContextMenu(event.clientX, event.clientY, tab.tabId);
+  });
+
+  item.appendChild(mainBtn);
+  item.appendChild(closeBtn);
+  return item;
 }
 
-function loadPersistedState() {
-  try {
-    const rawTabs = localStorage.getItem(STORAGE_TABS_KEY);
-    const rawActiveTabId = localStorage.getItem(STORAGE_ACTIVE_TAB_KEY);
-
-    if (!rawTabs) {
-      return { tabs: [], activeTabId: rawActiveTabId };
-    }
-
-    const parsed = JSON.parse(rawTabs);
-    if (!Array.isArray(parsed)) {
-      return { tabs: [], activeTabId: rawActiveTabId };
-    }
-
-    return {
-      tabs: parsed,
-      activeTabId: rawActiveTabId
-    };
-  } catch {
-    return { tabs: [], activeTabId: null };
-  }
-}
-
-function normalizeStoredTab(item) {
-  if (!item || typeof item !== "object") {
-    return null;
-  }
-
-  const command = typeof item.command === "string" ? item.command.trim() : "";
-  if (!command) {
-    return null;
-  }
-
-  const args = Array.isArray(item.args)
-    ? item.args.filter((arg) => typeof arg === "string")
-    : [];
-
-  return {
-    tabId: typeof item.tabId === "string" && item.tabId ? item.tabId : nextTabId(),
-    title: typeof item.title === "string" ? item.title : "",
-    toolId: typeof item.toolId === "string" && item.toolId ? item.toolId : "custom",
-    command,
-    args,
-    workdir: typeof item.workdir === "string" && item.workdir.trim() ? item.workdir.trim() : ".",
-    sessionId: typeof item.sessionId === "string" && item.sessionId ? item.sessionId : null,
-    wsUrl: typeof item.wsUrl === "string" && item.wsUrl ? item.wsUrl : null,
-    connectionState: typeof item.connectionState === "string" ? item.connectionState : "disconnected",
-    exitCode: item.exitCode == null ? "-" : String(item.exitCode),
-    isRestored: true,
-    lost: Boolean(item.lost)
-  };
+function createPlusTabButton() {
+  const plusBtn = document.createElement("button");
+  plusBtn.type = "button";
+  plusBtn.className = "tab-plus";
+  plusBtn.textContent = "+";
+  plusBtn.title = "New window";
+  plusBtn.addEventListener("click", () => {
+    openNewWindowModal();
+  });
+  return plusBtn;
 }
 
 function renderTabs() {
@@ -263,41 +229,10 @@ function renderTabs() {
     if (!tab) {
       return;
     }
-
-    const item = document.createElement("div");
-    item.className = `tab-item${tabId === activeTabId ? " active" : ""}`;
-    item.dataset.tabId = tabId;
-
-    const mainBtn = document.createElement("button");
-    mainBtn.type = "button";
-    mainBtn.className = "tab-main";
-    mainBtn.title = `${tab.title} (${tab.command} ${tab.args.join(" ")})`;
-
-    const dot = document.createElement("span");
-    dot.className = `tab-dot ${tab.connectionState}`;
-
-    const title = document.createElement("span");
-    title.className = "tab-title";
-    title.textContent = tab.lost ? `${tab.title} [lost]` : tab.title;
-
-    mainBtn.appendChild(dot);
-    mainBtn.appendChild(title);
-    mainBtn.addEventListener("click", () => activateTab(tabId));
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "tab-close";
-    closeBtn.textContent = "x";
-    closeBtn.title = "Close tab";
-    closeBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      closeTab(tabId);
-    });
-
-    item.appendChild(mainBtn);
-    item.appendChild(closeBtn);
-    tabBar.appendChild(item);
+    tabBar.appendChild(createTabElement(tab));
   });
+
+  tabBar.appendChild(createPlusTabButton());
 }
 
 function createTab(spec) {
@@ -332,7 +267,6 @@ function createTab(spec) {
     wsUrl: spec.wsUrl || null,
     connectionState: spec.connectionState || "disconnected",
     exitCode: spec.exitCode ?? "-",
-    isRestored: Boolean(spec.isRestored),
     lost: Boolean(spec.lost),
     panel,
     term,
@@ -356,8 +290,6 @@ function createTab(spec) {
 
   renderTabs();
   updateEmptyState();
-  updateStatusBar();
-  persistState();
   return tab;
 }
 
@@ -367,8 +299,6 @@ function setConnectionState(tab, state, options = {}) {
     tab.lost = Boolean(options.lost);
   }
   renderTabs();
-  updateStatusBar();
-  persistState();
 }
 
 function activateTab(tabId) {
@@ -388,8 +318,6 @@ function activateTab(tabId) {
   });
 
   renderTabs();
-  updateStatusBar();
-  persistState();
 
   requestAnimationFrame(() => {
     fitAndResize(tab);
@@ -472,8 +400,7 @@ function closeSocket(tab) {
   }
 }
 
-function attachSocket(tab, options = {}) {
-  const restoring = Boolean(options.restoring);
+function attachSocket(tab) {
   if (!tab.wsUrl) {
     setConnectionState(tab, "error");
     return;
@@ -484,17 +411,12 @@ function attachSocket(tab, options = {}) {
 
   const socket = new WebSocket(buildWsUrl(tab.wsUrl));
   tab.socket = socket;
-  let opened = false;
 
   socket.onopen = () => {
     if (tab.socket !== socket) {
       return;
     }
-    opened = true;
     setConnectionState(tab, "connected", { lost: false });
-    if (restoring) {
-      tab.term.writeln(`\r\n[restored] session ${tab.sessionId}`);
-    }
     if (activeTabId === tab.tabId) {
       fitAndResize(tab);
       tab.term.focus();
@@ -539,19 +461,7 @@ function attachSocket(tab, options = {}) {
     }
 
     tab.socket = null;
-
-    if (tab.connectionState === "exited") {
-      persistState();
-      return;
-    }
-
-    if (restoring && !opened) {
-      tab.term.writeln("\r\n[restore] session unavailable, click Rebuild Session.");
-      setConnectionState(tab, "disconnected", { lost: true });
-      return;
-    }
-
-    if (tab.connectionState !== "error") {
+    if (tab.connectionState !== "error" && tab.connectionState !== "exited") {
       setConnectionState(tab, "disconnected");
     }
   };
@@ -612,9 +522,7 @@ async function createRemoteSession(tab) {
   tab.sessionId = data.sessionId;
   tab.wsUrl = data.wsUrl;
   tab.exitCode = "-";
-  tab.isRestored = false;
-  persistState();
-  attachSocket(tab, { restoring: false });
+  attachSocket(tab);
 }
 
 async function deleteRemoteSession(sessionId) {
@@ -632,42 +540,24 @@ async function deleteRemoteSession(sessionId) {
   }
 }
 
-async function openTabWithSpec(spec, options = {}) {
-  const restoring = Boolean(options.restoring);
-
+async function openTabWithSpec(spec) {
   if (tabOrder.length >= MAX_TABS) {
     showNotice(`Max ${MAX_TABS} windows reached`, "warn");
     return null;
   }
 
   const tab = createTab({
-    tabId: spec.tabId,
     title: spec.title,
     toolId: spec.toolId || "custom",
     command: spec.command,
     args: spec.args,
     workdir: spec.workdir,
-    sessionId: spec.sessionId,
-    wsUrl: spec.wsUrl,
     connectionState: "connecting",
-    exitCode: spec.exitCode ?? "-",
-    isRestored: restoring,
-    lost: Boolean(spec.lost)
+    exitCode: "-",
+    lost: false
   });
 
   activateTab(tab.tabId);
-
-  if (restoring) {
-    if (tab.sessionId && tab.wsUrl) {
-      tab.term.writeln(`[restore] reconnecting session ${tab.sessionId}...`);
-      attachSocket(tab, { restoring: true });
-    } else {
-      tab.term.writeln("[restore] no session found, click Rebuild Session.");
-      setConnectionState(tab, "disconnected", { lost: true });
-    }
-    return tab;
-  }
-
   tab.term.writeln(`Starting ${tab.command}...`);
 
   try {
@@ -681,17 +571,22 @@ async function openTabWithSpec(spec, options = {}) {
   return tab;
 }
 
-async function openPresetTab(toolId, workdir) {
+async function openPresetTab(toolId, workdir, advancedOverrides = {}) {
   const preset = TOOL_PRESETS[toolId];
   if (!preset) {
     showNotice(`Unknown tool: ${toolId}`, "error");
     return;
   }
 
+  const command = advancedOverrides.command || preset.command;
+  const args = Array.isArray(advancedOverrides.args) ? advancedOverrides.args : [...preset.args];
+  const title = advancedOverrides.title || "";
+
   await openTabWithSpec({
     toolId: preset.toolId,
-    command: preset.command,
-    args: [...preset.args],
+    title,
+    command,
+    args,
     workdir
   });
 }
@@ -728,13 +623,11 @@ async function closeTab(tabId) {
   }
 
   renderTabs();
-  updateStatusBar();
   updateEmptyState();
-  persistState();
 }
 
-async function rebuildActiveTab() {
-  const tab = getActiveTab();
+async function rebuildTab(tabId) {
+  const tab = tabs.get(tabId);
   if (!tab) {
     return;
   }
@@ -801,7 +694,7 @@ function parseArgsInput(value) {
       continue;
     }
 
-    if (char === "\"" || char === "'") {
+    if (char === '"' || char === "'") {
       quote = char;
       continue;
     }
@@ -828,86 +721,411 @@ function parseArgsInput(value) {
   return args;
 }
 
-function restoreTabs() {
-  const persisted = loadPersistedState();
-  const normalized = persisted.tabs
-    .map(normalizeStoredTab)
-    .filter(Boolean)
-    .slice(0, MAX_TABS);
-
-  if (normalized.length === 0) {
-    return false;
+function toArgsInput(args) {
+  if (!Array.isArray(args) || args.length === 0) {
+    return "";
   }
 
-  normalized.forEach((item) => {
-    void openTabWithSpec(item, { restoring: true });
+  return args
+    .map((arg) => {
+      if (/\s/.test(arg) || arg.includes('"')) {
+        return `"${arg.replaceAll('"', '\\"')}"`;
+      }
+      return arg;
+    })
+    .join(" ");
+}
+
+function closeTabContextMenu() {
+  tabContextMenu.classList.add("hidden");
+  contextTabId = null;
+}
+
+function openTabContextMenu(x, y, tabId) {
+  const tab = tabs.get(tabId);
+  if (!tab) {
+    return;
+  }
+
+  contextTabId = tabId;
+  contextRebuildBtn.disabled = !canRebuild(tab);
+  tabContextMenu.classList.remove("hidden");
+
+  const menuRect = tabContextMenu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(x, window.innerWidth - menuRect.width - 8));
+  const top = Math.max(8, Math.min(y, window.innerHeight - menuRect.height - 8));
+
+  tabContextMenu.style.left = `${left}px`;
+  tabContextMenu.style.top = `${top}px`;
+}
+
+function setAdvancedOpen(advancedOpen) {
+  modalState.advancedOpen = Boolean(advancedOpen);
+  advancedSection.classList.toggle("hidden", !modalState.advancedOpen);
+  advancedToggleBtn.classList.toggle("active", modalState.advancedOpen);
+}
+
+function ensureNode(path, name, hasChildren, parentPath) {
+  const existing = modalState.nodes.get(path);
+  if (existing) {
+    existing.name = name;
+    existing.hasChildren = hasChildren;
+    if (parentPath !== undefined) {
+      existing.parentPath = parentPath;
+    }
+    return existing;
+  }
+
+  const node = {
+    path,
+    name,
+    hasChildren,
+    parentPath,
+    loaded: false,
+    expanded: false,
+    children: []
+  };
+
+  modalState.nodes.set(path, node);
+  return node;
+}
+
+function rootLabel(path) {
+  return `~ ${path}`;
+}
+
+function selectWorkdir(path) {
+  modalState.selectedPath = path;
+  selectedWorkdirLabel.textContent = path || "-";
+  renderWorkdirTree();
+}
+
+async function fetchWorkdirEntries(path) {
+  const query = path ? `?path=${encodeURIComponent(path)}` : "";
+  const response = await fetch(apiUrl(`/api/workdirs${query}`));
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  return response.json();
+}
+
+async function loadWorkdir(path) {
+  const key = path || "__root__";
+  if (modalState.loadingPaths.has(key)) {
+    return;
+  }
+
+  modalState.loadingPaths.add(key);
+  renderWorkdirTree();
+  let lastError = "";
+
+  try {
+    const data = await fetchWorkdirEntries(path);
+    const rootPath = data.rootPath;
+    const currentPath = data.currentPath;
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+
+    if (!modalState.rootPath) {
+      modalState.rootPath = rootPath;
+      const rootNode = ensureNode(rootPath, rootLabel(rootPath), false, null);
+      rootNode.loaded = true;
+      rootNode.expanded = true;
+      if (!modalState.selectedPath) {
+        selectWorkdir(rootPath);
+      }
+    }
+
+    const target = ensureNode(
+      currentPath,
+      currentPath === modalState.rootPath ? rootLabel(currentPath) : nameFromPath(currentPath),
+      false,
+      undefined
+    );
+    target.loaded = true;
+    target.expanded = true;
+    target.hasChildren = entries.length > 0;
+
+    target.children = entries.map((entry) => entry.path);
+
+    entries.forEach((entry) => {
+      const node = ensureNode(entry.path, entry.name, Boolean(entry.hasChildren), currentPath);
+      node.hasChildren = Boolean(entry.hasChildren);
+      if (!Array.isArray(node.children)) {
+        node.children = [];
+      }
+    });
+
+  } catch (error) {
+    showNotice(error.message, "error", 4200);
+    lastError = `Failed to load workdirs: ${error.message}`;
+  } finally {
+    modalState.loadingPaths.delete(key);
+    renderWorkdirTree(lastError);
+  }
+}
+
+function nameFromPath(path) {
+  const normalized = path.replace(/\\+/g, "/").replace(/\/+$/, "");
+  const idx = normalized.lastIndexOf("/");
+  if (idx === -1) {
+    return normalized;
+  }
+  return normalized.slice(idx + 1) || normalized;
+}
+
+function createTreeNodeElement(node, depth = 1) {
+  const item = document.createElement("li");
+  item.className = "tree-item";
+
+  const row = document.createElement("div");
+  row.className = "tree-row";
+  row.style.paddingLeft = `${depth * 12}px`;
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "tree-toggle";
+  toggle.disabled = !node.hasChildren;
+  toggle.textContent = node.hasChildren ? (node.expanded ? "-" : "+") : "";
+
+  if (node.hasChildren) {
+    toggle.addEventListener("click", () => {
+      void toggleTreeNode(node.path);
+    });
+  }
+
+  const label = document.createElement("button");
+  label.type = "button";
+  label.className = `tree-label${modalState.selectedPath === node.path ? " selected" : ""}`;
+  label.textContent = node.name;
+  label.title = node.path;
+  label.addEventListener("click", () => {
+    selectWorkdir(node.path);
   });
 
-  if (persisted.activeTabId && tabs.has(persisted.activeTabId)) {
-    activateTab(persisted.activeTabId);
-  } else if (tabOrder[0]) {
-    activateTab(tabOrder[0]);
+  row.appendChild(toggle);
+  row.appendChild(label);
+  item.appendChild(row);
+
+  if (node.expanded && node.children.length > 0) {
+    const list = document.createElement("ul");
+    list.className = "tree-list";
+    node.children.forEach((childPath) => {
+      const child = modalState.nodes.get(childPath);
+      if (!child) {
+        return;
+      }
+      list.appendChild(createTreeNodeElement(child, depth + 1));
+    });
+    item.appendChild(list);
   }
 
-  showNotice("Attempting to restore previous terminal windows", "info", 2200);
-  return true;
+  if (node.expanded && node.hasChildren && !node.loaded) {
+    const loading = document.createElement("div");
+    loading.className = "tree-inline-status";
+    loading.textContent = "Loading...";
+    item.appendChild(loading);
+  }
+
+  return item;
+}
+
+function renderWorkdirTree(errorText = "") {
+  workdirTree.innerHTML = "";
+
+  if (errorText) {
+    const error = document.createElement("div");
+    error.className = "tree-status error";
+    error.textContent = errorText;
+    workdirTree.appendChild(error);
+    return;
+  }
+
+  if (!modalState.rootPath) {
+    const status = document.createElement("div");
+    status.className = "tree-status";
+    status.textContent = "Loading workdirs...";
+    workdirTree.appendChild(status);
+    return;
+  }
+
+  const rootNode = modalState.nodes.get(modalState.rootPath);
+  if (!rootNode) {
+    const status = document.createElement("div");
+    status.className = "tree-status";
+    status.textContent = "No directories";
+    workdirTree.appendChild(status);
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "tree-list";
+  list.appendChild(createTreeNodeElement(rootNode, 0));
+  workdirTree.appendChild(list);
+}
+
+async function toggleTreeNode(path) {
+  const node = modalState.nodes.get(path);
+  if (!node || !node.hasChildren) {
+    return;
+  }
+
+  if (!node.loaded) {
+    await loadWorkdir(path);
+    return;
+  }
+
+  node.expanded = !node.expanded;
+  renderWorkdirTree();
+}
+
+function applyToolPresetToAdvanced(toolId) {
+  const preset = TOOL_PRESETS[toolId];
+  if (!preset) {
+    return;
+  }
+
+  commandInput.value = preset.command;
+  argsInput.value = toArgsInput(preset.args);
+}
+
+async function initializeWorkdirTree() {
+  modalState.rootPath = null;
+  modalState.selectedPath = null;
+  modalState.nodes.clear();
+  modalState.loadingPaths.clear();
+  selectedWorkdirLabel.textContent = "-";
+  renderWorkdirTree();
+  await loadWorkdir(null);
+}
+
+async function openNewWindowModal() {
+  if (tabOrder.length >= MAX_TABS) {
+    showNotice(`Max ${MAX_TABS} windows reached`, "warn");
+    return;
+  }
+
+  closeTabContextMenu();
+  setAdvancedOpen(false);
+  titleInput.value = "";
+  toolSelect.value = "terminal";
+  applyToolPresetToAdvanced("terminal");
+
+  newWindowModal.classList.remove("hidden");
+  newWindowModal.setAttribute("aria-hidden", "false");
+
+  toolSelect.focus();
+  await initializeWorkdirTree();
+}
+
+function closeNewWindowModal() {
+  newWindowModal.classList.add("hidden");
+  newWindowModal.setAttribute("aria-hidden", "true");
 }
 
 function bindEvents() {
-  quickToolButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const toolId = button.dataset.tool;
-      void openPresetTab(toolId, getWorkdirValue());
-    });
-  });
-
-  newWindowBtn.addEventListener("click", () => {
-    void openPresetTab(toolSelect.value, getWorkdirValue());
-  });
-
-  toggleAdvancedBtn.addEventListener("click", () => {
-    const shouldOpen = advancedForm.classList.contains("hidden");
-    advancedForm.classList.toggle("hidden", !shouldOpen);
-    if (shouldOpen) {
-      advancedWorkdirInput.value = getWorkdirValue();
+  advancedToggleBtn.addEventListener("click", () => {
+    setAdvancedOpen(!modalState.advancedOpen);
+    if (modalState.advancedOpen) {
       commandInput.focus();
     }
   });
 
-  advancedForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-
-    const command = (commandInput.value || "").trim();
-    if (!command) {
-      showNotice("Command is required", "error");
-      return;
-    }
-
-    let args = [];
-    try {
-      args = parseArgsInput(argsInput.value);
-    } catch (error) {
-      showNotice(error.message, "error", 4200);
-      return;
-    }
-
-    const customWorkdir = (advancedWorkdirInput.value || "").trim() || getWorkdirValue();
-    workdirInput.value = customWorkdir;
-
-    void openTabWithSpec({
-      toolId: "custom",
-      title: (titleInput.value || "").trim(),
-      command,
-      args,
-      workdir: customWorkdir
-    });
+  toolSelect.addEventListener("change", () => {
+    applyToolPresetToAdvanced(toolSelect.value);
   });
 
-  rebuildBtn.addEventListener("click", () => {
-    void rebuildActiveTab();
+  cancelNewWindowBtn.addEventListener("click", () => {
+    closeNewWindowModal();
+  });
+
+  newWindowModal.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.dataset.closeModal === "true") {
+      closeNewWindowModal();
+    }
+  });
+
+  newWindowForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    const toolId = toolSelect.value;
+    const workdir = modalState.selectedPath;
+    if (!workdir) {
+      showNotice("Please choose a workdir", "warn");
+      return;
+    }
+
+    const advancedOverrides = {};
+
+    if (modalState.advancedOpen) {
+      const command = (commandInput.value || "").trim();
+      if (!command) {
+        showNotice("Command is required in advanced mode", "error");
+        return;
+      }
+
+      let args = [];
+      try {
+        args = parseArgsInput(argsInput.value);
+      } catch (error) {
+        showNotice(error.message, "error", 4200);
+        return;
+      }
+
+      advancedOverrides.command = command;
+      advancedOverrides.args = args;
+      advancedOverrides.title = (titleInput.value || "").trim();
+    }
+
+    closeNewWindowModal();
+    void openPresetTab(toolId, workdir, advancedOverrides);
+  });
+
+  contextRebuildBtn.addEventListener("click", () => {
+    const tabId = contextTabId;
+    closeTabContextMenu();
+    if (!tabId) {
+      return;
+    }
+    if (activeTabId !== tabId) {
+      activateTab(tabId);
+    }
+    void rebuildTab(tabId);
+  });
+
+  contextCloseBtn.addEventListener("click", () => {
+    const tabId = contextTabId;
+    closeTabContextMenu();
+    if (!tabId) {
+      return;
+    }
+    void closeTab(tabId);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (tabContextMenu.classList.contains("hidden")) {
+      return;
+    }
+    if (!(event.target instanceof Node)) {
+      closeTabContextMenu();
+      return;
+    }
+    if (!tabContextMenu.contains(event.target)) {
+      closeTabContextMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (!newWindowModal.classList.contains("hidden")) {
+        closeNewWindowModal();
+        return;
+      }
+      closeTabContextMenu();
+    }
   });
 
   window.addEventListener("resize", () => {
+    closeTabContextMenu();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const active = getActiveTab();
@@ -918,22 +1136,38 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeunload", () => {
-    persistState();
+    tabOrder.forEach((tabId) => {
+      const tab = tabs.get(tabId);
+      if (!tab) {
+        return;
+      }
+      closeSocket(tab);
+      if (tab.sessionId) {
+        void deleteRemoteSession(tab.sessionId);
+      }
+    });
   });
+
+  if (typeof ResizeObserver !== "undefined") {
+    layoutObserver = new ResizeObserver(() => {
+      scheduleActiveFit(30);
+    });
+    layoutObserver.observe(terminalArea);
+  }
 }
 
-async function bootstrap() {
-  bindEvents();
-
-  const restored = restoreTabs();
-  if (!restored) {
-    await openPresetTab("terminal", getWorkdirValue());
+function bootstrap() {
+  // Disable old restore behavior and clear stale localStorage from previous UI.
+  try {
+    localStorage.removeItem("pty.tabs.v1");
+    localStorage.removeItem("pty.activeTab.v1");
+  } catch {
+    // Ignore storage failures.
   }
 
-  updateStatusBar();
+  bindEvents();
+  renderTabs();
   updateEmptyState();
 }
 
-bootstrap().catch((error) => {
-  showNotice(`Fatal: ${error.message}`, "error", 6000);
-});
+bootstrap();

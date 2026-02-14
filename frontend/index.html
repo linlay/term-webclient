@@ -8,53 +8,57 @@
 <body>
   <div id="app">
     <div class="layout">
-      <header class="controls">
-        <div class="controls-row quick-row">
-          <button type="button" class="tool-btn" data-tool="terminal">+ Terminal</button>
-          <button type="button" class="tool-btn" data-tool="claude">+ Claude</button>
-          <button type="button" class="tool-btn" data-tool="codex">+ Codex</button>
-          <div class="spacer"></div>
-          <button type="button" id="toggleAdvancedBtn" class="ghost-btn">Advanced</button>
+      <div id="tabBar" class="tab-bar"></div>
+
+      <main id="terminalArea" class="terminal-area">
+        <div id="emptyState" class="empty-state">No windows. Click + to create one.</div>
+      </main>
+    </div>
+
+    <div id="noticeBar" class="notice hidden"></div>
+
+    <div id="newWindowModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="newWindowTitle">
+        <div class="modal-header">
+          <h2 id="newWindowTitle" class="modal-title">New Window</h2>
+          <button id="advancedToggleBtn" type="button" class="icon-btn" title="Advanced settings">...</button>
         </div>
 
-        <div class="controls-row create-row">
-          <label for="workdirInput">Workdir</label>
-          <input id="workdirInput" type="text" value="." placeholder="/path/to/project or .">
-
-          <label for="toolSelect">Tool</label>
+        <form id="newWindowForm" class="modal-body">
+          <label class="field-label" for="toolSelect">Tool</label>
           <select id="toolSelect">
             <option value="terminal">terminal</option>
             <option value="claude">claude</option>
             <option value="codex">codex</option>
           </select>
 
-          <button type="button" id="newWindowBtn" class="primary-btn">New Window</button>
-        </div>
+          <label class="field-label" for="workdirTree">Workdir</label>
+          <div id="workdirTree" class="workdir-tree" role="tree"></div>
+          <div class="selected-workdir">Selected: <code id="selectedWorkdirLabel">-</code></div>
 
-        <form id="advancedForm" class="controls-row advanced-row hidden">
-          <input id="titleInput" type="text" placeholder="Tab title (optional)">
-          <input id="commandInput" type="text" placeholder="Command (required)">
-          <input id="argsInput" type="text" placeholder="Args, e.g. --model gpt-5">
-          <input id="advancedWorkdirInput" type="text" placeholder="Workdir (defaults to main workdir)">
-          <button type="submit" class="primary-btn">Create Custom</button>
+          <section id="advancedSection" class="advanced-section hidden">
+            <label class="field-label" for="titleInput">Title (optional)</label>
+            <input id="titleInput" type="text" placeholder="Tab title">
+
+            <label class="field-label" for="commandInput">Command</label>
+            <input id="commandInput" type="text" placeholder="Command">
+
+            <label class="field-label" for="argsInput">Args</label>
+            <input id="argsInput" type="text" placeholder="Args, e.g. --model gpt-5">
+          </section>
+
+          <div class="modal-actions">
+            <button id="cancelNewWindowBtn" type="button" class="ghost-btn">Cancel</button>
+            <button id="createNewWindowBtn" type="submit" class="primary-btn">Create Window</button>
+          </div>
         </form>
-      </header>
-
-      <div id="noticeBar" class="notice hidden"></div>
-
-      <div id="tabBar" class="tab-bar"></div>
-
-      <div class="status">
-        <span id="sessionPill" class="pill">Session: <strong>-</strong></span>
-        <span id="connPill" class="pill disconnected">Connection: <strong>disconnected</strong></span>
-        <span id="exitPill" class="pill">Exit: <strong>-</strong></span>
-        <span id="toolPill" class="pill">Tool: <strong>-</strong></span>
-        <button type="button" id="rebuildBtn" class="ghost-btn hidden">Rebuild Session</button>
       </div>
+    </div>
 
-      <main id="terminalArea" class="terminal-area">
-        <div id="emptyState" class="empty-state hidden">No terminal windows. Create one above.</div>
-      </main>
+    <div id="tabContextMenu" class="context-menu hidden" role="menu">
+      <button id="contextRebuildBtn" type="button" role="menuitem">Rebuild Session</button>
+      <button id="contextCloseBtn" type="button" role="menuitem">Close Tab</button>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>

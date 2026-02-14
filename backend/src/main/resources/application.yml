@@ -1,12 +1,15 @@
 server:
+  address: 127.0.0.1
   port: 11948
 
 terminal:
   default-command: codex
   default-args: []
   default-workdir: .
+  workdir-browse-root: ${user.home}
   allowed-origins:
-    - http://localhost:11949
+    - http://*
+    - https://*
   session-idle-timeout-seconds: 60
   ws-disconnect-grace-seconds: 30
   max-cols: 500

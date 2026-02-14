@@ -22,6 +22,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(terminalWebSocketHandler, "/ws/{sessionId}")
-            .setAllowedOrigins(terminalProperties.getAllowedOrigins().toArray(String[]::new));
+            .setAllowedOriginPatterns(terminalProperties.getAllowedOrigins().toArray(String[]::new));
     }
 }

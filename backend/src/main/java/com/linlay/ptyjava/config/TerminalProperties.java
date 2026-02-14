@@ -10,7 +10,8 @@ public class TerminalProperties {
     private String defaultCommand = "codex";
     private List<String> defaultArgs = new ArrayList<>();
     private String defaultWorkdir = ".";
-    private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
+    private String workdirBrowseRoot = System.getProperty("user.home", ".");
+    private List<String> allowedOrigins = new ArrayList<>(List.of("http://*", "https://*"));
     private int sessionIdleTimeoutSeconds = 60;
     private int wsDisconnectGraceSeconds = 30;
     private int maxCols = 500;
@@ -40,6 +41,14 @@ public class TerminalProperties {
         this.defaultWorkdir = defaultWorkdir;
     }
 
+    public String getWorkdirBrowseRoot() {
+        return workdirBrowseRoot;
+    }
+
+    public void setWorkdirBrowseRoot(String workdirBrowseRoot) {
+        this.workdirBrowseRoot = workdirBrowseRoot;
+    }
+
     public int getSessionIdleTimeoutSeconds() {
         return sessionIdleTimeoutSeconds;
     }
@@ -50,7 +59,7 @@ public class TerminalProperties {
 
     public void setAllowedOrigins(List<String> allowedOrigins) {
         if (allowedOrigins == null || allowedOrigins.isEmpty()) {
-            this.allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
+            this.allowedOrigins = new ArrayList<>(List.of("http://*", "https://*"));
             return;
         }
         this.allowedOrigins = new ArrayList<>(allowedOrigins);
