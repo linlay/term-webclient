@@ -26,7 +26,10 @@ mvn spring-boot:run
 
 默认地址端口：`127.0.0.1:11948`
 
-后端配置文件：`backend/src/main/resources/application.yml`
+后端配置文件：
+
+- 生产默认：`backend/src/main/resources/application.yml`
+- 本地开发：`backend/application-local.yml`（`application.yml` 已默认 `import optional:file:backend/application-local.yml`）
 
 关键配置：
 
@@ -37,8 +40,9 @@ mvn spring-boot:run
 - `terminal.allowed-origins`：HTTP/WS 允许来源模式（默认 `http://*`,`https://*`）
 - `terminal.detached-session-ttl-seconds`：客户端全断开后保留时长（默认 `3600s`）
 - `terminal.ring-buffer-max-bytes` / `terminal.ring-buffer-max-chunks`：断线补发缓存窗口
-- `terminal.ssh.*`：SSH 连接、Exec 超时、凭据密文文件、TOFU known-hosts 文件等配置
-- `TERMINAL_SSH_MASTER_KEY`（环境变量）：SSH 凭据 AES-GCM 加密主密钥（必填）
+- `terminal.ssh.credentials-file`：SSH 凭据密文文件（默认 `backend/data/ssh-credentials.json`）
+- `terminal.ssh.master-key`：本地开发可用的主密钥明文配置（建议仅本地使用）
+- `terminal.ssh.master-key-env`：生产主密钥环境变量名（默认 `TERMINAL_SSH_MASTER_KEY`）
 
 ## 使用说明
 
@@ -51,10 +55,17 @@ mvn spring-boot:run
 
 ### 2) Web SSH（浏览器交互终端）
 
-1. 先设置后端环境变量（必须）：
+1. 生产环境：在部署层注入环境变量（示例）：
 
 ```bash
 export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
+```
+
+本地开发也可在 `backend/application-local.yml` 使用 `terminal.ssh.master-key`，默认会自动加载：
+
+```bash
+cd backend
+mvn spring-boot:run
 ```
 
 2. 创建 SSH 凭据（密码或私钥二选一）：
@@ -70,9 +81,13 @@ curl -X POST http://127.0.0.1:11948/api/ssh/credentials \
   }'
 ```
 
-返回 `credentialId`。
+返回 `credentialId`。也可用列表接口查看：
 
-3. 前端点击 `+` 新建窗口，`Tool` 选择 `ssh`，填写 `SSH Credential ID`，创建后即进入 SSH Shell。
+```bash
+curl http://127.0.0.1:11948/api/ssh/credentials
+```
+
+3. 前端点击 `+` 新建窗口，`Tool` 选择 `ssh`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
 
 ### 3) SSH Exec（给 LLM 的结构化命令执行）
 
@@ -142,6 +157,7 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 - `DELETE /api/sessions/{sessionId}`：关闭会话
 - `GET /api/sessions/{sessionId}/snapshot?afterSeq=<long>`：按序号拉取输出快照
 - `GET /api/workdirTree?path=<absolutePathOptional>`：列出目录树（仅目录，自动屏蔽 `.` 前缀隐藏目录）
+- `GET /api/ssh/credentials`：列出 SSH 凭据摘要（不返回密钥/密码）
 - `POST /api/ssh/credentials`：创建 SSH 凭据（密码或私钥二选一，密文落盘）
 - `POST /api/ssh/exec`：执行 SSH 命令（返回 `stdout/stderr/exitCode`）
 - `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>`：终端双向通信 + 断线补发

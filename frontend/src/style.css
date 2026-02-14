@@ -37,6 +37,23 @@ body {
   flex-direction: column;
 }
 
+.top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-row .tab-bar {
+  flex: 1;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+}
+
 .tab-bar {
   display: flex;
   align-items: stretch;
@@ -143,6 +160,12 @@ body {
   min-height: 0;
   padding: 8px;
   overflow: hidden;
+}
+
+.main-content {
+  min-height: 0;
+  flex: 1;
+  display: flex;
 }
 
 .terminal-panel {
@@ -280,6 +303,7 @@ body {
 
 select,
 input,
+textarea,
 button {
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -297,6 +321,12 @@ button {
 
 button:hover {
   border-color: #4e678b;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.4;
+  min-height: 80px;
 }
 
 .workdir-tree {
@@ -403,6 +433,57 @@ button:hover {
   border-top: 1px dashed #30435f;
 }
 
+.ssh-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ssh-subtitle {
+  margin-top: 6px;
+}
+
+.ssh-credential-list {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid #24344c;
+  border-radius: 10px;
+  padding: 6px;
+  background: rgba(10, 16, 26, 0.7);
+  display: grid;
+  gap: 4px;
+}
+
+.ssh-credential-item {
+  all: unset;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(20, 31, 47, 0.6);
+}
+
+.ssh-credential-item:hover {
+  border-color: #3d5474;
+}
+
+.ssh-credential-item.selected {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.ssh-credential-main {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ssh-credential-meta {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -447,11 +528,147 @@ button:hover {
   border-color: #2a3a52;
 }
 
+.agent-sidebar {
+  width: min(380px, 46vw);
+  min-width: 260px;
+  border-left: 1px solid var(--line);
+  background: rgba(11, 18, 29, 0.96);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.agent-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-session {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-inline-row {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-inline-row input {
+  flex: 1;
+}
+
+.agent-actions-row {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-run-status {
+  border: 1px solid #2f435f;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(20, 32, 49, 0.7);
+}
+
+.agent-steps-list {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-step-item {
+  border: 1px solid #2a3f5c;
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(13, 24, 38, 0.8);
+}
+
+.agent-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.agent-step-body {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 30% 20%, #1d324f 0%, #090f18 55%);
+}
+
+.login-card {
+  width: min(420px, calc(100vw - 24px));
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(10, 17, 27, 0.92);
+}
+
+.login-card h1 {
+  margin: 0 0 6px 0;
+  font-size: 18px;
+}
+
+.login-error {
+  color: var(--err);
+  font-size: 12px;
+}
+
+.summary-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.summary-text {
+  min-height: 180px;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
 .hidden {
   display: none !important;
 }
 
 @media (max-width: 900px) {
+  .top-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-actions {
+    padding: 0 10px 8px 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .main-content {
+    flex-direction: column;
+  }
+
+  .agent-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 45vh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+
   .tab-item {
     min-width: 132px;
   }

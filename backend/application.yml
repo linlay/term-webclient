@@ -1,0 +1,12 @@
+# External deployment overrides for backend.
+# This file is imported by src/main/resources/application.yml with higher precedence.
+
+terminal:
+  auth:
+    enabled: false
+    username: admin
+    password-hash: ""
+    session-ttl-seconds: 43200
+  ssh:
+    credentials-file: data/ssh-credentials.json
+    master-key: 123456

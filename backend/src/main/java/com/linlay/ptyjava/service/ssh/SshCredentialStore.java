@@ -6,6 +6,7 @@ import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.ssh.CreateSshCredentialRequest;
 import com.linlay.ptyjava.model.ssh.SshAuthType;
 import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
+import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -129,6 +130,25 @@ public class SshCredentialStore {
         }
     }
 
+    public List<SshCredentialSummaryResponse> listCredentials() {
+        lock.lock();
+        try {
+            CredentialFile file = loadFile();
+            return file.credentials.stream()
+                .map(item -> new SshCredentialSummaryResponse(
+                    item.credentialId,
+                    item.host,
+                    item.port,
+                    item.username,
+                    item.authType,
+                    item.createdAt
+                ))
+                .toList();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void validateCreateRequest(CreateSshCredentialRequest request) {
         if (request == null) {
             throw new SshSecurityException("request must not be null");
@@ -240,10 +260,13 @@ public class SshCredentialStore {
     }
 
     private SecretKeySpec masterKey() {
-        String envVar = properties.getSsh().getMasterKeyEnv();
-        String rawKey = envVar == null ? null : System.getenv(envVar);
+        String rawKey = properties.getSsh().getMasterKey();
         if (!StringUtils.hasText(rawKey)) {
-            throw new SshSecurityException("Missing SSH credential master key env: " + envVar);
+            String envVar = properties.getSsh().getMasterKeyEnv();
+            rawKey = envVar == null ? null : System.getenv(envVar);
+            if (!StringUtils.hasText(rawKey)) {
+                throw new SshSecurityException("Missing SSH credential master key in terminal.ssh.master-key or env: " + envVar);
+            }
         }
 
         try {

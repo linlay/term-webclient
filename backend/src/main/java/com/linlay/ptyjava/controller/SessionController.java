@@ -2,7 +2,9 @@ package com.linlay.ptyjava.controller;
 
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
+import com.linlay.ptyjava.model.TranscriptResponse;
 import com.linlay.ptyjava.service.InvalidSessionRequestException;
 import com.linlay.ptyjava.service.SessionNotFoundException;
 import com.linlay.ptyjava.service.TerminalSessionService;
@@ -50,6 +52,20 @@ public class SessionController {
     public ResponseEntity<SessionSnapshotResponse> snapshot(@PathVariable String sessionId,
                                                             @RequestParam(name = "afterSeq", defaultValue = "0") long afterSeq) {
         return ResponseEntity.ok(terminalSessionService.getSnapshot(sessionId, afterSeq));
+    }
+
+    @GetMapping("/{sessionId}/transcript")
+    public ResponseEntity<TranscriptResponse> transcript(@PathVariable String sessionId,
+                                                         @RequestParam(name = "afterSeq", defaultValue = "0") long afterSeq,
+                                                         @RequestParam(name = "stripAnsi", defaultValue = "false") boolean stripAnsi) {
+        return ResponseEntity.ok(terminalSessionService.getTranscript(sessionId, afterSeq, stripAnsi));
+    }
+
+    @GetMapping("/{sessionId}/context")
+    public ResponseEntity<SessionContextResponse> context(@PathVariable String sessionId,
+                                                          @RequestParam(name = "commandLimit", defaultValue = "100") int commandLimit,
+                                                          @RequestParam(name = "eventLimit", defaultValue = "200") int eventLimit) {
+        return ResponseEntity.ok(terminalSessionService.getContext(sessionId, commandLimit, eventLimit));
     }
 
     @ExceptionHandler(InvalidSessionRequestException.class)

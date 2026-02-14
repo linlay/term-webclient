@@ -6,13 +6,65 @@
   <title>PTY Web Terminal</title>
 </head>
 <body>
-  <div id="app">
-    <div class="layout">
-      <div id="tabBar" class="tab-bar"></div>
+  <div id="loginGate" class="login-gate hidden">
+    <form id="loginForm" class="login-card">
+      <h1>Sign In</h1>
+      <label class="field-label" for="loginUsernameInput">Username</label>
+      <input id="loginUsernameInput" type="text" autocomplete="username" required>
+      <label class="field-label" for="loginPasswordInput">Password</label>
+      <input id="loginPasswordInput" type="password" autocomplete="current-password" required>
+      <div id="loginError" class="login-error hidden"></div>
+      <button id="loginSubmitBtn" type="submit" class="primary-btn">Login</button>
+    </form>
+  </div>
 
-      <main id="terminalArea" class="terminal-area">
-        <div id="emptyState" class="empty-state">No windows. Click + to create one.</div>
-      </main>
+  <div id="app" class="hidden">
+    <div class="layout">
+      <div class="top-row">
+        <div id="tabBar" class="tab-bar"></div>
+        <div class="top-actions">
+          <button id="sessionSummaryBtn" type="button" class="ghost-btn">Session Summary</button>
+          <button id="agentPanelToggleBtn" type="button" class="ghost-btn">Agent</button>
+          <button id="logoutBtn" type="button" class="ghost-btn">Logout</button>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <main id="terminalArea" class="terminal-area">
+          <div id="emptyState" class="empty-state">No windows. Click + to create one.</div>
+        </main>
+
+        <aside id="agentSidebar" class="agent-sidebar hidden">
+          <div class="agent-title">Agent Sidebar</div>
+          <div class="agent-session">Session: <code id="agentSessionLabel">-</code></div>
+
+          <label class="field-label" for="agentQuickCommandInput">Quick Command</label>
+          <div class="agent-inline-row">
+            <input id="agentQuickCommandInput" type="text" placeholder="e.g. ls -la">
+            <button id="agentQuickSendBtn" type="button" class="ghost-btn">Send</button>
+          </div>
+
+          <label class="field-label" for="agentInstructionInput">Instruction</label>
+          <textarea id="agentInstructionInput" rows="4" placeholder="Use cmd: <command> or input: <raw> for the mock planner."></textarea>
+
+          <label class="field-label" for="agentSelectedPathsInput">Selected Files (one path per line)</label>
+          <textarea id="agentSelectedPathsInput" rows="3" placeholder="frontend/src/main.js\nbackend/src/main/resources/application.yml"></textarea>
+
+          <div class="agent-actions-row">
+            <button id="agentStartRunBtn" type="button" class="primary-btn">Start Run</button>
+            <button id="agentRefreshBtn" type="button" class="ghost-btn">Refresh</button>
+          </div>
+
+          <div class="agent-actions-row">
+            <button id="agentApproveBtn" type="button" class="ghost-btn">Approve Next</button>
+            <button id="agentApproveRiskBtn" type="button" class="ghost-btn">Approve Risk</button>
+            <button id="agentAbortBtn" type="button" class="ghost-btn">Abort</button>
+          </div>
+
+          <div id="agentRunStatus" class="agent-run-status">No run</div>
+          <div id="agentStepsList" class="agent-steps-list"></div>
+        </aside>
+      </div>
     </div>
 
     <div id="noticeBar" class="notice hidden"></div>
@@ -22,7 +74,6 @@
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="newWindowTitle">
         <div class="modal-header">
           <h2 id="newWindowTitle" class="modal-title">New Window</h2>
-          <button id="advancedToggleBtn" type="button" class="icon-btn" title="Advanced settings">...</button>
         </div>
 
         <form id="newWindowForm" class="modal-body">
@@ -34,25 +85,27 @@
             <option value="ssh">ssh</option>
           </select>
 
-          <label class="field-label" for="workdirTree">Workdir</label>
-          <div id="workdirTree" class="workdir-tree" role="tree"></div>
-          <div class="selected-workdir">Selected: <code id="selectedWorkdirLabel">-</code></div>
+          <section id="workdirSection">
+            <label class="field-label" for="workdirTree">Workdir</label>
+            <div id="workdirTree" class="workdir-tree" role="tree"></div>
+            <div class="selected-workdir">Selected: <code id="selectedWorkdirLabel">-</code></div>
+          </section>
 
           <section id="sshSection" class="advanced-section hidden">
-            <label class="field-label" for="sshCredentialIdInput">SSH Credential ID</label>
-            <input id="sshCredentialIdInput" type="text" placeholder="credential id (required)">
+            <div class="ssh-heading-row">
+              <label class="field-label" for="sshCredentialList">Saved SSH Configs</label>
+              <div class="agent-inline-row">
+                <button id="sshRefreshCredentialsBtn" type="button" class="ghost-btn">Refresh</button>
+                <button id="sshOpenCreateModalBtn" type="button" class="ghost-btn">+ Add</button>
+              </div>
+            </div>
+            <div id="sshCredentialList" class="ssh-credential-list"></div>
+            <div class="selected-workdir">Selected SSH: <code id="sshSelectedCredentialIdLabel">-</code></div>
 
-            <label class="field-label" for="sshHostInput">Host (optional override)</label>
-            <input id="sshHostInput" type="text" placeholder="e.g. 10.0.0.2">
-
-            <label class="field-label" for="sshPortInput">Port (optional override)</label>
-            <input id="sshPortInput" type="number" min="1" max="65535" placeholder="22">
-
-            <label class="field-label" for="sshUsernameInput">Username (optional override)</label>
-            <input id="sshUsernameInput" type="text" placeholder="e.g. ubuntu">
-
-            <label class="field-label" for="sshTermInput">TERM</label>
-            <input id="sshTermInput" type="text" placeholder="xterm-256color">
+            <input id="sshHostInput" type="text" class="hidden" aria-hidden="true">
+            <input id="sshPortInput" type="number" class="hidden" aria-hidden="true">
+            <input id="sshUsernameInput" type="text" class="hidden" aria-hidden="true">
+            <input id="sshTermInput" type="text" class="hidden" aria-hidden="true" value="xterm-256color">
           </section>
 
           <section id="advancedSection" class="advanced-section hidden">
@@ -71,6 +124,74 @@
             <button id="createNewWindowBtn" type="submit" class="primary-btn">Create Window</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="sshCreateModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-ssh-create-modal="true"></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="sshCreateTitle">
+        <div class="modal-header">
+          <h2 id="sshCreateTitle" class="modal-title">Create SSH Config</h2>
+        </div>
+        <form id="sshCreateForm" class="modal-body">
+          <label class="field-label" for="sshCreateHostInput">Host</label>
+          <input id="sshCreateHostInput" type="text" placeholder="e.g. 10.0.0.2">
+
+          <label class="field-label" for="sshCreatePortInput">Port</label>
+          <input id="sshCreatePortInput" type="number" min="1" max="65535" placeholder="22">
+
+          <label class="field-label" for="sshCreateUsernameInput">Username</label>
+          <input id="sshCreateUsernameInput" type="text" placeholder="e.g. ubuntu">
+
+          <label class="field-label" for="sshCreateAuthTypeSelect">Auth Type</label>
+          <select id="sshCreateAuthTypeSelect">
+            <option value="password">password</option>
+            <option value="privateKey">private key</option>
+          </select>
+
+          <div id="sshCreatePasswordField">
+            <label class="field-label" for="sshCreatePasswordInput">Password</label>
+            <input id="sshCreatePasswordInput" type="password" placeholder="password">
+          </div>
+
+          <div id="sshCreatePrivateKeyField" class="hidden">
+            <label class="field-label" for="sshCreatePrivateKeyInput">Private Key</label>
+            <textarea id="sshCreatePrivateKeyInput" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+          </div>
+
+          <div id="sshCreatePrivateKeyPassphraseField" class="hidden">
+            <label class="field-label" for="sshCreatePrivateKeyPassphraseInput">Private Key Passphrase (optional)</label>
+            <input id="sshCreatePrivateKeyPassphraseInput" type="password" placeholder="passphrase">
+          </div>
+
+          <div class="modal-actions">
+            <button id="cancelSshCreateBtn" type="button" class="ghost-btn">Cancel</button>
+            <button id="sshCreateCredentialBtn" type="button" class="primary-btn">Save SSH Config</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="sessionSummaryModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-summary-modal="true"></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="sessionSummaryTitle">
+        <div class="modal-header">
+          <h2 id="sessionSummaryTitle" class="modal-title">Session Summary</h2>
+        </div>
+        <div class="modal-body">
+          <div class="summary-actions">
+            <button id="refreshSessionSummaryBtn" type="button" class="ghost-btn">Refresh</button>
+            <button id="copySessionContextBtn" type="button" class="ghost-btn">Copy Context JSON</button>
+            <button id="copySessionTranscriptBtn" type="button" class="ghost-btn">Copy Transcript</button>
+            <button id="closeSessionSummaryBtn" type="button" class="ghost-btn">Close</button>
+          </div>
+
+          <label class="field-label" for="sessionSummaryContextText">Structured Context</label>
+          <textarea id="sessionSummaryContextText" class="summary-text" rows="10" readonly></textarea>
+
+          <label class="field-label" for="sessionSummaryTranscriptText">Transcript</label>
+          <textarea id="sessionSummaryTranscriptText" class="summary-text" rows="10" readonly></textarea>
+        </div>
       </div>
     </div>
 

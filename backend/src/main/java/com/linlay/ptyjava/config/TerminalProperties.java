@@ -19,6 +19,11 @@ public class TerminalProperties {
     private int ringBufferMaxChunks = 4096;
     private int maxCols = 500;
     private int maxRows = 200;
+    private int sessionEventMaxEntries = 2048;
+    private int commandFrameMaxEntries = 256;
+    private int transcriptMaxChars = 200_000;
+    private AuthProperties auth = new AuthProperties();
+    private AgentProperties agent = new AgentProperties();
     private SshProperties ssh = new SshProperties();
 
     public String getDefaultCommand() {
@@ -121,12 +126,132 @@ public class TerminalProperties {
         this.maxRows = maxRows;
     }
 
+    public int getSessionEventMaxEntries() {
+        return sessionEventMaxEntries;
+    }
+
+    public void setSessionEventMaxEntries(int sessionEventMaxEntries) {
+        this.sessionEventMaxEntries = sessionEventMaxEntries;
+    }
+
+    public int getCommandFrameMaxEntries() {
+        return commandFrameMaxEntries;
+    }
+
+    public void setCommandFrameMaxEntries(int commandFrameMaxEntries) {
+        this.commandFrameMaxEntries = commandFrameMaxEntries;
+    }
+
+    public int getTranscriptMaxChars() {
+        return transcriptMaxChars;
+    }
+
+    public void setTranscriptMaxChars(int transcriptMaxChars) {
+        this.transcriptMaxChars = transcriptMaxChars;
+    }
+
+    public AuthProperties getAuth() {
+        return auth;
+    }
+
+    public void setAuth(AuthProperties auth) {
+        this.auth = auth;
+    }
+
+    public AgentProperties getAgent() {
+        return agent;
+    }
+
+    public void setAgent(AgentProperties agent) {
+        this.agent = agent;
+    }
+
     public SshProperties getSsh() {
         return ssh;
     }
 
     public void setSsh(SshProperties ssh) {
         this.ssh = ssh;
+    }
+
+    public static class AuthProperties {
+
+        private boolean enabled = false;
+        private String username = "admin";
+        private String passwordHash = "";
+        private int sessionTtlSeconds = 12 * 3600;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPasswordHash() {
+            return passwordHash;
+        }
+
+        public void setPasswordHash(String passwordHash) {
+            this.passwordHash = passwordHash;
+        }
+
+        public int getSessionTtlSeconds() {
+            return sessionTtlSeconds;
+        }
+
+        public void setSessionTtlSeconds(int sessionTtlSeconds) {
+            this.sessionTtlSeconds = sessionTtlSeconds;
+        }
+    }
+
+    public static class AgentProperties {
+
+        private boolean enabled = true;
+        private int stepTimeoutSeconds = 15;
+        private int maxStepResultChars = 8000;
+        private int maxContextPackBytes = 256 * 1024;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getStepTimeoutSeconds() {
+            return stepTimeoutSeconds;
+        }
+
+        public void setStepTimeoutSeconds(int stepTimeoutSeconds) {
+            this.stepTimeoutSeconds = stepTimeoutSeconds;
+        }
+
+        public int getMaxStepResultChars() {
+            return maxStepResultChars;
+        }
+
+        public void setMaxStepResultChars(int maxStepResultChars) {
+            this.maxStepResultChars = maxStepResultChars;
+        }
+
+        public int getMaxContextPackBytes() {
+            return maxContextPackBytes;
+        }
+
+        public void setMaxContextPackBytes(int maxContextPackBytes) {
+            this.maxContextPackBytes = maxContextPackBytes;
+        }
     }
 
     public static class SshProperties {
@@ -138,8 +263,9 @@ public class TerminalProperties {
         private int connectionIdleTtlSeconds = 3600;
         private int execDefaultTimeoutSeconds = 120;
         private int execMaxOutputBytes = 1024 * 1024;
-        private String credentialsFile = System.getProperty("user.home", ".") + "/.pty-web/ssh-credentials.json";
+        private String credentialsFile = "data/ssh-credentials.json";
         private String knownHostsFile = System.getProperty("user.home", ".") + "/.pty-web/known-hosts.json";
+        private String masterKey;
         private String masterKeyEnv = "TERMINAL_SSH_MASTER_KEY";
 
         public boolean isEnabled() {
@@ -212,6 +338,14 @@ public class TerminalProperties {
 
         public void setKnownHostsFile(String knownHostsFile) {
             this.knownHostsFile = knownHostsFile;
+        }
+
+        public String getMasterKey() {
+            return masterKey;
+        }
+
+        public void setMasterKey(String masterKey) {
+            this.masterKey = masterKey;
         }
 
         public String getMasterKeyEnv() {

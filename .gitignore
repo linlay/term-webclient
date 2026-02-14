@@ -3,6 +3,8 @@
 
 # backend
 backend/target
+backend/data
+backend/application-local.yml
 
 # frontend
 frontend/node_modules

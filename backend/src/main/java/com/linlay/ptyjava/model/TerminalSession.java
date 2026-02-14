@@ -2,6 +2,7 @@ package com.linlay.ptyjava.model;
 
 import com.linlay.ptyjava.service.TerminalOutputRingBuffer;
 import com.linlay.ptyjava.service.TerminalRuntime;
+import com.linlay.ptyjava.service.SessionContextTracker;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -19,6 +20,7 @@ public class TerminalSession {
     private final TerminalRuntime runtime;
     private final ExecutorService ioExecutor;
     private final TerminalOutputRingBuffer ringBuffer;
+    private final SessionContextTracker contextTracker;
     private final AtomicLong nextSeq = new AtomicLong(0L);
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final ReentrantLock wsSendLock = new ReentrantLock();
@@ -34,12 +36,14 @@ public class TerminalSession {
                            TerminalRuntime runtime,
                            ExecutorService ioExecutor,
                            TerminalOutputRingBuffer ringBuffer,
+                           SessionContextTracker contextTracker,
                            Instant startedAt) {
         this.sessionId = sessionId;
         this.sessionType = sessionType;
         this.runtime = runtime;
         this.ioExecutor = ioExecutor;
         this.ringBuffer = ringBuffer;
+        this.contextTracker = contextTracker;
         this.startedAt = startedAt;
         this.lastActiveAt = startedAt;
     }
@@ -62,6 +66,10 @@ public class TerminalSession {
 
     public TerminalOutputRingBuffer getRingBuffer() {
         return ringBuffer;
+    }
+
+    public SessionContextTracker getContextTracker() {
+        return contextTracker;
     }
 
     public AtomicLong getNextSeq() {

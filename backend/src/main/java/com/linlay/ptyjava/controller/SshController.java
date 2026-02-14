@@ -2,16 +2,22 @@ package com.linlay.ptyjava.controller;
 
 import com.linlay.ptyjava.model.ssh.CreateSshCredentialRequest;
 import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
+import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import com.linlay.ptyjava.model.ssh.SshExecRequest;
 import com.linlay.ptyjava.model.ssh.SshExecResponse;
+import com.linlay.ptyjava.model.ssh.SshPreflightResponse;
 import com.linlay.ptyjava.service.ssh.SshCredentialNotFoundException;
 import com.linlay.ptyjava.service.ssh.SshCredentialStore;
 import com.linlay.ptyjava.service.ssh.SshExecService;
+import com.linlay.ptyjava.service.ssh.SshPreflightService;
 import com.linlay.ptyjava.service.ssh.SshSecurityException;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,15 +29,29 @@ public class SshController {
 
     private final SshCredentialStore credentialStore;
     private final SshExecService sshExecService;
+    private final SshPreflightService sshPreflightService;
 
-    public SshController(SshCredentialStore credentialStore, SshExecService sshExecService) {
+    public SshController(SshCredentialStore credentialStore,
+                         SshExecService sshExecService,
+                         SshPreflightService sshPreflightService) {
         this.credentialStore = credentialStore;
         this.sshExecService = sshExecService;
+        this.sshPreflightService = sshPreflightService;
+    }
+
+    @GetMapping("/credentials")
+    public ResponseEntity<List<SshCredentialSummaryResponse>> listCredentials() {
+        return ResponseEntity.ok(credentialStore.listCredentials());
     }
 
     @PostMapping("/credentials")
     public ResponseEntity<SshCredentialResponse> createCredential(@RequestBody CreateSshCredentialRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(credentialStore.createCredential(request));
+    }
+
+    @PostMapping("/credentials/{credentialId}/preflight")
+    public ResponseEntity<SshPreflightResponse> preflight(@PathVariable String credentialId) {
+        return ResponseEntity.ok(sshPreflightService.preflight(credentialId));
     }
 
     @PostMapping("/exec")

@@ -31,7 +31,8 @@ public class SshShellRuntime implements TerminalRuntime {
             Session.Shell shell = session.startShell();
             return new SshShellRuntime(lease, session, shell);
         } catch (Exception e) {
-            throw new SshSecurityException("Failed to create SSH shell runtime", e);
+            String message = SshErrorMapper.toUserMessage(e, "Failed to create SSH shell runtime");
+            throw new SshSecurityException(message, e);
         }
     }
 

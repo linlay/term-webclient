@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
 import com.linlay.ptyjava.model.SessionType;
 import com.linlay.ptyjava.model.SshSessionRequest;
 import com.linlay.ptyjava.model.TerminalOutputChunk;
 import com.linlay.ptyjava.model.TerminalSession;
+import com.linlay.ptyjava.model.TranscriptResponse;
 import com.linlay.ptyjava.service.TerminalOutputRingBuffer.OutputChunk;
 import com.linlay.ptyjava.service.TerminalOutputRingBuffer.Snapshot;
 import com.linlay.ptyjava.service.ssh.ResolvedSshCredential;
@@ -33,6 +35,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -47,6 +50,7 @@ public class TerminalSessionService {
     private static final Logger log = LoggerFactory.getLogger(TerminalSessionService.class);
     private static final int DEFAULT_COLS = 120;
     private static final int DEFAULT_ROWS = 30;
+    private static final Pattern ANSI_ESCAPE = Pattern.compile("\\u001B\\[[;?0-9]*[ -/]*[@-~]");
 
     private final TerminalProperties properties;
     private final PtyProcessLauncher processLauncher;
@@ -82,12 +86,21 @@ public class TerminalSessionService {
                 return t;
             });
 
+            SessionContextTracker contextTracker = new SessionContextTracker(
+                sessionId,
+                sessionType,
+                properties.getSessionEventMaxEntries(),
+                properties.getCommandFrameMaxEntries(),
+                params.workdir()
+            );
+
             TerminalSession session = new TerminalSession(
                 sessionId,
                 sessionType,
                 runtime,
                 ioExecutor,
                 new TerminalOutputRingBuffer(properties.getRingBufferMaxBytes(), properties.getRingBufferMaxChunks()),
+                contextTracker,
                 Instant.now()
             );
 
@@ -114,6 +127,7 @@ public class TerminalSessionService {
                 }
             }
             session.touchLastActiveAt();
+            session.getContextTracker().onAttachedClientsChanged(session.getAttachedClients().size());
         }
 
         replayBufferedOutput(session, wsSession, lastSeenSeq);
@@ -139,23 +153,21 @@ public class TerminalSessionService {
                 session.setDetachedAt(Instant.now());
                 scheduleKillTask(session, properties.getDetachedSessionTtlSeconds());
             }
+            session.getContextTracker().onAttachedClientsChanged(session.getAttachedClients().size());
         }
     }
 
     public void writeInput(String sessionId, String data) {
-        TerminalSession session = getRequired(sessionId);
-        if (data == null) {
-            return;
-        }
+        writeInputInternal(sessionId, data, "manual");
+    }
 
-        try {
-            session.getRuntime().inputStream().write(data.getBytes(StandardCharsets.UTF_8));
-            session.getRuntime().inputStream().flush();
-            session.touchLastActiveAt();
-        } catch (IOException e) {
-            broadcastPayload(session, Map.of("type", "error", "message", "Failed writing to terminal process"));
-            closeSession(sessionId, "write error", true);
-        }
+    public void writeInputFromAgent(String sessionId, String data) {
+        writeInputInternal(sessionId, data, "agent");
+    }
+
+    public void registerManagedCommand(String sessionId, String commandId, String command) {
+        TerminalSession session = getRequired(sessionId);
+        session.getContextTracker().registerManagedCommand(commandId, command);
     }
 
     public void resize(String sessionId, int cols, int rows) {
@@ -164,6 +176,7 @@ public class TerminalSessionService {
         try {
             session.getRuntime().resize(cols, rows);
             session.touchLastActiveAt();
+            session.getContextTracker().onResize(cols, rows);
         } catch (IOException e) {
             throw new InvalidSessionRequestException("Failed to resize session");
         }
@@ -182,12 +195,75 @@ public class TerminalSessionService {
         return new SessionSnapshotResponse(sessionId, fromSeq, toSeq, chunks, snapshot.truncated());
     }
 
+    public TranscriptResponse getTranscript(String sessionId, long afterSeq, boolean stripAnsi) {
+        TerminalSession session = getRequired(sessionId);
+        Snapshot snapshot = session.getRingBuffer().snapshotAfter(afterSeq);
+
+        StringBuilder transcript = new StringBuilder();
+        for (OutputChunk chunk : snapshot.chunks()) {
+            transcript.append(new String(chunk.data(), StandardCharsets.UTF_8));
+        }
+
+        String text = transcript.toString();
+        if (stripAnsi) {
+            text = ANSI_ESCAPE.matcher(text).replaceAll("");
+        }
+
+        boolean truncated = snapshot.truncated();
+        int maxChars = Math.max(1000, properties.getTranscriptMaxChars());
+        if (text.length() > maxChars) {
+            text = text.substring(text.length() - maxChars);
+            truncated = true;
+        }
+
+        long fromSeq = snapshot.chunks().isEmpty() ? snapshot.firstAvailableSeq() : snapshot.chunks().get(0).seq();
+        long toSeq = snapshot.chunks().isEmpty() ? snapshot.latestSeq() : snapshot.chunks().get(snapshot.chunks().size() - 1).seq();
+
+        return new TranscriptResponse(
+            sessionId,
+            fromSeq,
+            toSeq,
+            snapshot.chunks().size(),
+            truncated,
+            stripAnsi,
+            text
+        );
+    }
+
+    public SessionContextResponse getContext(String sessionId, int commandLimit, int eventLimit) {
+        TerminalSession session = getRequired(sessionId);
+        return session.getContextTracker().snapshot(commandLimit, eventLimit);
+    }
+
+    public SessionContextResponse getContext(String sessionId) {
+        return getContext(sessionId, 100, 200);
+    }
+
     public void closeSession(String sessionId, String reason, boolean sendExit) {
         closeSession(sessionId, reason, sendExit, null);
     }
 
     public boolean exists(String sessionId) {
         return sessions.containsKey(sessionId);
+    }
+
+    private void writeInputInternal(String sessionId, String data, String source) {
+        TerminalSession session = getRequired(sessionId);
+        if (data == null) {
+            return;
+        }
+
+        session.getContextTracker().onInput(data, source);
+
+        try {
+            session.getRuntime().inputStream().write(data.getBytes(StandardCharsets.UTF_8));
+            session.getRuntime().inputStream().flush();
+            session.touchLastActiveAt();
+        } catch (IOException e) {
+            session.getContextTracker().onError("Failed writing to terminal process");
+            broadcastPayload(session, Map.of("type", "error", "message", "Failed writing to terminal process"));
+            closeSession(sessionId, "write error", true);
+        }
     }
 
     private void closeSession(String sessionId, String reason, boolean sendExit, Integer exitCodeOverride) {
@@ -241,6 +317,8 @@ public class TerminalSessionService {
                     long seq = session.getNextSeq().incrementAndGet();
                     session.getRingBuffer().append(seq, output);
                     session.touchLastActiveAt();
+                    String outputText = new String(output, StandardCharsets.UTF_8);
+                    session.getContextTracker().onOutput(seq, outputText);
                     broadcastOutput(session, seq, output);
                 }
 
@@ -249,6 +327,7 @@ public class TerminalSessionService {
             } catch (Exception e) {
                 if (!session.getClosed().get()) {
                     log.warn("Terminal stream read failed for session {}", session.getSessionId(), e);
+                    session.getContextTracker().onError("Terminal stream error");
                     broadcastPayload(session, Map.of("type", "error", "message", "Terminal stream error"));
                     closeSession(session.getSessionId(), "stream read error", true);
                 }
@@ -263,13 +342,15 @@ public class TerminalSessionService {
 
         cancelKillTask(session);
 
+        Integer exitCode = exitCodeOverride;
         if (sendExit) {
-            Integer exitCode = exitCodeOverride;
             if (exitCode == null) {
                 exitCode = session.getRuntime().exitCodeOrNull();
             }
             broadcastPayload(session, Map.of("type", "exit", "exitCode", exitCode == null ? -1 : exitCode));
         }
+
+        session.getContextTracker().onSessionClosed(exitCode);
 
         session.getRuntime().close();
         session.getIoExecutor().shutdownNow();
@@ -292,6 +373,7 @@ public class TerminalSessionService {
         try {
             Snapshot snapshot = session.getRingBuffer().snapshotAfter(lastSeenSeq);
             if (snapshot.truncated()) {
+                session.getContextTracker().onTruncated();
                 sendMessage(wsSession, Map.of(
                     "type", "truncated",
                     "requestedAfterSeq", lastSeenSeq,
