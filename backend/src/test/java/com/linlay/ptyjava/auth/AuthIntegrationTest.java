@@ -10,7 +10,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -20,8 +19,6 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class AuthIntegrationTest {
 
-    private static final BCryptPasswordEncoder ENCODER = new BCryptPasswordEncoder();
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -29,7 +26,7 @@ class AuthIntegrationTest {
     static void authProps(DynamicPropertyRegistry registry) {
         registry.add("terminal.auth.enabled", () -> "true");
         registry.add("terminal.auth.username", () -> "tester");
-        registry.add("terminal.auth.password-hash", () -> ENCODER.encode("secret123"));
+        registry.add("terminal.auth.password-hash", () -> "5d7845ac6ee7cfffafc5fe5f35cf666d");
     }
 
     @Test

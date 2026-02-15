@@ -23,8 +23,7 @@
       <div class="top-row">
         <div id="tabBar" class="tab-bar"></div>
         <div class="top-actions">
-          <button id="sessionSummaryBtn" type="button" class="ghost-btn">Session Summary</button>
-          <button id="agentPanelToggleBtn" type="button" class="ghost-btn">Agent</button>
+          <button id="copilotPanelToggleBtn" type="button" class="ghost-btn">Copilot</button>
           <button id="logoutBtn" type="button" class="ghost-btn">Logout</button>
         </div>
       </div>
@@ -35,34 +34,54 @@
         </main>
 
         <aside id="agentSidebar" class="agent-sidebar hidden">
-          <div class="agent-title">Agent Sidebar</div>
+          <div class="agent-title">Copilot</div>
+          <div class="copilot-tabs">
+            <button id="copilotSummaryTabBtn" type="button" class="ghost-btn copilot-tab active">Summary</button>
+            <button id="copilotAgentTabBtn" type="button" class="ghost-btn copilot-tab">Agent</button>
+          </div>
           <div class="agent-session">Session: <code id="agentSessionLabel">-</code></div>
 
-          <label class="field-label" for="agentQuickCommandInput">Quick Command</label>
-          <div class="agent-inline-row">
-            <input id="agentQuickCommandInput" type="text" placeholder="e.g. ls -la">
-            <button id="agentQuickSendBtn" type="button" class="ghost-btn">Send</button>
-          </div>
+          <section id="copilotSummaryPanel" class="copilot-panel">
+            <div class="summary-actions">
+              <button id="refreshSessionSummaryBtn" type="button" class="ghost-btn">Refresh</button>
+              <button id="copySessionContextBtn" type="button" class="ghost-btn">Copy Context JSON</button>
+              <button id="copySessionTranscriptBtn" type="button" class="ghost-btn">Copy Transcript</button>
+            </div>
 
-          <label class="field-label" for="agentInstructionInput">Instruction</label>
-          <textarea id="agentInstructionInput" rows="4" placeholder="Use cmd: <command> or input: <raw> for the mock planner."></textarea>
+            <label class="field-label" for="sessionSummaryContextText">Structured Context</label>
+            <textarea id="sessionSummaryContextText" class="summary-text" rows="8" readonly></textarea>
 
-          <label class="field-label" for="agentSelectedPathsInput">Selected Files (one path per line)</label>
-          <textarea id="agentSelectedPathsInput" rows="3" placeholder="frontend/src/main.js\nbackend/src/main/resources/application.yml"></textarea>
+            <label class="field-label" for="sessionSummaryTranscriptText">Transcript</label>
+            <textarea id="sessionSummaryTranscriptText" class="summary-text" rows="8" readonly></textarea>
+          </section>
 
-          <div class="agent-actions-row">
-            <button id="agentStartRunBtn" type="button" class="primary-btn">Start Run</button>
-            <button id="agentRefreshBtn" type="button" class="ghost-btn">Refresh</button>
-          </div>
+          <section id="copilotAgentPanel" class="copilot-panel hidden">
+            <label class="field-label" for="agentQuickCommandInput">Quick Command</label>
+            <div class="agent-inline-row">
+              <input id="agentQuickCommandInput" type="text" placeholder="e.g. ls -la">
+              <button id="agentQuickSendBtn" type="button" class="ghost-btn">Send</button>
+            </div>
 
-          <div class="agent-actions-row">
-            <button id="agentApproveBtn" type="button" class="ghost-btn">Approve Next</button>
-            <button id="agentApproveRiskBtn" type="button" class="ghost-btn">Approve Risk</button>
-            <button id="agentAbortBtn" type="button" class="ghost-btn">Abort</button>
-          </div>
+            <label class="field-label" for="agentInstructionInput">Instruction</label>
+            <textarea id="agentInstructionInput" rows="4" placeholder="Use cmd: <command> or input: <raw> for the mock planner."></textarea>
 
-          <div id="agentRunStatus" class="agent-run-status">No run</div>
-          <div id="agentStepsList" class="agent-steps-list"></div>
+            <label class="field-label" for="agentSelectedPathsInput">Selected Files (one path per line)</label>
+            <textarea id="agentSelectedPathsInput" rows="3" placeholder="frontend/src/main.js\nbackend/src/main/resources/application.yml"></textarea>
+
+            <div class="agent-actions-row">
+              <button id="agentStartRunBtn" type="button" class="primary-btn">Start Run</button>
+              <button id="agentRefreshBtn" type="button" class="ghost-btn">Refresh</button>
+            </div>
+
+            <div class="agent-actions-row">
+              <button id="agentApproveBtn" type="button" class="ghost-btn">Approve Next</button>
+              <button id="agentApproveRiskBtn" type="button" class="ghost-btn">Approve Risk</button>
+              <button id="agentAbortBtn" type="button" class="ghost-btn">Abort</button>
+            </div>
+
+            <div id="agentRunStatus" class="agent-run-status">No run</div>
+            <div id="agentStepsList" class="agent-steps-list"></div>
+          </section>
         </aside>
       </div>
     </div>
@@ -169,29 +188,6 @@
             <button id="sshCreateCredentialBtn" type="button" class="primary-btn">Save SSH Config</button>
           </div>
         </form>
-      </div>
-    </div>
-
-    <div id="sessionSummaryModal" class="modal hidden" aria-hidden="true">
-      <div class="modal-backdrop" data-close-summary-modal="true"></div>
-      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="sessionSummaryTitle">
-        <div class="modal-header">
-          <h2 id="sessionSummaryTitle" class="modal-title">Session Summary</h2>
-        </div>
-        <div class="modal-body">
-          <div class="summary-actions">
-            <button id="refreshSessionSummaryBtn" type="button" class="ghost-btn">Refresh</button>
-            <button id="copySessionContextBtn" type="button" class="ghost-btn">Copy Context JSON</button>
-            <button id="copySessionTranscriptBtn" type="button" class="ghost-btn">Copy Transcript</button>
-            <button id="closeSessionSummaryBtn" type="button" class="ghost-btn">Close</button>
-          </div>
-
-          <label class="field-label" for="sessionSummaryContextText">Structured Context</label>
-          <textarea id="sessionSummaryContextText" class="summary-text" rows="10" readonly></textarea>
-
-          <label class="field-label" for="sessionSummaryTranscriptText">Transcript</label>
-          <textarea id="sessionSummaryTranscriptText" class="summary-text" rows="10" readonly></textarea>
-        </div>
       </div>
     </div>
 

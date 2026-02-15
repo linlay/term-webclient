@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,6 +48,12 @@ public class SshController {
     @PostMapping("/credentials")
     public ResponseEntity<SshCredentialResponse> createCredential(@RequestBody CreateSshCredentialRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(credentialStore.createCredential(request));
+    }
+
+    @DeleteMapping("/credentials/{credentialId}")
+    public ResponseEntity<Void> deleteCredential(@PathVariable String credentialId) {
+        credentialStore.deleteCredential(credentialId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/credentials/{credentialId}/preflight")

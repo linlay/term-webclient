@@ -46,14 +46,36 @@ mvn spring-boot:run
 
 ## 使用说明
 
-### 1) 断线/刷新后保留连接（1 小时）
+### 1) 登录认证（强制）
+
+- 默认开启登录（访问 `http://localhost:11949/` 时必须先登录）。
+- 当前默认账号密码：`admin / Admin@123`。
+- 密码在配置中使用 **MD5** 32 位十六进制字符串（大小写不敏感匹配）。
+- 当前默认密码哈希：`0e7517141fb53f21ee439b355b5a1d0a`（`Admin@123` 的 MD5）。
+- 页面每次进入/刷新都会先登出并要求重新登录，未登录前不会显示任何 session 内容。
+
+MD5 生成示例：
+
+macOS:
+
+```bash
+printf '%s' 'your-password' | md5
+```
+
+Linux:
+
+```bash
+printf '%s' 'your-password' | md5sum | awk '{print $1}'
+```
+
+### 2) 断线/刷新后保留连接（1 小时）
 
 - 浏览器刷新不会自动删除后端 session；前端会把 tab/session 信息写入 `localStorage`，刷新后自动重连。
 - 同一 tab 重连时会带 `lastSeenSeq`，服务端按 ring buffer 进行补发。
 - 如果你点击 tab 关闭（`x`），前端会显式调用 `DELETE /api/sessions/{sessionId}`，会话会被销毁。
 - 如果所有客户端都断开，后端会保留会话到 `terminal.detached-session-ttl-seconds`（默认 3600 秒），超时后自动回收。
 
-### 2) Web SSH（浏览器交互终端）
+### 3) Web SSH（浏览器交互终端）
 
 SSH 客户端实现基于 Apache MINA SSHD，现有 `terminal.ssh.*` 配置项保持不变。
 
@@ -90,8 +112,15 @@ curl http://127.0.0.1:11948/api/ssh/credentials
 ```
 
 3. 前端点击 `+` 新建窗口，`Tool` 选择 `ssh`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
+4. 已保存 SSH 配置支持删除（`Delete` 按钮，带二次确认）。
 
-### 3) SSH Exec（给 LLM 的结构化命令执行）
+### 4) Copilot 侧栏（Summary + Agent）
+
+- 顶部 `Copilot` 按钮打开右侧栏，支持 `Summary` / `Agent` 切换。
+- `Summary` 支持实时刷新（默认 2 秒，可通过 `VITE_COPILOT_REFRESH_MS` 配置）并可复制 Context/Transcript。
+- `Agent` 保留原有 run 创建、审批、终止和 quick command 操作。
+
+### 5) SSH Exec（给 LLM 的结构化命令执行）
 
 ```bash
 curl -X POST http://127.0.0.1:11948/api/ssh/exec \
@@ -118,9 +147,11 @@ npm run dev
 
 ```env
 VITE_API_BASE=
+VITE_COPILOT_REFRESH_MS=2000
 ```
 
 - `VITE_API_BASE`：可选。为空时前端默认使用同源 `/api` 与 `/ws`；有值时强制使用该地址（调试用途）。
+- `VITE_COPILOT_REFRESH_MS`：可选。Copilot 自动刷新间隔毫秒，默认 `2000`，最小 `500`。
 
 ## 前端生产模式（Node 代理）
 
@@ -161,6 +192,7 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 - `GET /api/workdirTree?path=<absolutePathOptional>`：列出目录树（仅目录，自动屏蔽 `.` 前缀隐藏目录）
 - `GET /api/ssh/credentials`：列出 SSH 凭据摘要（不返回密钥/密码）
 - `POST /api/ssh/credentials`：创建 SSH 凭据（密码或私钥二选一，密文落盘）
+- `DELETE /api/ssh/credentials/{credentialId}`：删除 SSH 凭据
 - `POST /api/ssh/exec`：执行 SSH 命令（返回 `stdout/stderr/exitCode`）
 - `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>`：终端双向通信 + 断线补发
 

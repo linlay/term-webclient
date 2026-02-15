@@ -455,6 +455,12 @@ textarea {
   gap: 4px;
 }
 
+.ssh-credential-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
 .ssh-credential-item {
   all: unset;
   cursor: pointer;
@@ -482,6 +488,18 @@ textarea {
   margin-top: 3px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.ssh-delete-btn {
+  align-self: stretch;
+  min-width: 68px;
+  border-color: #61434f;
+  color: #f7b7ba;
+}
+
+.ssh-delete-btn:hover {
+  border-color: #c65f67;
+  color: #ffd3d6;
 }
 
 .modal-actions {
@@ -543,6 +561,26 @@ textarea {
 .agent-title {
   font-size: 14px;
   font-weight: 600;
+}
+
+.copilot-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.copilot-tab {
+  border-color: #385171;
+}
+
+.copilot-tab.active {
+  border-color: #6d93cb;
+  background: rgba(96, 165, 250, 0.22);
+}
+
+.copilot-panel {
+  display: grid;
+  gap: 8px;
 }
 
 .agent-session {
@@ -637,7 +675,8 @@ textarea {
 }
 
 .summary-text {
-  min-height: 180px;
+  min-height: 160px;
+  max-height: 280px;
   font-family: "SFMono-Regular", Menlo, Consolas, monospace;
 }
 

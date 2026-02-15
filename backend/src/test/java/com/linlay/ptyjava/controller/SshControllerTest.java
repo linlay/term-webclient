@@ -1,7 +1,10 @@
 package com.linlay.ptyjava.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +16,7 @@ import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
 import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import com.linlay.ptyjava.model.ssh.SshPreflightResponse;
 import com.linlay.ptyjava.service.ssh.SshCredentialStore;
+import com.linlay.ptyjava.service.ssh.SshCredentialNotFoundException;
 import com.linlay.ptyjava.service.ssh.SshExecService;
 import com.linlay.ptyjava.service.ssh.SshPreflightService;
 import com.linlay.ptyjava.service.ssh.SshSecurityException;
@@ -107,5 +111,21 @@ class SshControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.credentialId").value("cred-1"))
             .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void deleteCredentialReturns204() throws Exception {
+        mockMvc.perform(delete("/api/ssh/credentials/cred-1"))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteCredentialReturns404WhenMissing() throws Exception {
+        doThrow(new SshCredentialNotFoundException("missing"))
+            .when(sshCredentialStore).deleteCredential(eq("missing"));
+
+        mockMvc.perform(delete("/api/ssh/credentials/missing"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("SSH credential not found: missing"));
     }
 }

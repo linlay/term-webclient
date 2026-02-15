@@ -6,6 +6,10 @@ const rawApiBase = typeof import.meta.env.VITE_API_BASE === "string"
   ? import.meta.env.VITE_API_BASE.trim()
   : "";
 const API_BASE = rawApiBase.replace(/\/+$/, "");
+const rawCopilotRefreshMs = Number.parseInt(import.meta.env.VITE_COPILOT_REFRESH_MS || "2000", 10);
+const COPILOT_REFRESH_MS = Number.isFinite(rawCopilotRefreshMs) && rawCopilotRefreshMs >= 500
+  ? rawCopilotRefreshMs
+  : 2000;
 const MAX_TABS = 10;
 const RECONNECT_MIN_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
@@ -94,16 +98,17 @@ const sshPortInput = document.getElementById("sshPortInput");
 const sshUsernameInput = document.getElementById("sshUsernameInput");
 const sshTermInput = document.getElementById("sshTermInput");
 
-const sessionSummaryBtn = document.getElementById("sessionSummaryBtn");
-const sessionSummaryModal = document.getElementById("sessionSummaryModal");
+const copilotPanelToggleBtn = document.getElementById("copilotPanelToggleBtn");
+const copilotSummaryTabBtn = document.getElementById("copilotSummaryTabBtn");
+const copilotAgentTabBtn = document.getElementById("copilotAgentTabBtn");
+const copilotSummaryPanel = document.getElementById("copilotSummaryPanel");
+const copilotAgentPanel = document.getElementById("copilotAgentPanel");
 const refreshSessionSummaryBtn = document.getElementById("refreshSessionSummaryBtn");
-const closeSessionSummaryBtn = document.getElementById("closeSessionSummaryBtn");
 const copySessionContextBtn = document.getElementById("copySessionContextBtn");
 const copySessionTranscriptBtn = document.getElementById("copySessionTranscriptBtn");
 const sessionSummaryContextText = document.getElementById("sessionSummaryContextText");
 const sessionSummaryTranscriptText = document.getElementById("sessionSummaryTranscriptText");
 
-const agentPanelToggleBtn = document.getElementById("agentPanelToggleBtn");
 const agentSidebar = document.getElementById("agentSidebar");
 const agentSessionLabel = document.getElementById("agentSessionLabel");
 const agentInstructionInput = document.getElementById("agentInstructionInput");
@@ -132,6 +137,10 @@ let layoutObserver = null;
 let contextTabId = null;
 let restoringFromStorage = false;
 let appInitialized = false;
+let copilotActiveTab = "summary";
+let copilotRefreshTimer = null;
+let summaryRefreshInFlight = false;
+let agentRefreshInFlight = false;
 let authState = {
   enabled: false,
   authenticated: false,
@@ -180,6 +189,28 @@ function renderAuthGate() {
   }
 }
 
+function disconnectAllTabsForAuth() {
+  tabOrder.forEach((tabId) => {
+    const tab = tabs.get(tabId);
+    if (!tab) {
+      return;
+    }
+    closeSocket(tab, { manual: true });
+    clearReconnectTimer(tab);
+    if (tab.connectionState !== "exited") {
+      setConnectionState(tab, "disconnected", { lost: tab.lost });
+    }
+  });
+}
+
+function enterLoggedOutState() {
+  stopCopilotRefresh();
+  disconnectAllTabsForAuth();
+  authState.authenticated = false;
+  authState.username = AUTH_DISABLED_USERNAME;
+  renderAuthGate();
+}
+
 async function apiFetch(path, options = {}) {
   const fetchOptions = {
     credentials: "include",
@@ -187,8 +218,7 @@ async function apiFetch(path, options = {}) {
   };
   const response = await fetch(apiUrl(path), fetchOptions);
   if (response.status === 401) {
-    authState.authenticated = false;
-    renderAuthGate();
+    enterLoggedOutState();
   }
   return response;
 }
@@ -243,18 +273,7 @@ async function logout() {
   } catch {
     // ignore network errors during logout
   }
-  tabOrder.forEach((tabId) => {
-    const tab = tabs.get(tabId);
-    if (!tab) {
-      return;
-    }
-    closeSocket(tab, { manual: true });
-    if (tab.connectionState !== "exited") {
-      setConnectionState(tab, "disconnected", { lost: tab.lost });
-    }
-  });
-  authState.authenticated = false;
-  renderAuthGate();
+  enterLoggedOutState();
 }
 
 function wsBaseFromApiBase() {
@@ -578,6 +597,10 @@ function activateTab(tabId) {
   });
   persistTabsState();
   renderAgentSidebar();
+  if (!agentSidebar.classList.contains("hidden")) {
+    void refreshCopilotActiveTab({ silent: true });
+    startCopilotRefresh();
+  }
 }
 
 function fitAndResize(tab) {
@@ -1478,10 +1501,13 @@ function renderSshCredentialList() {
   }
 
   modalState.sshCredentials.forEach((credential) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `ssh-credential-item${modalState.selectedSshCredentialId === credential.credentialId ? " selected" : ""}`;
-    button.title = credential.credentialId;
+    const row = document.createElement("div");
+    row.className = "ssh-credential-row";
+
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = `ssh-credential-item${modalState.selectedSshCredentialId === credential.credentialId ? " selected" : ""}`;
+    selectBtn.title = credential.credentialId;
 
     const main = document.createElement("div");
     main.className = "ssh-credential-main";
@@ -1491,12 +1517,24 @@ function renderSshCredentialList() {
     meta.className = "ssh-credential-meta";
     meta.textContent = `${credential.authType || "UNKNOWN"} | ${credential.credentialId} | ${formatCreatedAt(credential.createdAt)}`;
 
-    button.appendChild(main);
-    button.appendChild(meta);
-    button.addEventListener("click", () => {
+    selectBtn.appendChild(main);
+    selectBtn.appendChild(meta);
+    selectBtn.addEventListener("click", () => {
       setSelectedSshCredential(credential.credentialId);
     });
-    sshCredentialList.appendChild(button);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "ghost-btn ssh-delete-btn";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void handleDeleteSshCredential(credential.credentialId);
+    });
+
+    row.appendChild(selectBtn);
+    row.appendChild(deleteBtn);
+    sshCredentialList.appendChild(row);
   });
 }
 
@@ -1528,6 +1566,15 @@ async function preflightSshCredential(credentialId) {
     throw new Error(await extractErrorMessage(response));
   }
   return response.json();
+}
+
+async function deleteSshCredential(credentialId) {
+  const response = await apiFetch(`/api/ssh/credentials/${encodeURIComponent(credentialId)}`, {
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
 }
 
 async function loadSshCredentials(preferredCredentialId = null) {
@@ -1586,6 +1633,27 @@ function buildSshOverrides() {
     throw new Error("Selected SSH config no longer exists, please refresh and select again");
   }
   return { credentialId };
+}
+
+async function handleDeleteSshCredential(credentialId) {
+  const credential = findSshCredentialById(credentialId);
+  if (!credential) {
+    await loadSshCredentials();
+    return;
+  }
+
+  const label = `${credential.username}@${credential.host}:${credential.port}`;
+  const confirmed = window.confirm(`Delete SSH config ${label} (${credentialId})?`);
+  if (!confirmed) {
+    return;
+  }
+
+  await deleteSshCredential(credentialId);
+  if (modalState.selectedSshCredentialId === credentialId) {
+    setSelectedSshCredential(null, false);
+  }
+  await loadSshCredentials();
+  showNotice(`Deleted SSH config ${credentialId}`, "success", 2400);
 }
 
 async function handleCreateSshCredential() {
@@ -1715,13 +1783,20 @@ async function fetchSessionTranscript(tab) {
   return response.json();
 }
 
-async function refreshSessionSummary() {
-  const tab = getActiveTab();
-  if (!tab) {
-    showNotice("No active tab", "warn");
+async function refreshSessionSummary(options = {}) {
+  if (summaryRefreshInFlight) {
     return;
   }
+  summaryRefreshInFlight = true;
+  const silent = Boolean(options.silent);
   try {
+    const tab = getActiveTab();
+    if (!tab) {
+      if (!silent) {
+        showNotice("No active tab", "warn");
+      }
+      return;
+    }
     const [context, transcript] = await Promise.all([
       fetchSessionContext(tab),
       fetchSessionTranscript(tab)
@@ -1729,19 +1804,12 @@ async function refreshSessionSummary() {
     sessionSummaryContextText.value = JSON.stringify(context, null, 2);
     sessionSummaryTranscriptText.value = transcript?.transcript || "";
   } catch (error) {
-    showNotice(error.message, "error", 4200);
+    if (!silent) {
+      showNotice(error.message, "error", 4200);
+    }
+  } finally {
+    summaryRefreshInFlight = false;
   }
-}
-
-function openSessionSummaryModal() {
-  sessionSummaryModal.classList.remove("hidden");
-  sessionSummaryModal.setAttribute("aria-hidden", "false");
-  void refreshSessionSummary();
-}
-
-function closeSessionSummaryModal() {
-  sessionSummaryModal.classList.add("hidden");
-  sessionSummaryModal.setAttribute("aria-hidden", "true");
 }
 
 function parseSelectedPaths() {
@@ -1802,6 +1870,12 @@ function renderAgentSidebar() {
   if (!tab) {
     agentSessionLabel.textContent = "-";
     agentRunStatus.textContent = "No active tab";
+    agentStepsList.innerHTML = "";
+    return;
+  }
+  if (!authState.authenticated) {
+    agentSessionLabel.textContent = "-";
+    agentRunStatus.textContent = "Login required";
     agentStepsList.innerHTML = "";
     return;
   }
@@ -1918,8 +1992,77 @@ async function sendQuickCommand(tab) {
   agentQuickCommandInput.value = "";
 }
 
-function toggleAgentSidebar() {
+function renderCopilotPanels() {
+  const isSummary = copilotActiveTab === "summary";
+  copilotSummaryTabBtn.classList.toggle("active", isSummary);
+  copilotAgentTabBtn.classList.toggle("active", !isSummary);
+  copilotSummaryPanel.classList.toggle("hidden", !isSummary);
+  copilotAgentPanel.classList.toggle("hidden", isSummary);
+}
+
+async function refreshCopilotActiveTab(options = {}) {
+  const silent = Boolean(options.silent);
+  if (copilotActiveTab === "summary") {
+    await refreshSessionSummary({ silent });
+    return;
+  }
+
+  const tab = getActiveTab();
+  if (!tab?.agentRunId) {
+    if (!silent) {
+      showNotice("No agent run for this tab", "warn");
+    }
+    return;
+  }
+  if (agentRefreshInFlight) {
+    return;
+  }
+
+  agentRefreshInFlight = true;
+  try {
+    await refreshAgentRun(tab);
+  } catch (error) {
+    if (!silent) {
+      showNotice(error.message, "error", 4200);
+    }
+  } finally {
+    agentRefreshInFlight = false;
+  }
+}
+
+function stopCopilotRefresh() {
+  if (!copilotRefreshTimer) {
+    return;
+  }
+  clearInterval(copilotRefreshTimer);
+  copilotRefreshTimer = null;
+}
+
+function startCopilotRefresh() {
+  stopCopilotRefresh();
+  if (agentSidebar.classList.contains("hidden") || !authState.authenticated) {
+    return;
+  }
+  copilotRefreshTimer = setInterval(() => {
+    void refreshCopilotActiveTab({ silent: true });
+  }, COPILOT_REFRESH_MS);
+}
+
+function setCopilotTab(tabName) {
+  copilotActiveTab = tabName === "agent" ? "agent" : "summary";
+  renderCopilotPanels();
+  void refreshCopilotActiveTab({ silent: true });
+}
+
+function toggleCopilotSidebar() {
   agentSidebar.classList.toggle("hidden");
+  if (agentSidebar.classList.contains("hidden")) {
+    stopCopilotRefresh();
+  } else {
+    renderCopilotPanels();
+    void refreshCopilotActiveTab({ silent: true });
+    startCopilotRefresh();
+  }
   renderAgentSidebar();
   scheduleActiveFit(20);
 }
@@ -1943,12 +2086,18 @@ function bindEvents() {
     void logout();
   });
 
-  sessionSummaryBtn.addEventListener("click", () => {
-    void openSessionSummaryModal();
+  copilotPanelToggleBtn.addEventListener("click", () => {
+    toggleCopilotSidebar();
   });
 
-  agentPanelToggleBtn.addEventListener("click", () => {
-    toggleAgentSidebar();
+  copilotSummaryTabBtn.addEventListener("click", () => {
+    setCopilotTab("summary");
+    startCopilotRefresh();
+  });
+
+  copilotAgentTabBtn.addEventListener("click", () => {
+    setCopilotTab("agent");
+    startCopilotRefresh();
   });
 
   toolSelect.addEventListener("change", () => {
@@ -2019,16 +2168,6 @@ function bindEvents() {
         showNotice("Copy failed in this browser context", "warn", 2600);
       }
     })();
-  });
-
-  closeSessionSummaryBtn.addEventListener("click", () => {
-    closeSessionSummaryModal();
-  });
-
-  sessionSummaryModal.addEventListener("click", (event) => {
-    if (event.target instanceof HTMLElement && event.target.dataset.closeSummaryModal === "true") {
-      closeSessionSummaryModal();
-    }
   });
 
   agentStartRunBtn.addEventListener("click", () => {
@@ -2217,10 +2356,6 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!sessionSummaryModal.classList.contains("hidden")) {
-        closeSessionSummaryModal();
-        return;
-      }
       if (!sshCreateModal.classList.contains("hidden")) {
         closeSshCreateModal();
         return;
@@ -2245,6 +2380,7 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeunload", () => {
+    stopCopilotRefresh();
     persistTabsState();
     tabOrder.forEach((tabId) => {
       const tab = tabs.get(tabId);
@@ -2261,6 +2397,8 @@ function bindEvents() {
     });
     layoutObserver.observe(terminalArea);
   }
+
+  renderCopilotPanels();
 }
 
 function restoreTabsFromStorage() {
@@ -2346,12 +2484,15 @@ function initializeApp() {
       attachSocket(tab);
     });
     renderAgentSidebar();
+    startCopilotRefresh();
     return;
   }
   restoreTabsFromStorage();
   renderTabs();
   updateEmptyState();
   renderAgentSidebar();
+  renderCopilotPanels();
+  startCopilotRefresh();
   appInitialized = true;
 }
 
@@ -2370,7 +2511,18 @@ async function bootstrap() {
     return;
   }
 
-  if (!authState.enabled || authState.authenticated) {
+  if (authState.enabled) {
+    try {
+      await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
+    } catch {
+      // ignore forced logout failures during bootstrap
+    }
+    enterLoggedOutState();
+    showLoginError("");
+    return;
+  }
+
+  if (!authState.enabled) {
     initializeApp();
   }
 }

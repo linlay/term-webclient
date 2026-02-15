@@ -5,7 +5,11 @@ import com.linlay.ptyjava.model.auth.AuthStatusResponse;
 import com.linlay.ptyjava.model.auth.LoginRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -13,9 +17,9 @@ import org.springframework.util.StringUtils;
 public class AuthService {
 
     public static final String AUTH_USER_SESSION_KEY = "terminal.auth.username";
+    private static final Pattern MD5_HEX_PATTERN = Pattern.compile("^[a-fA-F0-9]{32}$");
 
     private final TerminalProperties terminalProperties;
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public AuthService(TerminalProperties terminalProperties) {
         this.terminalProperties = terminalProperties;
@@ -45,7 +49,7 @@ public class AuthService {
 
         boolean usernameMatches = safe(terminalProperties.getAuth().getUsername()).equals(username);
         boolean passwordMatches = StringUtils.hasText(password)
-            && passwordEncoder.matches(password, terminalProperties.getAuth().getPasswordHash());
+            && md5Hex(password).equalsIgnoreCase(safe(terminalProperties.getAuth().getPasswordHash()));
 
         if (!usernameMatches || !passwordMatches) {
             throw new AuthUnauthorizedException("invalid username or password");
@@ -112,9 +116,26 @@ public class AuthService {
         if (!StringUtils.hasText(terminalProperties.getAuth().getPasswordHash())) {
             throw new IllegalStateException("terminal.auth.password-hash is required when auth is enabled");
         }
+        if (!MD5_HEX_PATTERN.matcher(terminalProperties.getAuth().getPasswordHash().trim()).matches()) {
+            throw new IllegalStateException("terminal.auth.password-hash must be a 32-character MD5 hex string");
+        }
     }
 
     private String safe(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String md5Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(String.format(Locale.ROOT, "%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("MD5 algorithm is unavailable", ex);
+        }
     }
 }

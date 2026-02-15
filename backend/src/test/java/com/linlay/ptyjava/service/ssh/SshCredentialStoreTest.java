@@ -76,6 +76,29 @@ class SshCredentialStoreTest {
         assertFalse(persisted.contains("secret-pass"));
     }
 
+    @Test
+    void deleteCredentialRemovesPersistedEntry(@TempDir Path tempDir) throws Exception {
+        TerminalProperties props = baseProps(tempDir);
+        props.getSsh().setMasterKey("local-master-key");
+        SshCredentialStore store = new SshCredentialStore(props, objectMapper());
+
+        String credentialId = store.createCredential(passwordRequest()).credentialId();
+        assertEquals(1, store.listCredentials().size());
+
+        store.deleteCredential(credentialId);
+
+        List<SshCredentialSummaryResponse> list = store.listCredentials();
+        assertEquals(0, list.size());
+
+        String persisted = Files.readString(tempDir.resolve("ssh-credentials.json"), StandardCharsets.UTF_8);
+        ObjectMapper mapper = objectMapper();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> root = mapper.readValue(persisted, Map.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> credentials = (List<Map<String, Object>>) root.get("credentials");
+        assertEquals(0, credentials.size());
+    }
+
     private static TerminalProperties baseProps(Path tempDir) {
         TerminalProperties props = new TerminalProperties();
         props.getSsh().setCredentialsFile(tempDir.resolve("ssh-credentials.json").toString());

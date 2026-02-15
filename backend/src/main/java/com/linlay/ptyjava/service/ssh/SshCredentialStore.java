@@ -149,6 +149,24 @@ public class SshCredentialStore {
         }
     }
 
+    public void deleteCredential(String credentialId) {
+        if (!StringUtils.hasText(credentialId)) {
+            throw new SshSecurityException("credentialId is required");
+        }
+
+        lock.lock();
+        try {
+            CredentialFile file = loadFile();
+            boolean removed = file.credentials.removeIf(item -> Objects.equals(item.credentialId, credentialId));
+            if (!removed) {
+                throw new SshCredentialNotFoundException(credentialId);
+            }
+            persist(file);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void validateCreateRequest(CreateSshCredentialRequest request) {
         if (request == null) {
             throw new SshSecurityException("request must not be null");
