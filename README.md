@@ -2,7 +2,7 @@
 
 前后端分离的 PTY Web Terminal：
 
-- 后端：Spring Boot + WebSocket + pty4j + SSHJ
+- 后端：Spring Boot + WebSocket + pty4j + Apache MINA SSHD client
 - 前端：Vite + Vanilla JS + xterm.js
 - 生产入口：Node 反向代理（`11949`）+ Nginx（`443 -> 11949`）
 
@@ -54,6 +54,8 @@ mvn spring-boot:run
 - 如果所有客户端都断开，后端会保留会话到 `terminal.detached-session-ttl-seconds`（默认 3600 秒），超时后自动回收。
 
 ### 2) Web SSH（浏览器交互终端）
+
+SSH 客户端实现基于 Apache MINA SSHD，现有 `terminal.ssh.*` 配置项保持不变。
 
 1. 生产环境：在部署层注入环境变量（示例）：
 

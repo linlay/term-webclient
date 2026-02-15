@@ -4,19 +4,17 @@ import com.linlay.ptyjava.service.TerminalRuntime;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Method;
-import java.util.Map;
-import net.schmizz.sshj.connection.channel.direct.Session;
+import java.util.EnumSet;
+import org.apache.sshd.client.channel.ChannelShell;
+import org.apache.sshd.client.channel.ClientChannelEvent;
 
 public class SshShellRuntime implements TerminalRuntime {
 
     private final SshConnectionPool.SshConnectionLease lease;
-    private final Session session;
-    private final Session.Shell shell;
+    private final ChannelShell shell;
 
-    private SshShellRuntime(SshConnectionPool.SshConnectionLease lease, Session session, Session.Shell shell) {
+    private SshShellRuntime(SshConnectionPool.SshConnectionLease lease, ChannelShell shell) {
         this.lease = lease;
-        this.session = session;
         this.shell = shell;
     }
 
@@ -24,13 +22,19 @@ public class SshShellRuntime implements TerminalRuntime {
                                        ResolvedSshCredential target,
                                        int cols,
                                        int rows) {
+        SshConnectionPool.SshConnectionLease lease = null;
+        ChannelShell shell = null;
         try {
-            SshConnectionPool.SshConnectionLease lease = connectionPool.acquire(target);
-            Session session = lease.openSession();
-            session.allocatePTY(target.term(), cols, rows, 0, 0, Map.of());
-            Session.Shell shell = session.startShell();
-            return new SshShellRuntime(lease, session, shell);
+            lease = connectionPool.acquire(target);
+            shell = lease.openShellChannel(target.term(), cols, rows);
+            return new SshShellRuntime(lease, shell);
         } catch (Exception e) {
+            if (shell != null) {
+                shell.close(false);
+            }
+            if (lease != null) {
+                lease.close();
+            }
             String message = SshErrorMapper.toUserMessage(e, "Failed to create SSH shell runtime");
             throw new SshSecurityException(message, e);
         }
@@ -38,47 +42,34 @@ public class SshShellRuntime implements TerminalRuntime {
 
     @Override
     public InputStream outputStream() {
-        return shell.getInputStream();
+        return shell.getInvertedOut();
     }
 
     @Override
     public OutputStream inputStream() {
-        return shell.getOutputStream();
+        return shell.getInvertedIn();
     }
 
     @Override
     public void resize(int cols, int rows) throws IOException {
-        try {
-            Method method = shell.getClass().getMethod("changeWindowDimensions", int.class, int.class, int.class, int.class);
-            method.invoke(shell, cols, rows, 0, 0);
-        } catch (NoSuchMethodException ignored) {
-            // Older SSH channel implementations may not support runtime resize.
-        } catch (ReflectiveOperationException e) {
-            throw new IOException("Failed to resize SSH shell", e);
-        }
+        shell.sendWindowChange(cols, rows, 0, 0);
     }
 
     @Override
     public int awaitExit() throws Exception {
-        shell.join();
-        return 0;
+        shell.waitFor(EnumSet.of(ClientChannelEvent.CLOSED), 0L);
+        Integer exitStatus = shell.getExitStatus();
+        return exitStatus == null ? 0 : exitStatus;
     }
 
     @Override
     public Integer exitCodeOrNull() {
-        return null;
+        return shell.getExitStatus();
     }
 
     @Override
     public void close() {
-        try {
-            shell.close();
-        } catch (IOException ignored) {
-        }
-        try {
-            session.close();
-        } catch (IOException ignored) {
-        }
+        shell.close(false);
         lease.close();
     }
 }

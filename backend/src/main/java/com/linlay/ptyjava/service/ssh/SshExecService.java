@@ -9,8 +9,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -18,7 +19,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
-import net.schmizz.sshj.connection.channel.direct.Session;
+import org.apache.sshd.client.channel.ChannelExec;
+import org.apache.sshd.client.channel.ClientChannelEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -76,35 +78,36 @@ public class SshExecService {
         String wrappedCommand = wrapCommand(request.getCommand(), request.getCwd(), request.getEnv());
         Instant started = Instant.now();
 
-        try (SshConnectionPool.SshConnectionLease lease = connectionPool.acquire(target);
-             Session session = lease.openSession()) {
+        try (SshConnectionPool.SshConnectionLease lease = connectionPool.acquire(target)) {
+            ChannelExec command = lease.openExecChannel(wrappedCommand);
+            try {
+                Future<StreamReadResult> stdoutFuture = ioExecutor.submit(readStream(command.getInvertedOut(), maxOutputBytes));
+                Future<StreamReadResult> stderrFuture = ioExecutor.submit(readStream(command.getInvertedErr(), maxOutputBytes));
 
-            Session.Command command = session.exec(wrappedCommand);
+                boolean timedOut = !waitForCompletion(command, timeoutSeconds);
+                if (timedOut) {
+                    command.close(true);
+                }
 
-            Future<StreamReadResult> stdoutFuture = ioExecutor.submit(readStream(command.getInputStream(), maxOutputBytes));
-            Future<StreamReadResult> stderrFuture = ioExecutor.submit(readStream(command.getErrorStream(), maxOutputBytes));
+                StreamReadResult stdout = await(stdoutFuture);
+                StreamReadResult stderr = await(stderrFuture);
 
-            boolean timedOut = !waitForCompletion(command, timeoutSeconds);
-            if (timedOut) {
-                command.close();
+                Integer exit = command.getExitStatus();
+                int exitCode = timedOut ? -1 : (exit == null ? -1 : exit);
+                long durationMs = Duration.between(started, Instant.now()).toMillis();
+
+                return new SshExecResponse(
+                    new String(stdout.bytes(), StandardCharsets.UTF_8),
+                    new String(stderr.bytes(), StandardCharsets.UTF_8),
+                    exitCode,
+                    durationMs,
+                    timedOut,
+                    stdout.truncated(),
+                    stderr.truncated()
+                );
+            } finally {
+                command.close(false);
             }
-
-            StreamReadResult stdout = await(stdoutFuture);
-            StreamReadResult stderr = await(stderrFuture);
-
-            Integer exit = command.getExitStatus();
-            int exitCode = timedOut ? -1 : (exit == null ? -1 : exit);
-            long durationMs = Duration.between(started, Instant.now()).toMillis();
-
-            return new SshExecResponse(
-                new String(stdout.bytes(), StandardCharsets.UTF_8),
-                new String(stderr.bytes(), StandardCharsets.UTF_8),
-                exitCode,
-                durationMs,
-                timedOut,
-                stdout.truncated(),
-                stderr.truncated()
-            );
         } catch (IOException e) {
             throw new SshSecurityException("SSH exec failed", e);
         }
@@ -157,22 +160,13 @@ public class SshExecService {
         }
     }
 
-    private boolean waitForCompletion(Session.Command command, int timeoutSeconds) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
-        while (System.nanoTime() < deadline) {
-            Integer exit = command.getExitStatus();
-            if (exit != null) {
-                return true;
-            }
-
-            try {
-                Thread.sleep(30L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return Objects.nonNull(command.getExitStatus());
+    private boolean waitForCompletion(ChannelExec command, int timeoutSeconds) {
+        long timeoutMillis = Math.max(1L, TimeUnit.SECONDS.toMillis(timeoutSeconds));
+        Set<ClientChannelEvent> events = command.waitFor(
+            EnumSet.of(ClientChannelEvent.CLOSED, ClientChannelEvent.TIMEOUT),
+            timeoutMillis
+        );
+        return !(events.contains(ClientChannelEvent.TIMEOUT) && !events.contains(ClientChannelEvent.CLOSED));
     }
 
     private String wrapCommand(String command, String cwd, Map<String, String> env) {

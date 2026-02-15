@@ -17,6 +17,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <apache.sshd.version>2.12.1</apache.sshd.version>
     </properties>
 
     <dependencies>
@@ -34,9 +35,9 @@
             <version>0.13.4</version>
         </dependency>
         <dependency>
-            <groupId>com.hierynomus</groupId>
-            <artifactId>sshj</artifactId>
-            <version>0.39.0</version>
+            <groupId>org.apache.sshd</groupId>
+            <artifactId>sshd-core</artifactId>
+            <version>${apache.sshd.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.security</groupId>

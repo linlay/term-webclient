@@ -3,7 +3,6 @@ package com.linlay.ptyjava.service.ssh;
 import com.linlay.ptyjava.model.ssh.SshPreflightResponse;
 import java.time.Duration;
 import java.time.Instant;
-import net.schmizz.sshj.connection.channel.direct.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -27,8 +26,7 @@ public class SshPreflightService {
         Instant started = Instant.now();
         ResolvedSshCredential target = credentialStore.resolveCredential(credentialId, null, null, null, null);
 
-        try (SshConnectionPool.SshConnectionLease lease = connectionPool.acquire(target);
-             Session session = lease.openSession()) {
+        try (SshConnectionPool.SshConnectionLease lease = connectionPool.acquire(target)) {
             long durationMs = Duration.between(started, Instant.now()).toMillis();
             return new SshPreflightResponse(
                 credentialId,
@@ -38,7 +36,7 @@ public class SshPreflightService {
             );
         } catch (SshCredentialNotFoundException ex) {
             throw ex;
-        } catch (RuntimeException | java.io.IOException ex) {
+        } catch (RuntimeException ex) {
             long durationMs = Duration.between(started, Instant.now()).toMillis();
             return new SshPreflightResponse(
                 credentialId,

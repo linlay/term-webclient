@@ -39,6 +39,7 @@
 
 ### 3) SSH 子系统
 
+- 客户端库：Apache MINA SSHD（`terminal.ssh.*` 配置项保持不变）
 - `SshCredentialStore`：凭据密文存储（AES-GCM）
 - `TofuHostKeyVerifier`：TOFU 主机指纹校验
 - `SshConnectionPool`：按 `(host,port,username,credentialId)` 复用连接

@@ -14,12 +14,11 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
-import net.schmizz.sshj.transport.verification.HostKeyVerifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 @Component
-public class TofuHostKeyVerifier implements HostKeyVerifier {
+public class TofuHostKeyVerifier {
 
     private final ObjectMapper objectMapper;
     private final TerminalProperties properties;
@@ -30,7 +29,6 @@ public class TofuHostKeyVerifier implements HostKeyVerifier {
         this.properties = properties;
     }
 
-    @Override
     public boolean verify(String hostname, int port, PublicKey key) {
         String normalizedHost = StringUtils.hasText(hostname) ? hostname.trim() : "";
         if (!StringUtils.hasText(normalizedHost) || port <= 0 || key == null) {
@@ -61,11 +59,6 @@ public class TofuHostKeyVerifier implements HostKeyVerifier {
         } finally {
             lock.unlock();
         }
-    }
-
-    @Override
-    public List<String> findExistingAlgorithms(String hostname, int port) {
-        return List.of();
     }
 
     private String fingerprintSha256(PublicKey key) {
