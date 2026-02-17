@@ -7,6 +7,7 @@ import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
 import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
+import com.linlay.ptyjava.model.SessionTabViewResponse;
 import com.linlay.ptyjava.model.SessionType;
 import com.linlay.ptyjava.model.SshSessionRequest;
 import com.linlay.ptyjava.model.TerminalOutputChunk;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +99,9 @@ public class TerminalSessionService {
             TerminalSession session = new TerminalSession(
                 sessionId,
                 sessionType,
+                params.title(),
+                params.toolId(),
+                params.workdir(),
                 runtime,
                 ioExecutor,
                 new TerminalOutputRingBuffer(properties.getRingBufferMaxBytes(), properties.getRingBufferMaxChunks()),
@@ -245,6 +250,13 @@ public class TerminalSessionService {
 
     public boolean exists(String sessionId) {
         return sessions.containsKey(sessionId);
+    }
+
+    public List<SessionTabViewResponse> listSessions() {
+        return sessions.values().stream()
+            .sorted(Comparator.comparing(TerminalSession::getStartedAt))
+            .map(this::toSessionTabView)
+            .toList();
     }
 
     private void writeInputInternal(String sessionId, String data, String source) {
@@ -481,6 +493,20 @@ public class TerminalSessionService {
         return session;
     }
 
+    private SessionTabViewResponse toSessionTabView(TerminalSession session) {
+        String state = session.getContextTracker().snapshot(1, 1).meta().connectionState();
+        return new SessionTabViewResponse(
+            session.getSessionId(),
+            "/ws/" + session.getSessionId(),
+            session.getTitle(),
+            session.getToolId(),
+            session.getSessionType(),
+            session.getWorkdir(),
+            session.getStartedAt(),
+            state
+        );
+    }
+
     private SessionCreateParams normalize(CreateSessionRequest request, SessionType sessionType) {
         CreateSessionRequest effective = request == null ? new CreateSessionRequest() : request;
 
@@ -489,7 +515,13 @@ public class TerminalSessionService {
         validateSize(cols, rows);
 
         if (sessionType == SessionType.SSH_SHELL) {
-            return new SessionCreateParams(List.of(), Map.of(), ".", cols, rows);
+            String title = StringUtils.hasText(effective.getTabTitle()) ? effective.getTabTitle().trim() : "ssh";
+            String toolId = StringUtils.hasText(effective.getToolId()) ? effective.getToolId().trim() : "ssh";
+            return new SessionCreateParams(List.of(), Map.of(), ".", cols, rows, title, toolId);
+        }
+
+        if (StringUtils.hasText(effective.getClientId())) {
+            return normalizeCliClientSession(effective, cols, rows);
         }
 
         String command = StringUtils.hasText(effective.getCommand()) ? effective.getCommand() : properties.getDefaultCommand();
@@ -516,7 +548,85 @@ public class TerminalSessionService {
         }
         env.putIfAbsent("TERM", "xterm-256color");
 
-        return new SessionCreateParams(fullCommand, env, workdir, cols, rows);
+        String title = StringUtils.hasText(effective.getTabTitle()) ? effective.getTabTitle().trim() : command.trim();
+        String toolId = StringUtils.hasText(effective.getToolId()) ? effective.getToolId().trim() : "terminal";
+        return new SessionCreateParams(fullCommand, env, workdir, cols, rows, title, toolId);
+    }
+
+    private SessionCreateParams normalizeCliClientSession(CreateSessionRequest effective, int cols, int rows) {
+        String clientId = effective.getClientId().trim();
+        TerminalProperties.CliClientProperties cliClient = resolveCliClient(clientId);
+        String command = StringUtils.trimWhitespace(cliClient.getCommand());
+        if (!StringUtils.hasText(command)) {
+            throw new InvalidSessionRequestException("cli client command must not be blank: " + clientId);
+        }
+
+        List<String> args = cliClient.getArgs() == null ? List.of() : cliClient.getArgs();
+        List<String> fullCommand = new ArrayList<>();
+        fullCommand.add(command);
+        fullCommand.addAll(args);
+
+        String workdir = StringUtils.hasText(effective.getWorkdir())
+            ? effective.getWorkdir()
+            : (StringUtils.hasText(cliClient.getWorkdir()) ? cliClient.getWorkdir() : properties.getDefaultWorkdir());
+        validateWorkdir(workdir);
+
+        Map<String, String> env = new HashMap<>(System.getenv());
+        if (cliClient.getEnv() != null) {
+            env.putAll(cliClient.getEnv());
+        }
+        if (effective.getEnv() != null) {
+            env.putAll(effective.getEnv());
+        }
+        env.putIfAbsent("TERM", "xterm-256color");
+
+        List<String> preCommands = cliClient.getPreCommands() == null ? List.of() : cliClient.getPreCommands().stream()
+            .map(StringUtils::trimWhitespace)
+            .filter(StringUtils::hasText)
+            .toList();
+        if (!preCommands.isEmpty()) {
+            String shell = StringUtils.hasText(cliClient.getShell()) ? cliClient.getShell().trim() : "/bin/zsh";
+            String script = String.join("; ", preCommands) + "; exec " + shellJoin(fullCommand);
+            fullCommand = List.of(shell, "-lc", script);
+        }
+
+        String defaultTitle = StringUtils.hasText(cliClient.getLabel()) ? cliClient.getLabel().trim() : clientId;
+        String title = StringUtils.hasText(effective.getTabTitle()) ? effective.getTabTitle().trim() : defaultTitle;
+        String toolId = StringUtils.hasText(effective.getToolId()) ? effective.getToolId().trim() : clientId;
+
+        return new SessionCreateParams(fullCommand, env, workdir, cols, rows, title, toolId);
+    }
+
+    private TerminalProperties.CliClientProperties resolveCliClient(String clientId) {
+        for (TerminalProperties.CliClientProperties cliClient : properties.getCliClients()) {
+            if (cliClient == null || !StringUtils.hasText(cliClient.getId())) {
+                continue;
+            }
+            if (clientId.equals(cliClient.getId().trim())) {
+                return cliClient;
+            }
+        }
+        throw new InvalidSessionRequestException("Unknown cli client: " + clientId);
+    }
+
+    private void validateWorkdir(String workdir) {
+        File workdirFile = new File(workdir);
+        if (!workdirFile.exists() || !workdirFile.isDirectory()) {
+            throw new InvalidSessionRequestException("workdir must be an existing directory");
+        }
+    }
+
+    private String shellJoin(List<String> argv) {
+        List<String> quoted = new ArrayList<>();
+        for (String arg : argv) {
+            quoted.add(shellQuote(arg));
+        }
+        return String.join(" ", quoted);
+    }
+
+    private String shellQuote(String value) {
+        String raw = value == null ? "" : value;
+        return "'" + raw.replace("'", "'\\''") + "'";
     }
 
     private void validateSize(int cols, int rows) {
@@ -528,6 +638,12 @@ public class TerminalSessionService {
         }
     }
 
-    private record SessionCreateParams(List<String> command, Map<String, String> env, String workdir, int cols, int rows) {
+    private record SessionCreateParams(List<String> command,
+                                       Map<String, String> env,
+                                       String workdir,
+                                       int cols,
+                                       int rows,
+                                       String title,
+                                       String toolId) {
     }
 }

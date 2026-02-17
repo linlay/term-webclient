@@ -10,33 +10,38 @@ const rawCopilotRefreshMs = Number.parseInt(import.meta.env.VITE_COPILOT_REFRESH
 const COPILOT_REFRESH_MS = Number.isFinite(rawCopilotRefreshMs) && rawCopilotRefreshMs >= 500
   ? rawCopilotRefreshMs
   : 2000;
+const SHARED_SESSIONS_SYNC_MS = 2000;
 const MAX_TABS = 10;
 const RECONNECT_MIN_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
-const TABS_STORAGE_KEY = "pty.tabs.v2";
 const AUTH_DISABLED_USERNAME = "anonymous";
+const MOBILE_BREAKPOINT_PX = 900;
+const DESKTOP_TERMINAL_FONT_SIZE = 14;
+const MOBILE_TERMINAL_FONT_SIZE = 10;
+const MOBILE_SHORTCUTS = [
+  { label: "收起", action: "collapse" },
+  { label: "Ctrl+C", seq: "\u0003" },
+  { label: "Ctrl+D", seq: "\u0004" },
+  { label: "Ctrl+Z", seq: "\u001a" },
+  { label: "Tab", seq: "\t" },
+  { label: "Esc", seq: "\u001b" },
+  { label: "1", seq: "1" },
+  { label: "2", seq: "2" },
+  { label: "3", seq: "3" },
+  { label: "4", seq: "4" },
+  { label: "↑", seq: "\u001b[A" },
+  { label: "↓", seq: "\u001b[B" },
+  { label: "←", seq: "\u001b[D" },
+  { label: "→", seq: "\u001b[C" }
+];
 
-const TOOL_PRESETS = {
+const BUILTIN_TOOL_PRESETS = {
   terminal: {
     toolId: "terminal",
     sessionType: "LOCAL_PTY",
     title: "terminal",
     command: "/bin/zsh",
     args: ["-l"]
-  },
-  claude: {
-    toolId: "claude",
-    sessionType: "LOCAL_PTY",
-    title: "claude",
-    command: "claude",
-    args: []
-  },
-  codex: {
-    toolId: "codex",
-    sessionType: "LOCAL_PTY",
-    title: "codex",
-    command: "codex",
-    args: []
   },
   ssh: {
     toolId: "ssh",
@@ -53,6 +58,9 @@ const TOOL_PRESETS = {
 const tabBar = document.getElementById("tabBar");
 const terminalArea = document.getElementById("terminalArea");
 const emptyState = document.getElementById("emptyState");
+const mobileShortcutBar = document.getElementById("mobileShortcutBar");
+const mobileShortcutToggleBtn = document.getElementById("mobileShortcutToggleBtn");
+const mobileShortcutKeys = document.getElementById("mobileShortcutKeys");
 const noticeBar = document.getElementById("noticeBar");
 const appRoot = document.getElementById("app");
 
@@ -135,12 +143,15 @@ let resizeTimer = null;
 let fitTimer = null;
 let layoutObserver = null;
 let contextTabId = null;
-let restoringFromStorage = false;
 let appInitialized = false;
 let copilotActiveTab = "summary";
 let copilotRefreshTimer = null;
 let summaryRefreshInFlight = false;
 let agentRefreshInFlight = false;
+let mobileShortcutsExpanded = false;
+let sharedSessionsSyncTimer = null;
+let sharedSessionsSyncInFlight = false;
+let terminalClientCatalog = [];
 let authState = {
   enabled: false,
   authenticated: false,
@@ -149,8 +160,6 @@ let authState = {
 
 const toolCounters = {
   terminal: 0,
-  claude: 0,
-  codex: 0,
   ssh: 0,
   custom: 0
 };
@@ -168,6 +177,75 @@ const modalState = {
 
 function apiUrl(path) {
   return `${API_BASE}${path}`;
+}
+
+function isMobileViewport() {
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX;
+}
+
+function resolveTerminalFontSize() {
+  return isMobileViewport() ? MOBILE_TERMINAL_FONT_SIZE : DESKTOP_TERMINAL_FONT_SIZE;
+}
+
+function applyTerminalFontSize(tab, fontSize) {
+  if (!tab?.term || tab.currentFontSize === fontSize) {
+    return;
+  }
+  tab.term.options.fontSize = fontSize;
+  tab.currentFontSize = fontSize;
+}
+
+function syncTerminalFontSizes() {
+  const fontSize = resolveTerminalFontSize();
+  tabOrder.forEach((tabId) => {
+    const tab = tabs.get(tabId);
+    if (!tab) {
+      return;
+    }
+    applyTerminalFontSize(tab, fontSize);
+  });
+}
+
+function setMobileShortcutsExpanded(expanded) {
+  mobileShortcutsExpanded = Boolean(expanded);
+  if (!mobileShortcutBar) {
+    return;
+  }
+  mobileShortcutBar.classList.toggle("collapsed", !mobileShortcutsExpanded);
+  mobileShortcutBar.classList.toggle("expanded", mobileShortcutsExpanded);
+  terminalArea.classList.toggle("mobile-shortcuts-expanded", mobileShortcutsExpanded);
+  if (mobileShortcutToggleBtn) {
+    mobileShortcutToggleBtn.setAttribute("aria-expanded", String(mobileShortcutsExpanded));
+  }
+}
+
+function sendMobileShortcut(sequence) {
+  const tab = getActiveTab();
+  if (!tab) {
+    showNotice("No active tab", "warn");
+    return;
+  }
+  sendInput(tab, sequence);
+  tab.term.focus();
+}
+
+function renderMobileShortcutKeys() {
+  if (!mobileShortcutKeys) {
+    return;
+  }
+  mobileShortcutKeys.innerHTML = "";
+  MOBILE_SHORTCUTS.forEach((shortcut) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mobile-shortcut-key";
+    if (shortcut.action) {
+      button.dataset.action = shortcut.action;
+    } else {
+      button.dataset.seq = shortcut.seq;
+    }
+    button.textContent = shortcut.label;
+    mobileShortcutKeys.appendChild(button);
+  });
 }
 
 function showLoginError(message) {
@@ -205,6 +283,7 @@ function disconnectAllTabsForAuth() {
 
 function enterLoggedOutState() {
   stopCopilotRefresh();
+  stopSharedSessionsSync();
   disconnectAllTabsForAuth();
   authState.authenticated = false;
   authState.username = AUTH_DISABLED_USERNAME;
@@ -235,6 +314,39 @@ async function fetchAuthStatus() {
     username: body?.username || AUTH_DISABLED_USERNAME
   };
   renderAuthGate();
+}
+
+async function verifyAuthForReconnect() {
+  if (!authState.enabled) {
+    return true;
+  }
+  try {
+    const response = await fetch(apiUrl("/api/auth/me"), {
+      method: "GET",
+      credentials: "include"
+    });
+    if (response.status === 401) {
+      enterLoggedOutState();
+      return false;
+    }
+    if (!response.ok) {
+      return true;
+    }
+    const body = await response.json();
+    authState = {
+      enabled: Boolean(body?.enabled),
+      authenticated: Boolean(body?.authenticated),
+      username: body?.username || AUTH_DISABLED_USERNAME
+    };
+    renderAuthGate();
+    if (authState.enabled && !authState.authenticated) {
+      enterLoggedOutState();
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 async function loginWithForm() {
@@ -333,50 +445,66 @@ function cloneSshConfig(value) {
   return Object.keys(ssh).length > 0 ? ssh : null;
 }
 
-function snapshotTab(tab) {
-  if (!tab) {
+function sanitizeTerminalClient(entry) {
+  if (!entry || typeof entry !== "object") {
     return null;
   }
-  return {
-    tabId: tab.tabId,
-    title: tab.title,
-    toolId: tab.toolId,
-    command: tab.command,
-    args: Array.isArray(tab.args) ? [...tab.args] : [],
-    workdir: tab.workdir,
-    sessionId: tab.sessionId,
-    wsUrl: tab.wsUrl,
-    connectionState: tab.connectionState,
-    exitCode: tab.exitCode,
-    lost: Boolean(tab.lost),
-    lastSeenSeq: Number(tab.lastSeenSeq) || 0,
-    sessionType: tab.sessionType || "LOCAL_PTY",
-    ssh: cloneSshConfig(tab.ssh),
-    agentRunId: tab.agentRunId || null
-  };
+  const id = typeof entry.id === "string" ? entry.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  const label = typeof entry.label === "string" && entry.label.trim()
+    ? entry.label.trim()
+    : id;
+  const defaultWorkdir = typeof entry.defaultWorkdir === "string" && entry.defaultWorkdir.trim()
+    ? entry.defaultWorkdir.trim()
+    : ".";
+  return { id, label, defaultWorkdir };
+}
+
+function getTerminalClientById(clientId) {
+  return terminalClientCatalog.find((entry) => entry.id === clientId) || null;
+}
+
+function renderToolOptions(selectedValue = null) {
+  const preferred = selectedValue || toolSelect.value || "terminal";
+  toolSelect.innerHTML = "";
+
+  const options = [
+    { value: "terminal", label: "terminal" },
+    ...terminalClientCatalog.map((entry) => ({ value: entry.id, label: entry.label })),
+    { value: "ssh", label: "ssh" }
+  ];
+
+  options.forEach((optionItem) => {
+    const option = document.createElement("option");
+    option.value = optionItem.value;
+    option.textContent = optionItem.label;
+    toolSelect.appendChild(option);
+  });
+
+  if (options.some((item) => item.value === preferred)) {
+    toolSelect.value = preferred;
+  } else {
+    toolSelect.value = "terminal";
+  }
 }
 
 function persistTabsState() {
-  try {
-    const payload = {
-      version: 2,
-      activeTabId,
-      tabs: tabOrder
-        .map((tabId) => snapshotTab(tabs.get(tabId)))
-        .filter(Boolean)
-    };
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage failures.
-  }
+  // Tab/session state is synchronized from backend shared sessions.
 }
 
-function clearStoredTabsState() {
-  try {
-    localStorage.removeItem(TABS_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures.
+function findTabBySessionId(sessionId) {
+  if (!sessionId) {
+    return null;
   }
+  for (const tabId of tabOrder) {
+    const tab = tabs.get(tabId);
+    if (tab && tab.sessionId === sessionId) {
+      return tab;
+    }
+  }
+  return null;
 }
 
 function showNotice(message, type = "info", timeoutMs = 3000) {
@@ -501,11 +629,12 @@ function createTab(spec) {
   panel.dataset.tabId = tabId;
   terminalArea.appendChild(panel);
 
+  const terminalFontSize = resolveTerminalFontSize();
   const term = new Terminal({
     cursorBlink: true,
     convertEol: true,
     scrollback: 5000,
-    fontSize: 14,
+    fontSize: terminalFontSize,
     theme: {
       background: "#09101a"
     }
@@ -518,6 +647,7 @@ function createTab(spec) {
     tabId,
     title: spec.title || nextTitle(spec.toolId, spec.command),
     toolId: spec.toolId || "custom",
+    clientId: spec.clientId || null,
     sessionType: spec.sessionType || "LOCAL_PTY",
     ssh: cloneSshConfig(spec.ssh),
     command: spec.command,
@@ -536,6 +666,7 @@ function createTab(spec) {
     reconnectAttempt: 0,
     manualClose: false,
     recoveringSnapshot: false,
+    currentFontSize: terminalFontSize,
     lastSeenSeq: Number.isFinite(Number(spec.lastSeenSeq)) ? Number(spec.lastSeenSeq) : 0,
     agentRunId: spec.agentRunId || null,
     lastAgentRun: null
@@ -557,9 +688,7 @@ function createTab(spec) {
 
   renderTabs();
   updateEmptyState();
-  if (!restoringFromStorage) {
-    persistTabsState();
-  }
+  persistTabsState();
   return tab;
 }
 
@@ -731,7 +860,16 @@ function scheduleReconnect(tab) {
     if (!tabs.has(tab.tabId) || !shouldReconnect(tab)) {
       return;
     }
-    attachSocket(tab);
+    void (async () => {
+      const authenticated = await verifyAuthForReconnect();
+      if (!authenticated) {
+        return;
+      }
+      if (!tabs.has(tab.tabId) || !shouldReconnect(tab)) {
+        return;
+      }
+      attachSocket(tab);
+    })();
   }, delay);
 }
 
@@ -904,12 +1042,22 @@ async function createRemoteSession(tab) {
     }
     : {
       sessionType: "LOCAL_PTY",
-      command: tab.command,
-      args: tab.args,
-      workdir: tab.workdir,
+      toolId: tab.toolId || "terminal",
+      tabTitle: tab.title || "",
       cols,
       rows
     };
+
+  if (tab.clientId) {
+    payload.clientId = tab.clientId;
+    if (tab.workdir) {
+      payload.workdir = tab.workdir;
+    }
+  } else {
+    payload.command = tab.command;
+    payload.args = tab.args;
+    payload.workdir = tab.workdir;
+  }
 
   const response = await apiFetch("/api/sessions", {
     method: "POST",
@@ -958,6 +1106,7 @@ async function openTabWithSpec(spec) {
   const tab = createTab({
     title: spec.title,
     toolId: spec.toolId || "custom",
+    clientId: spec.clientId || null,
     sessionType: spec.sessionType || "LOCAL_PTY",
     ssh: cloneSshConfig(spec.ssh),
     command: spec.command,
@@ -988,41 +1137,65 @@ async function openTabWithSpec(spec) {
   return tab;
 }
 
-async function openPresetTab(toolId, workdir, advancedOverrides = {}) {
-  const preset = TOOL_PRESETS[toolId];
-  if (!preset) {
+async function openToolTab(toolId, workdir, advancedOverrides = {}) {
+  if (toolId === "ssh") {
+    await openTabWithSpec({
+      toolId: "ssh",
+      title: advancedOverrides.title || "",
+      sessionType: "SSH_SHELL",
+      ssh: cloneSshConfig(advancedOverrides.ssh),
+      command: "",
+      args: [],
+      workdir: "."
+    });
+    return;
+  }
+
+  if (toolId === "terminal") {
+    const preset = BUILTIN_TOOL_PRESETS.terminal;
+    await openTabWithSpec({
+      toolId: preset.toolId,
+      title: advancedOverrides.title || "",
+      clientId: null,
+      sessionType: "LOCAL_PTY",
+      ssh: null,
+      command: advancedOverrides.command || preset.command,
+      args: Array.isArray(advancedOverrides.args) ? advancedOverrides.args : [...preset.args],
+      workdir
+    });
+    return;
+  }
+
+  const client = getTerminalClientById(toolId);
+  if (!client) {
     showNotice(`Unknown tool: ${toolId}`, "error");
     return;
   }
 
-  const sessionType = advancedOverrides.sessionType || preset.sessionType || "LOCAL_PTY";
-  const command = advancedOverrides.command || preset.command;
-  const args = Array.isArray(advancedOverrides.args) ? advancedOverrides.args : [...preset.args];
-  const ssh = cloneSshConfig(advancedOverrides.ssh || preset.ssh);
-  const title = advancedOverrides.title || "";
-
   await openTabWithSpec({
-    toolId: preset.toolId,
-    title,
-    sessionType,
-    ssh,
-    command,
-    args,
-    workdir
+    toolId: client.id,
+    title: advancedOverrides.title || "",
+    clientId: client.id,
+    sessionType: "LOCAL_PTY",
+    ssh: null,
+    command: client.id,
+    args: [],
+    workdir: workdir || client.defaultWorkdir || "."
   });
 }
 
-async function closeTab(tabId) {
+async function closeTab(tabId, options = {}) {
   const tab = tabs.get(tabId);
   if (!tab) {
     return;
   }
+  const shouldDeleteRemote = options.deleteRemote !== false;
 
   const removedIndex = tabOrder.indexOf(tabId);
 
   closeSocket(tab, { manual: true });
   clearReconnectTimer(tab);
-  if (tab.sessionId) {
+  if (shouldDeleteRemote && tab.sessionId) {
     void deleteRemoteSession(tab.sessionId);
   }
 
@@ -1046,11 +1219,7 @@ async function closeTab(tabId) {
 
   renderTabs();
   updateEmptyState();
-  if (tabOrder.length === 0) {
-    clearStoredTabsState();
-  } else {
-    persistTabsState();
-  }
+  persistTabsState();
   renderAgentSidebar();
 }
 
@@ -1085,6 +1254,172 @@ async function rebuildTab(tabId) {
     setConnectionState(tab, "error");
     showNotice(error.message, "error", 4200);
   }
+}
+
+function normalizeRemoteConnectionState(state) {
+  if (state === "exited") {
+    return "exited";
+  }
+  if (state === "error") {
+    return "error";
+  }
+  return "disconnected";
+}
+
+async function fetchSharedSessions() {
+  const response = await apiFetch("/api/sessions");
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  return response.json();
+}
+
+async function fetchTerminalClients() {
+  const response = await apiFetch("/api/terminal/clients");
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  return response.json();
+}
+
+async function loadTerminalClients(options = {}) {
+  const silent = Boolean(options.silent);
+  try {
+    const raw = await fetchTerminalClients();
+    terminalClientCatalog = Array.isArray(raw)
+      ? raw.map((entry) => sanitizeTerminalClient(entry)).filter(Boolean)
+      : [];
+  } catch (error) {
+    terminalClientCatalog = [];
+    if (!silent) {
+      showNotice(`Failed to load CLI clients: ${error.message}`, "warn", 3200);
+    }
+  } finally {
+    renderToolOptions(toolSelect.value || "terminal");
+    applyToolMode(toolSelect.value);
+  }
+}
+
+function upsertSharedSessionTab(entry) {
+  if (!entry || typeof entry !== "object" || !entry.sessionId) {
+    return null;
+  }
+  const sessionId = String(entry.sessionId);
+  const sessionType = entry.sessionType === "SSH_SHELL" ? "SSH_SHELL" : "LOCAL_PTY";
+  const toolId = typeof entry.toolId === "string" && entry.toolId ? entry.toolId : (sessionType === "SSH_SHELL" ? "ssh" : "terminal");
+  const title = typeof entry.title === "string" && entry.title ? entry.title : toolId;
+  const workdir = typeof entry.workdir === "string" && entry.workdir ? entry.workdir : ".";
+  const wsUrl = typeof entry.wsUrl === "string" && entry.wsUrl ? entry.wsUrl : `/ws/${sessionId}`;
+  const remoteState = normalizeRemoteConnectionState(entry.connectionState);
+  const inferredClientId = sessionType === "LOCAL_PTY" && toolId !== "terminal" ? toolId : null;
+
+  let tab = findTabBySessionId(sessionId);
+  if (!tab) {
+    tab = createTab({
+      title,
+      toolId,
+      clientId: inferredClientId,
+      sessionType,
+      command: toolId,
+      args: [],
+      workdir,
+      sessionId,
+      wsUrl,
+      connectionState: remoteState,
+      exitCode: "-",
+      lost: false
+    });
+  } else {
+    tab.title = title;
+    tab.toolId = toolId;
+    tab.clientId = inferredClientId;
+    tab.sessionType = sessionType;
+    tab.workdir = workdir;
+    tab.wsUrl = wsUrl;
+    tab.lost = false;
+    if (remoteState === "exited") {
+      tab.connectionState = "exited";
+    } else if (tab.connectionState !== "connecting" && tab.connectionState !== "connected") {
+      tab.connectionState = remoteState;
+    }
+  }
+
+  if (remoteState === "exited") {
+    clearReconnectTimer(tab);
+    closeSocket(tab, { manual: true });
+    tab.connectionState = "exited";
+    return tab;
+  }
+
+  if (!tab.socket && tab.sessionId && tab.wsUrl && authState.authenticated) {
+    tab.manualClose = false;
+    attachSocket(tab);
+  }
+  return tab;
+}
+
+async function syncSharedSessions(options = {}) {
+  if (sharedSessionsSyncInFlight) {
+    return;
+  }
+  if (authState.enabled && !authState.authenticated) {
+    return;
+  }
+  sharedSessionsSyncInFlight = true;
+  const silent = Boolean(options.silent);
+  try {
+    const payload = await fetchSharedSessions();
+    const rows = Array.isArray(payload) ? payload : [];
+    const sessionIds = new Set();
+
+    rows.forEach((entry) => {
+      if (!entry || !entry.sessionId) {
+        return;
+      }
+      sessionIds.add(String(entry.sessionId));
+      upsertSharedSessionTab(entry);
+    });
+
+    for (const tabId of [...tabOrder]) {
+      const tab = tabs.get(tabId);
+      if (!tab || !tab.sessionId) {
+        continue;
+      }
+      if (sessionIds.has(tab.sessionId)) {
+        continue;
+      }
+      await closeTab(tabId, { deleteRemote: false });
+    }
+
+    if (!activeTabId && tabOrder[0]) {
+      activateTab(tabOrder[0]);
+    }
+    renderTabs();
+    updateEmptyState();
+    renderAgentSidebar();
+  } catch (error) {
+    if (!silent) {
+      showNotice(`Failed to sync sessions: ${error.message}`, "warn", 3200);
+    }
+  } finally {
+    sharedSessionsSyncInFlight = false;
+  }
+}
+
+function stopSharedSessionsSync() {
+  if (!sharedSessionsSyncTimer) {
+    return;
+  }
+  clearInterval(sharedSessionsSyncTimer);
+  sharedSessionsSyncTimer = null;
+}
+
+function startSharedSessionsSync() {
+  stopSharedSessionsSync();
+  void syncSharedSessions({ silent: true });
+  sharedSessionsSyncTimer = setInterval(() => {
+    void syncSharedSessions({ silent: true });
+  }, SHARED_SESSIONS_SYNC_MS);
 }
 
 function parseArgsInput(value) {
@@ -1417,7 +1752,7 @@ async function toggleTreeNode(path) {
 }
 
 function applyToolPresetToAdvanced(toolId) {
-  const preset = TOOL_PRESETS[toolId];
+  const preset = BUILTIN_TOOL_PRESETS[toolId];
   if (!preset) {
     return;
   }
@@ -1734,7 +2069,8 @@ async function openNewWindowModal() {
   closeSshCreateModal();
   titleInput.value = "";
   resetSshInputs();
-  toolSelect.value = "terminal";
+  await loadTerminalClients({ silent: true });
+  renderToolOptions("terminal");
   applyToolMode("terminal");
   applyToolPresetToAdvanced("terminal");
 
@@ -2068,6 +2404,35 @@ function toggleCopilotSidebar() {
 }
 
 function bindEvents() {
+  renderMobileShortcutKeys();
+  renderToolOptions("terminal");
+  setMobileShortcutsExpanded(false);
+
+  mobileShortcutToggleBtn?.addEventListener("click", () => {
+    setMobileShortcutsExpanded(!mobileShortcutsExpanded);
+  });
+
+  mobileShortcutKeys?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const button = target.closest("button.mobile-shortcut-key");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const action = button.dataset.action;
+    if (action === "collapse") {
+      setMobileShortcutsExpanded(false);
+      return;
+    }
+    const sequence = button.dataset.seq;
+    if (!sequence) {
+      return;
+    }
+    sendMobileShortcut(sequence);
+  });
+
   loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void (async () => {
@@ -2317,7 +2682,7 @@ function bindEvents() {
     }
 
     closeNewWindowModal();
-    void openPresetTab(toolId, workdir, advancedOverrides);
+    void openToolTab(toolId, workdir, advancedOverrides);
   });
 
   contextRebuildBtn.addEventListener("click", () => {
@@ -2372,6 +2737,7 @@ function bindEvents() {
     closeTabContextMenu();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
+      syncTerminalFontSizes();
       const active = getActiveTab();
       if (active) {
         fitAndResize(active);
@@ -2381,6 +2747,7 @@ function bindEvents() {
 
   window.addEventListener("beforeunload", () => {
     stopCopilotRefresh();
+    stopSharedSessionsSync();
     persistTabsState();
     tabOrder.forEach((tabId) => {
       const tab = tabs.get(tabId);
@@ -2401,97 +2768,21 @@ function bindEvents() {
   renderCopilotPanels();
 }
 
-function restoreTabsFromStorage() {
-  let payload = null;
-  try {
-    const raw = localStorage.getItem(TABS_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-    payload = JSON.parse(raw);
-  } catch {
-    clearStoredTabsState();
-    return;
-  }
-
-  if (!payload || !Array.isArray(payload.tabs) || payload.tabs.length === 0) {
-    clearStoredTabsState();
-    return;
-  }
-
-  restoringFromStorage = true;
-  try {
-    payload.tabs.forEach((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return;
-      }
-      const sessionType = entry.sessionType === "SSH_SHELL" ? "SSH_SHELL" : "LOCAL_PTY";
-      const connectionState = typeof entry.connectionState === "string"
-        ? entry.connectionState
-        : "disconnected";
-
-      createTab({
-        tabId: entry.tabId,
-        title: entry.title,
-        toolId: entry.toolId,
-        sessionType,
-        ssh: cloneSshConfig(entry.ssh),
-        command: entry.command,
-        args: Array.isArray(entry.args) ? entry.args : [],
-        workdir: entry.workdir,
-        sessionId: entry.sessionId,
-        wsUrl: entry.wsUrl,
-        connectionState: (connectionState === "connected" || connectionState === "connecting")
-          ? "disconnected"
-          : connectionState,
-        exitCode: entry.exitCode,
-        lost: Boolean(entry.lost),
-        lastSeenSeq: Number(entry.lastSeenSeq) || 0,
-        agentRunId: typeof entry.agentRunId === "string" ? entry.agentRunId : null
-      });
-    });
-  } finally {
-    restoringFromStorage = false;
-  }
-
-  const preferredTabId = typeof payload.activeTabId === "string" ? payload.activeTabId : null;
-  if (preferredTabId && tabs.has(preferredTabId)) {
-    activateTab(preferredTabId);
-  } else if (tabOrder[0]) {
-    activateTab(tabOrder[0]);
-  }
-
-  tabOrder.forEach((tabId) => {
-    const tab = tabs.get(tabId);
-    if (!tab || !tab.sessionId || !tab.wsUrl || tab.connectionState === "exited" || tab.lost) {
-      return;
-    }
-    attachSocket(tab);
-  });
-
-  persistTabsState();
-  renderAgentSidebar();
-}
-
 function initializeApp() {
   if (appInitialized) {
-    tabOrder.forEach((tabId) => {
-      const tab = tabs.get(tabId);
-      if (!tab || !tab.sessionId || !tab.wsUrl || tab.connectionState === "exited" || tab.lost) {
-        return;
-      }
-      tab.manualClose = false;
-      attachSocket(tab);
-    });
+    startSharedSessionsSync();
+    void loadTerminalClients({ silent: true });
     renderAgentSidebar();
     startCopilotRefresh();
     return;
   }
-  restoreTabsFromStorage();
+  renderToolOptions("terminal");
   renderTabs();
   updateEmptyState();
   renderAgentSidebar();
   renderCopilotPanels();
+  void loadTerminalClients({ silent: true });
+  startSharedSessionsSync();
   startCopilotRefresh();
   appInitialized = true;
 }
@@ -2512,13 +2803,11 @@ async function bootstrap() {
   }
 
   if (authState.enabled) {
-    try {
-      await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
-    } catch {
-      // ignore forced logout failures during bootstrap
-    }
-    enterLoggedOutState();
     showLoginError("");
+    if (authState.authenticated) {
+      initializeApp();
+      return;
+    }
     return;
   }
 

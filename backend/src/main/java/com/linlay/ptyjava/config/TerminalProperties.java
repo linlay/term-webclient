@@ -25,6 +25,7 @@ public class TerminalProperties {
     private AuthProperties auth = new AuthProperties();
     private AgentProperties agent = new AgentProperties();
     private SshProperties ssh = new SshProperties();
+    private List<CliClientProperties> cliClients = new ArrayList<>();
 
     public String getDefaultCommand() {
         return defaultCommand;
@@ -172,6 +173,18 @@ public class TerminalProperties {
 
     public void setSsh(SshProperties ssh) {
         this.ssh = ssh;
+    }
+
+    public List<CliClientProperties> getCliClients() {
+        return cliClients;
+    }
+
+    public void setCliClients(List<CliClientProperties> cliClients) {
+        if (cliClients == null) {
+            this.cliClients = new ArrayList<>();
+            return;
+        }
+        this.cliClients = new ArrayList<>(cliClients);
     }
 
     public static class AuthProperties {
@@ -354,6 +367,94 @@ public class TerminalProperties {
 
         public void setMasterKeyEnv(String masterKeyEnv) {
             this.masterKeyEnv = masterKeyEnv;
+        }
+    }
+
+    public static class CliClientProperties {
+
+        private String id;
+        private String label;
+        private String command;
+        private List<String> args = new ArrayList<>();
+        private String workdir = ".";
+        private java.util.Map<String, String> env = new java.util.HashMap<>();
+        private List<String> preCommands = new ArrayList<>();
+        private String shell = "/bin/zsh";
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public void setLabel(String label) {
+            this.label = label;
+        }
+
+        public String getCommand() {
+            return command;
+        }
+
+        public void setCommand(String command) {
+            this.command = command;
+        }
+
+        public List<String> getArgs() {
+            return args;
+        }
+
+        public void setArgs(List<String> args) {
+            if (args == null) {
+                this.args = new ArrayList<>();
+                return;
+            }
+            this.args = new ArrayList<>(args);
+        }
+
+        public String getWorkdir() {
+            return workdir;
+        }
+
+        public void setWorkdir(String workdir) {
+            this.workdir = workdir;
+        }
+
+        public java.util.Map<String, String> getEnv() {
+            return env;
+        }
+
+        public void setEnv(java.util.Map<String, String> env) {
+            if (env == null) {
+                this.env = new java.util.HashMap<>();
+                return;
+            }
+            this.env = new java.util.HashMap<>(env);
+        }
+
+        public List<String> getPreCommands() {
+            return preCommands;
+        }
+
+        public void setPreCommands(List<String> preCommands) {
+            if (preCommands == null) {
+                this.preCommands = new ArrayList<>();
+                return;
+            }
+            this.preCommands = new ArrayList<>(preCommands);
+        }
+
+        public String getShell() {
+            return shell;
+        }
+
+        public void setShell(String shell) {
+            this.shell = shell;
         }
     }
 }

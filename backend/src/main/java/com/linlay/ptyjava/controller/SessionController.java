@@ -4,12 +4,14 @@ import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
 import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
+import com.linlay.ptyjava.model.SessionTabViewResponse;
 import com.linlay.ptyjava.model.TranscriptResponse;
 import com.linlay.ptyjava.service.InvalidSessionRequestException;
 import com.linlay.ptyjava.service.SessionNotFoundException;
 import com.linlay.ptyjava.service.TerminalSessionService;
 import com.linlay.ptyjava.service.ssh.SshCredentialNotFoundException;
 import com.linlay.ptyjava.service.ssh.SshSecurityException;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +39,11 @@ public class SessionController {
     public ResponseEntity<CreateSessionResponse> createSession(@RequestBody(required = false) CreateSessionRequest request) {
         CreateSessionResponse response = terminalSessionService.createSession(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<SessionTabViewResponse>> listSessions() {
+        return ResponseEntity.ok(terminalSessionService.listSessions());
     }
 
     @DeleteMapping("/{sessionId}")

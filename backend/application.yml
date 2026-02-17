@@ -2,6 +2,25 @@
 # This file is imported by src/main/resources/application.yml with higher precedence.
 
 terminal:
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env: {}
+      pre-commands:
+        - export https_proxy="http://127.0.0.1:8001"
+        - export HTTPS_PROXY="http://127.0.0.1:8001"
+      shell: /bin/zsh
+    - id: claude
+      label: Claude Code
+      command: claude
+      args: []
+      workdir: .
+      env: {}
+      pre-commands: []
+      shell: /bin/zsh
   auth:
     enabled: true
     username: admin

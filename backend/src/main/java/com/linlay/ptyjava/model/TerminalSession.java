@@ -17,6 +17,9 @@ public class TerminalSession {
 
     private final String sessionId;
     private final SessionType sessionType;
+    private final String title;
+    private final String toolId;
+    private final String workdir;
     private final TerminalRuntime runtime;
     private final ExecutorService ioExecutor;
     private final TerminalOutputRingBuffer ringBuffer;
@@ -33,6 +36,9 @@ public class TerminalSession {
 
     public TerminalSession(String sessionId,
                            SessionType sessionType,
+                           String title,
+                           String toolId,
+                           String workdir,
                            TerminalRuntime runtime,
                            ExecutorService ioExecutor,
                            TerminalOutputRingBuffer ringBuffer,
@@ -40,6 +46,9 @@ public class TerminalSession {
                            Instant startedAt) {
         this.sessionId = sessionId;
         this.sessionType = sessionType;
+        this.title = title;
+        this.toolId = toolId;
+        this.workdir = workdir;
         this.runtime = runtime;
         this.ioExecutor = ioExecutor;
         this.ringBuffer = ringBuffer;
@@ -54,6 +63,18 @@ public class TerminalSession {
 
     public SessionType getSessionType() {
         return sessionType;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getToolId() {
+        return toolId;
+    }
+
+    public String getWorkdir() {
+        return workdir;
     }
 
     public TerminalRuntime getRuntime() {

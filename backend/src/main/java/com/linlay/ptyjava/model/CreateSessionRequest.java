@@ -7,6 +7,9 @@ public class CreateSessionRequest {
 
     private SessionType sessionType;
     private SshSessionRequest ssh;
+    private String clientId;
+    private String tabTitle;
+    private String toolId;
     private String command;
     private List<String> args;
     private String workdir;
@@ -28,6 +31,30 @@ public class CreateSessionRequest {
 
     public void setSsh(SshSessionRequest ssh) {
         this.ssh = ssh;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
+
+    public String getTabTitle() {
+        return tabTitle;
+    }
+
+    public void setTabTitle(String tabTitle) {
+        this.tabTitle = tabTitle;
+    }
+
+    public String getToolId() {
+        return toolId;
+    }
+
+    public void setToolId(String toolId) {
+        this.toolId = toolId;
     }
 
     public String getCommand() {

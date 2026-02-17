@@ -9,10 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.SessionTabViewResponse;
+import com.linlay.ptyjava.model.SessionType;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.service.InvalidSessionRequestException;
 import com.linlay.ptyjava.service.TerminalSessionService;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -76,5 +79,28 @@ class SessionControllerTest {
         mockMvc.perform(delete("/api/sessions/missing"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("Session not found: missing"));
+    }
+
+    @Test
+    void listSessionsReturnsSharedTabs() throws Exception {
+        when(terminalSessionService.listSessions()).thenReturn(List.of(
+            new SessionTabViewResponse(
+                "abc",
+                "/ws/abc",
+                "Codex",
+                "codex",
+                SessionType.LOCAL_PTY,
+                ".",
+                Instant.parse("2026-02-12T00:00:00Z"),
+                "connected"
+            )
+        ));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/sessions"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].sessionId").value("abc"))
+            .andExpect(jsonPath("$[0].title").value("Codex"))
+            .andExpect(jsonPath("$[0].toolId").value("codex"))
+            .andExpect(jsonPath("$[0].sessionType").value("LOCAL_PTY"));
     }
 }

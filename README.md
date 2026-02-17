@@ -52,7 +52,7 @@ mvn spring-boot:run
 - 当前默认账号密码：`admin / Admin@123`。
 - 密码在配置中使用 **MD5** 32 位十六进制字符串（大小写不敏感匹配）。
 - 当前默认密码哈希：`0e7517141fb53f21ee439b355b5a1d0a`（`Admin@123` 的 MD5）。
-- 页面每次进入/刷新都会先登出并要求重新登录，未登录前不会显示任何 session 内容。
+- 登录态基于服务端 `HttpSession` 保持；只在 Session 过期（或显式 Logout）后才需要重新登录。
 
 MD5 生成示例：
 
@@ -72,6 +72,7 @@ printf '%s' 'your-password' | md5sum | awk '{print $1}'
 
 - 浏览器刷新不会自动删除后端 session；前端会把 tab/session 信息写入 `localStorage`，刷新后自动重连。
 - 同一 tab 重连时会带 `lastSeenSeq`，服务端按 ring buffer 进行补发。
+- WebSocket 断开会自动重连；若 Session 已过期，才会回到登录态。
 - 如果你点击 tab 关闭（`x`），前端会显式调用 `DELETE /api/sessions/{sessionId}`，会话会被销毁。
 - 如果所有客户端都断开，后端会保留会话到 `terminal.detached-session-ttl-seconds`（默认 3600 秒），超时后自动回收。
 

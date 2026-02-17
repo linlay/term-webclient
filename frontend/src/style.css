@@ -196,6 +196,15 @@ body {
   font-size: 14px;
 }
 
+.mobile-shortcut-bar {
+  display: none;
+}
+
+.mobile-shortcut-key,
+.mobile-shortcut-toggle {
+  user-select: none;
+}
+
 .notice {
   position: fixed;
   right: 14px;
@@ -685,15 +694,30 @@ textarea {
 }
 
 @media (max-width: 900px) {
+  .terminal-area {
+    padding-bottom: 72px;
+  }
+
+  .terminal-area.mobile-shortcuts-expanded {
+    padding-bottom: 136px;
+  }
+
   .top-row {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+  }
+
+  .top-row .tab-bar {
+    min-width: 0;
+    padding-right: 6px;
   }
 
   .top-actions {
-    padding: 0 10px 8px 10px;
+    padding: 0;
     justify-content: flex-end;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .main-content {
@@ -709,7 +733,21 @@ textarea {
   }
 
   .tab-item {
-    min-width: 132px;
+    min-width: 104px;
+    max-width: 196px;
+  }
+
+  .tab-main {
+    gap: 6px;
+    padding: 6px 7px;
+  }
+
+  .tab-title {
+    font-size: 11px;
+  }
+
+  .tab-close {
+    padding: 6px;
   }
 
   .modal-panel {
@@ -720,5 +758,51 @@ textarea {
 
   .workdir-tree {
     max-height: 260px;
+  }
+
+  .mobile-shortcut-bar {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 12;
+    display: grid;
+    gap: 6px;
+    border: 1px solid #2d4465;
+    border-radius: 10px;
+    padding: 8px;
+    background: rgba(11, 19, 30, 0.92);
+    backdrop-filter: blur(3px);
+  }
+
+  .mobile-shortcut-bar.collapsed .mobile-shortcut-keys {
+    display: none;
+  }
+
+  .mobile-shortcut-bar.expanded .mobile-shortcut-toggle {
+    display: none;
+  }
+
+  .mobile-shortcut-toggle {
+    width: 100%;
+    background: #15263d;
+    border-color: #3d5c86;
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+
+  .mobile-shortcut-keys {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .mobile-shortcut-key {
+    padding: 5px 3px;
+    text-align: center;
+    font-size: 9px;
+    line-height: 1.2;
+    background: rgba(22, 35, 55, 0.95);
+    border-color: #355071;
   }
 }

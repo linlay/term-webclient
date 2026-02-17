@@ -13,6 +13,23 @@ terminal:
   default-command: codex
   default-args: []
   default-workdir: .
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env: {}
+      pre-commands: []
+      shell: /bin/zsh
+    - id: claude
+      label: Claude Code
+      command: claude
+      args: []
+      workdir: .
+      env: {}
+      pre-commands: []
+      shell: /bin/zsh
   workdir-browse-root: ${user.home}
   allowed-origins:
     - http://*
@@ -26,8 +43,8 @@ terminal:
   max-rows: 200
   auth:
     enabled: true
-    username: admin
-    password-hash: 0e7517141fb53f21ee439b355b5a1d0a
+    # username: 
+    # password-hash: 
     session-ttl-seconds: 43200
   session-event-max-entries: 2048
   command-frame-max-entries: 256

@@ -31,6 +31,18 @@
       <div class="main-content">
         <main id="terminalArea" class="terminal-area">
           <div id="emptyState" class="empty-state">No windows. Click + to create one.</div>
+          <div id="mobileShortcutBar" class="mobile-shortcut-bar collapsed" aria-label="终端虚拟键盘">
+            <button
+              id="mobileShortcutToggleBtn"
+              type="button"
+              class="mobile-shortcut-toggle"
+              aria-expanded="false"
+              aria-controls="mobileShortcutKeys"
+            >
+              虚拟键盘
+            </button>
+            <div id="mobileShortcutKeys" class="mobile-shortcut-keys" role="group" aria-label="终端虚拟按键"></div>
+          </div>
         </main>
 
         <aside id="agentSidebar" class="agent-sidebar hidden">
@@ -99,8 +111,6 @@
           <label class="field-label" for="toolSelect">Tool</label>
           <select id="toolSelect">
             <option value="terminal">terminal</option>
-            <option value="claude">claude</option>
-            <option value="codex">codex</option>
             <option value="ssh">ssh</option>
           </select>
 
