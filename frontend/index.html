@@ -23,8 +23,30 @@
       <div class="top-row">
         <div id="tabBar" class="tab-bar"></div>
         <div class="top-actions">
-          <button id="copilotPanelToggleBtn" type="button" class="ghost-btn">Copilot</button>
-          <button id="logoutBtn" type="button" class="ghost-btn">Logout</button>
+          <button
+            id="copilotPanelToggleBtn"
+            type="button"
+            class="ghost-btn top-icon-btn"
+            aria-label="Copilot"
+            title="Copilot"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2.5 13.8 7l4.7.5-3.5 3 1 4.6L12 12.7l-4 2.4 1-4.6-3.5-3 4.7-.5L12 2.5Z" />
+            </svg>
+          </button>
+          <button
+            id="logoutBtn"
+            type="button"
+            class="ghost-btn top-icon-btn"
+            aria-label="Logout"
+            title="Logout"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 4H6.5A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H10" />
+              <path d="M13 8.5 18 12l-5 3.5" />
+              <path d="M18 12H9" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -114,7 +136,7 @@
             <option value="ssh">ssh</option>
           </select>
 
-          <section id="workdirSection">
+          <section id="workdirSection" style="overflow-x: hidden;">
             <label class="field-label" for="workdirTree">Workdir</label>
             <div id="workdirTree" class="workdir-tree" role="tree"></div>
             <div class="selected-workdir">Selected: <code id="selectedWorkdirLabel">-</code></div>

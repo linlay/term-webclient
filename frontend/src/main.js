@@ -19,19 +19,19 @@ const MOBILE_BREAKPOINT_PX = 900;
 const DESKTOP_TERMINAL_FONT_SIZE = 14;
 const MOBILE_TERMINAL_FONT_SIZE = 10;
 const MOBILE_SHORTCUTS = [
-  { label: "收起", action: "collapse" },
-  { label: "Ctrl+C", seq: "\u0003" },
-  { label: "Ctrl+D", seq: "\u0004" },
-  { label: "Ctrl+Z", seq: "\u001a" },
-  { label: "Tab", seq: "\t" },
-  { label: "Esc", seq: "\u001b" },
+  { label: "ESC", seq: "\u001b" },
   { label: "1", seq: "1" },
   { label: "2", seq: "2" },
   { label: "3", seq: "3" },
   { label: "4", seq: "4" },
   { label: "↑", seq: "\u001b[A" },
-  { label: "↓", seq: "\u001b[B" },
+  { label: "收起", action: "collapse" },
+  { label: "TAB", seq: "\t" },
+  { label: "CTRL+C", seq: "\u0003" },
+  { label: "CTRL+D", seq: "\u0004" },
+  { label: "CTRL+Z", seq: "\u001a" },
   { label: "←", seq: "\u001b[D" },
+  { label: "↓", seq: "\u001b[B" },
   { label: "→", seq: "\u001b[C" }
 ];
 
@@ -181,6 +181,26 @@ function apiUrl(path) {
 
 function isMobileViewport() {
   return window.innerWidth <= MOBILE_BREAKPOINT_PX;
+}
+
+function resolveMobileViewportHeight() {
+  const visualViewportHeight = window.visualViewport?.height;
+  if (Number.isFinite(visualViewportHeight) && visualViewportHeight > 0) {
+    return Math.round(visualViewportHeight);
+  }
+  const fallbackHeight = window.innerHeight;
+  if (Number.isFinite(fallbackHeight) && fallbackHeight > 0) {
+    return Math.round(fallbackHeight);
+  }
+  return 0;
+}
+
+function syncMobileViewportHeight() {
+  const viewportHeight = resolveMobileViewportHeight();
+  if (viewportHeight > 0) {
+    document.documentElement.style.setProperty("--mobile-vh", `${viewportHeight}px`);
+  }
+  scheduleActiveFit(30);
 }
 
 function resolveTerminalFontSize() {
@@ -2407,6 +2427,7 @@ function bindEvents() {
   renderMobileShortcutKeys();
   renderToolOptions("terminal");
   setMobileShortcutsExpanded(false);
+  syncMobileViewportHeight();
 
   mobileShortcutToggleBtn?.addEventListener("click", () => {
     setMobileShortcutsExpanded(!mobileShortcutsExpanded);
@@ -2734,6 +2755,7 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", () => {
+    syncMobileViewportHeight();
     closeTabContextMenu();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
@@ -2744,6 +2766,15 @@ function bindEvents() {
       }
     }, 140);
   });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      syncMobileViewportHeight();
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      syncMobileViewportHeight();
+    });
+  }
 
   window.addEventListener("beforeunload", () => {
     stopCopilotRefresh();

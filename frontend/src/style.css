@@ -12,6 +12,7 @@
   --warn: #f59e0b;
   --err: #ef4444;
   --info: #60a5fa;
+  --mobile-vh: 100vh;
 }
 
 * {
@@ -40,7 +41,7 @@ body {
 .top-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .top-row .tab-bar {
@@ -50,16 +51,16 @@ body {
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 10px;
+  gap: 5px;
+  padding-right: 8px;
 }
 
 .tab-bar {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
   overflow-x: auto;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--line);
   background: rgba(17, 24, 39, 0.82);
 }
@@ -84,8 +85,8 @@ body {
   all: unset;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 6px 8px;
   cursor: pointer;
   min-width: 0;
   flex: 1;
@@ -126,7 +127,7 @@ body {
 .tab-close {
   all: unset;
   cursor: pointer;
-  padding: 8px;
+  padding: 6px;
   color: var(--muted);
 }
 
@@ -136,16 +137,16 @@ body {
 
 .tab-plus {
   all: unset;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   display: inline-grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px dashed #3b4e6c;
   background: rgba(17, 27, 43, 0.75);
   color: var(--text);
   cursor: pointer;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
   flex: 0 0 auto;
 }
@@ -302,7 +303,8 @@ body {
   padding: 14px;
   display: grid;
   gap: 8px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .field-label {
@@ -341,7 +343,8 @@ textarea {
 .workdir-tree {
   min-height: 250px;
   max-height: 320px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid #24344c;
   border-radius: 10px;
   padding: 8px;
@@ -363,6 +366,8 @@ textarea {
   align-items: center;
   gap: 6px;
   min-height: 28px;
+  width: 100%;
+  min-width: 0;
 }
 
 .tree-toggle {
@@ -428,10 +433,21 @@ textarea {
 .selected-workdir {
   color: var(--muted);
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .selected-workdir code {
   color: var(--text);
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .advanced-section {
@@ -529,6 +545,26 @@ textarea {
 
 .ghost-btn {
   background: transparent;
+}
+
+.top-icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+  flex: 0 0 auto;
+}
+
+.top-icon-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .context-menu {
@@ -694,6 +730,12 @@ textarea {
 }
 
 @media (max-width: 900px) {
+  #app,
+  .layout {
+    height: var(--mobile-vh);
+    max-height: var(--mobile-vh);
+  }
+
   .terminal-area {
     padding-bottom: 72px;
   }
@@ -705,17 +747,18 @@ textarea {
   .top-row {
     flex-direction: row;
     align-items: center;
-    gap: 6px;
-    padding-right: 8px;
+    gap: 5px;
+    padding-right: 6px;
   }
 
   .top-row .tab-bar {
     min-width: 0;
-    padding-right: 6px;
+    padding-right: 4px;
   }
 
   .top-actions {
     padding: 0;
+    gap: 4px;
     justify-content: flex-end;
     flex-wrap: nowrap;
   }
@@ -738,8 +781,8 @@ textarea {
   }
 
   .tab-main {
-    gap: 6px;
-    padding: 6px 7px;
+    gap: 5px;
+    padding: 5px 6px;
   }
 
   .tab-title {
@@ -747,13 +790,13 @@ textarea {
   }
 
   .tab-close {
-    padding: 6px;
+    padding: 5px;
   }
 
   .modal-panel {
     width: calc(100vw - 16px);
     margin: 8px auto;
-    max-height: calc(100vh - 16px);
+    max-height: calc(var(--mobile-vh) - 16px);
   }
 
   .workdir-tree {
@@ -770,7 +813,7 @@ textarea {
     gap: 6px;
     border: 1px solid #2d4465;
     border-radius: 10px;
-    padding: 8px;
+    padding: 5px;
     background: rgba(11, 19, 30, 0.92);
     backdrop-filter: blur(3px);
   }
