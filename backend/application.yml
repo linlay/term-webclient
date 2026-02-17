@@ -19,7 +19,9 @@ terminal:
       args: []
       workdir: .
       env: {}
-      pre-commands: []
+      pre-commands:
+        - export https_proxy="http://127.0.0.1:8001"
+        - export HTTPS_PROXY="http://127.0.0.1:8001"
       shell: /bin/zsh
   auth:
     enabled: true

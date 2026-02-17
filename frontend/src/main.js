@@ -33,6 +33,20 @@ const MOBILE_SHORTCUTS = [
   { label: "↓", seq: "\u001b[B" },
   { label: "→", seq: "\u001b[C" }
 ];
+const QUICK_KEY_SEQUENCES = new Map([
+  ["tab", "\t"],
+  ["esc", "\u001b"],
+  ["escape", "\u001b"],
+  ["enter", "\r"],
+  ["return", "\r"],
+  ["up", "\u001b[A"],
+  ["down", "\u001b[B"],
+  ["left", "\u001b[D"],
+  ["right", "\u001b[C"],
+  ["ctrl+c", "\u0003"],
+  ["ctrl+d", "\u0004"],
+  ["ctrl+z", "\u001a"]
+]);
 
 const BUILTIN_TOOL_PRESETS = {
   terminal: {
@@ -805,11 +819,11 @@ function sendResize(tab) {
 
 function sendInput(tab, data) {
   if (!tab || !tab.socket || tab.socket.readyState !== WebSocket.OPEN) {
-    return;
+    return false;
   }
 
   if (tab.connectionState === "exited") {
-    return;
+    return false;
   }
 
   tab.socket.send(
@@ -818,6 +832,43 @@ function sendInput(tab, data) {
       data
     })
   );
+  return true;
+}
+
+function resolveQuickKey(command) {
+  const normalized = (command || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[0-9]$/.test(normalized)) {
+    return { sequence: normalized, label: normalized };
+  }
+
+  const directSequence = QUICK_KEY_SEQUENCES.get(normalized);
+  if (directSequence) {
+    return { sequence: directSequence, label: normalized };
+  }
+
+  const keyMatch = normalized.match(/^key\s*:\s*(.+)$/);
+  if (!keyMatch) {
+    return null;
+  }
+
+  const keyName = keyMatch[1].trim();
+  if (!keyName) {
+    return null;
+  }
+
+  if (/^[0-9]$/.test(keyName) || /^[a-z]$/.test(keyName)) {
+    return { sequence: keyName, label: `key:${keyName}` };
+  }
+
+  const keySequence = QUICK_KEY_SEQUENCES.get(keyName);
+  if (!keySequence) {
+    return null;
+  }
+  return { sequence: keySequence, label: `key:${keyName}` };
 }
 
 function parseMessage(raw) {
@@ -2363,8 +2414,19 @@ async function sendQuickCommand(tab) {
   if (!command) {
     throw new Error("Quick command is empty");
   }
-  sendInput(tab, `${command}\n`);
-  tab.term.writeln(`\r\n[quick-send] ${command}`);
+
+  const quickKey = resolveQuickKey(command);
+  const payload = quickKey ? quickKey.sequence : `${command}\n`;
+  const sent = sendInput(tab, payload);
+  if (!sent) {
+    throw new Error("Terminal is not connected");
+  }
+  if (quickKey) {
+    tab.term.writeln(`\r\n[quick-key] ${quickKey.label}`);
+  } else {
+    tab.term.writeln(`\r\n[quick-send] ${command}`);
+  }
+  tab.term.focus();
   agentQuickCommandInput.value = "";
 }
 
@@ -2760,6 +2822,14 @@ function bindEvents() {
         showNotice(error.message, "error", 4200);
       }
     })();
+  });
+
+  agentQuickCommandInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    agentQuickSendBtn.click();
   });
 
   cancelNewWindowBtn.addEventListener("click", () => {
