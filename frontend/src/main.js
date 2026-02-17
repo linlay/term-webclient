@@ -1,6 +1,5 @@
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
-import "./style.css";
 
 const rawApiBase = typeof import.meta.env.VITE_API_BASE === "string"
   ? import.meta.env.VITE_API_BASE.trim()
@@ -107,6 +106,7 @@ const sshUsernameInput = document.getElementById("sshUsernameInput");
 const sshTermInput = document.getElementById("sshTermInput");
 
 const copilotPanelToggleBtn = document.getElementById("copilotPanelToggleBtn");
+const copilotMobileBackdrop = document.getElementById("copilotMobileBackdrop");
 const copilotSummaryTabBtn = document.getElementById("copilotSummaryTabBtn");
 const copilotAgentTabBtn = document.getElementById("copilotAgentTabBtn");
 const copilotSummaryPanel = document.getElementById("copilotSummaryPanel");
@@ -198,9 +198,27 @@ function resolveMobileViewportHeight() {
 function syncMobileViewportHeight() {
   const viewportHeight = resolveMobileViewportHeight();
   if (viewportHeight > 0) {
+    document.documentElement.style.setProperty("--app-vh", `${viewportHeight}px`);
     document.documentElement.style.setProperty("--mobile-vh", `${viewportHeight}px`);
   }
+  syncMobileShortcutInset();
   scheduleActiveFit(30);
+}
+
+function syncMobileShortcutInset() {
+  if (!isMobileViewport() || !mobileShortcutBar) {
+    document.documentElement.style.setProperty("--mobile-shortcut-inset", "0px");
+    return;
+  }
+  const computed = window.getComputedStyle(mobileShortcutBar);
+  if (computed.display === "none") {
+    document.documentElement.style.setProperty("--mobile-shortcut-inset", "0px");
+    return;
+  }
+  const height = Math.max(0, Math.round(mobileShortcutBar.getBoundingClientRect().height));
+  const bottom = Number.parseFloat(computed.bottom) || 0;
+  const inset = Math.max(0, Math.round(height + bottom));
+  document.documentElement.style.setProperty("--mobile-shortcut-inset", `${inset}px`);
 }
 
 function resolveTerminalFontSize() {
@@ -237,6 +255,8 @@ function setMobileShortcutsExpanded(expanded) {
   if (mobileShortcutToggleBtn) {
     mobileShortcutToggleBtn.setAttribute("aria-expanded", String(mobileShortcutsExpanded));
   }
+  syncMobileShortcutInset();
+  scheduleActiveFit(30);
 }
 
 function sendMobileShortcut(sequence) {
@@ -2410,14 +2430,102 @@ function setCopilotTab(tabName) {
   void refreshCopilotActiveTab({ silent: true });
 }
 
+function isMobileCopilotMode() {
+  return isMobileViewport();
+}
+
+function openCopilotMobileModal() {
+  agentSidebar.classList.remove("hidden");
+  agentSidebar.setAttribute("aria-hidden", "false");
+  agentSidebar.setAttribute("aria-modal", "true");
+  if (copilotMobileBackdrop) {
+    copilotMobileBackdrop.classList.remove("hidden");
+    copilotMobileBackdrop.setAttribute("aria-hidden", "false");
+  }
+  copilotPanelToggleBtn.setAttribute("aria-expanded", "true");
+  renderCopilotPanels();
+  renderAgentSidebar();
+  void refreshCopilotActiveTab({ silent: true });
+  startCopilotRefresh();
+  scheduleActiveFit(20);
+}
+
+function closeCopilotMobileModal() {
+  agentSidebar.classList.add("hidden");
+  agentSidebar.setAttribute("aria-hidden", "true");
+  agentSidebar.removeAttribute("aria-modal");
+  if (copilotMobileBackdrop) {
+    copilotMobileBackdrop.classList.add("hidden");
+    copilotMobileBackdrop.setAttribute("aria-hidden", "true");
+  }
+  copilotPanelToggleBtn.setAttribute("aria-expanded", "false");
+  stopCopilotRefresh();
+  scheduleActiveFit(20);
+}
+
+function syncCopilotPresentationMode() {
+  const isMobile = isMobileCopilotMode();
+  const isOpen = !agentSidebar.classList.contains("hidden");
+  if (!isMobile) {
+    if (copilotMobileBackdrop) {
+      copilotMobileBackdrop.classList.add("hidden");
+      copilotMobileBackdrop.setAttribute("aria-hidden", "true");
+    }
+    agentSidebar.removeAttribute("aria-modal");
+    agentSidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    copilotPanelToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (isOpen) {
+      startCopilotRefresh();
+    } else {
+      stopCopilotRefresh();
+    }
+    return;
+  }
+  if (isOpen) {
+    agentSidebar.setAttribute("aria-hidden", "false");
+    agentSidebar.setAttribute("aria-modal", "true");
+    if (copilotMobileBackdrop) {
+      copilotMobileBackdrop.classList.remove("hidden");
+      copilotMobileBackdrop.setAttribute("aria-hidden", "false");
+    }
+    copilotPanelToggleBtn.setAttribute("aria-expanded", "true");
+    startCopilotRefresh();
+    return;
+  }
+  agentSidebar.setAttribute("aria-hidden", "true");
+  agentSidebar.removeAttribute("aria-modal");
+  if (copilotMobileBackdrop) {
+    copilotMobileBackdrop.classList.add("hidden");
+    copilotMobileBackdrop.setAttribute("aria-hidden", "true");
+  }
+  copilotPanelToggleBtn.setAttribute("aria-expanded", "false");
+  stopCopilotRefresh();
+}
+
 function toggleCopilotSidebar() {
+  if (isMobileCopilotMode()) {
+    if (agentSidebar.classList.contains("hidden")) {
+      openCopilotMobileModal();
+    } else {
+      closeCopilotMobileModal();
+    }
+    return;
+  }
   agentSidebar.classList.toggle("hidden");
-  if (agentSidebar.classList.contains("hidden")) {
+  const isOpen = !agentSidebar.classList.contains("hidden");
+  agentSidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  copilotPanelToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  if (!isOpen) {
     stopCopilotRefresh();
   } else {
+    agentSidebar.removeAttribute("aria-modal");
     renderCopilotPanels();
     void refreshCopilotActiveTab({ silent: true });
     startCopilotRefresh();
+  }
+  if (copilotMobileBackdrop) {
+    copilotMobileBackdrop.classList.add("hidden");
+    copilotMobileBackdrop.setAttribute("aria-hidden", "true");
   }
   renderAgentSidebar();
   scheduleActiveFit(20);
@@ -2428,9 +2536,16 @@ function bindEvents() {
   renderToolOptions("terminal");
   setMobileShortcutsExpanded(false);
   syncMobileViewportHeight();
+  syncCopilotPresentationMode();
 
   mobileShortcutToggleBtn?.addEventListener("click", () => {
     setMobileShortcutsExpanded(!mobileShortcutsExpanded);
+  });
+
+  copilotMobileBackdrop?.addEventListener("click", () => {
+    if (isMobileCopilotMode() && !agentSidebar.classList.contains("hidden")) {
+      closeCopilotMobileModal();
+    }
   });
 
   mobileShortcutKeys?.addEventListener("click", (event) => {
@@ -2750,12 +2865,17 @@ function bindEvents() {
         closeNewWindowModal();
         return;
       }
+      if (isMobileCopilotMode() && !agentSidebar.classList.contains("hidden")) {
+        closeCopilotMobileModal();
+        return;
+      }
       closeTabContextMenu();
     }
   });
 
   window.addEventListener("resize", () => {
     syncMobileViewportHeight();
+    syncCopilotPresentationMode();
     closeTabContextMenu();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {

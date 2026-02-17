@@ -12,7 +12,9 @@
   --warn: #f59e0b;
   --err: #ef4444;
   --info: #60a5fa;
+  --app-vh: 100vh;
   --mobile-vh: 100vh;
+  --mobile-shortcut-inset: 0px;
 }
 
 * {
@@ -21,9 +23,11 @@
 
 html,
 body,
-#app {
+#app,
+.layout {
   margin: 0;
-  height: 100%;
+  height: var(--app-vh);
+  min-height: var(--app-vh);
 }
 
 body {
@@ -33,7 +37,6 @@ body {
 }
 
 .layout {
-  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -603,6 +606,14 @@ textarea {
   overflow-y: auto;
 }
 
+.copilot-mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(6, 10, 16, 0.68);
+}
+
 .agent-title {
   font-size: 14px;
   font-weight: 600;
@@ -690,6 +701,8 @@ textarea {
   z-index: 60;
   display: grid;
   place-items: center;
+  min-height: var(--app-vh);
+  max-height: var(--app-vh);
   background: radial-gradient(circle at 30% 20%, #1d324f 0%, #090f18 55%);
 }
 
@@ -732,71 +745,93 @@ textarea {
 @media (max-width: 900px) {
   #app,
   .layout {
-    height: var(--mobile-vh);
-    max-height: var(--mobile-vh);
+    height: var(--app-vh);
+    min-height: var(--app-vh);
+    max-height: var(--app-vh);
   }
 
   .terminal-area {
-    padding-bottom: 72px;
-  }
-
-  .terminal-area.mobile-shortcuts-expanded {
-    padding-bottom: 136px;
+    padding-bottom: calc(8px + var(--mobile-shortcut-inset));
   }
 
   .top-row {
     flex-direction: row;
     align-items: center;
-    gap: 5px;
-    padding-right: 6px;
+    gap: 4px;
+    padding-right: 4px;
+  }
+
+  .tab-bar {
+    gap: 4px;
+    padding: 4px 6px;
   }
 
   .top-row .tab-bar {
     min-width: 0;
-    padding-right: 4px;
+    padding-right: 2px;
   }
 
   .top-actions {
     padding: 0;
-    gap: 4px;
+    gap: 3px;
     justify-content: flex-end;
     flex-wrap: nowrap;
+  }
+
+  .top-icon-btn {
+    width: 26px;
+    height: 26px;
+  }
+
+  .top-icon-btn svg {
+    width: 12px;
+    height: 12px;
   }
 
   .main-content {
     flex-direction: column;
   }
 
+  .copilot-mobile-backdrop {
+    display: block;
+  }
+
   .agent-sidebar {
-    width: 100%;
+    position: fixed;
+    inset: 8px;
+    width: auto;
     min-width: 0;
-    max-height: 45vh;
-    border-left: none;
-    border-top: 1px solid var(--line);
+    max-width: none;
+    height: calc(var(--app-vh) - 16px);
+    max-height: calc(var(--app-vh) - 16px);
+    z-index: 51;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   }
 
   .tab-item {
-    min-width: 104px;
-    max-width: 196px;
+    min-width: 96px;
+    max-width: 176px;
   }
 
   .tab-main {
-    gap: 5px;
-    padding: 5px 6px;
+    gap: 4px;
+    padding: 4px 5px;
   }
 
   .tab-title {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .tab-close {
-    padding: 5px;
+    padding: 4px;
   }
 
   .modal-panel {
     width: calc(100vw - 16px);
     margin: 8px auto;
-    max-height: calc(var(--mobile-vh) - 16px);
+    max-height: calc(var(--app-vh) - 16px);
   }
 
   .workdir-tree {

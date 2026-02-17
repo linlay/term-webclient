@@ -4,6 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PTY Web Terminal</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #090f18;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+  <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
   <div id="loginGate" class="login-gate hidden">
@@ -120,6 +133,7 @@
       </div>
     </div>
 
+    <div id="copilotMobileBackdrop" class="copilot-mobile-backdrop hidden" aria-hidden="true"></div>
     <div id="noticeBar" class="notice hidden"></div>
 
     <div id="newWindowModal" class="modal hidden" aria-hidden="true">
