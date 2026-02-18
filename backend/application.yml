@@ -26,7 +26,7 @@ terminal:
   auth:
     enabled: true
     username: admin
-    password-hash: 0e7517141fb53f21ee439b355b5a1d0a
+    password-hash: f49df27cfc01afd17366e851e15e7754
     session-ttl-seconds: 43200
   ssh:
     credentials-file: data/ssh-credentials.json

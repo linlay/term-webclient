@@ -118,7 +118,7 @@ curl http://127.0.0.1:11948/api/ssh/credentials
 ### 4) Copilot 侧栏（Summary + Agent）
 
 - 顶部 `Copilot` 按钮打开右侧栏，支持 `Summary` / `Agent` 切换。
-- `Summary` 支持实时刷新（默认 2 秒，可通过 `VITE_COPILOT_REFRESH_MS` 配置）并可复制 Context/Transcript。
+- `Summary` 支持实时刷新（默认 2 秒，可通过 `VITE_COPILOT_REFRESH_MS` 配置），展示 `Context + Screen Text`，可一键复制当前可见界面的纯文本。
 - `Agent` 保留原有 run 创建、审批、终止和 quick command 操作。
 
 ### 5) SSH Exec（给 LLM 的结构化命令执行）
@@ -190,6 +190,7 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 - `POST /api/sessions`：创建会话（`LOCAL_PTY` 或 `SSH_SHELL`）
 - `DELETE /api/sessions/{sessionId}`：关闭会话
 - `GET /api/sessions/{sessionId}/snapshot?afterSeq=<long>`：按序号拉取输出快照
+- `GET /api/sessions/{sessionId}/screen-text`：获取当前可见终端界面的纯文本（后端按控制序列解析后输出）
 - `GET /api/workdirTree?path=<absolutePathOptional>`：列出目录树（仅目录，自动屏蔽 `.` 前缀隐藏目录）
 - `GET /api/ssh/credentials`：列出 SSH 凭据摘要（不返回密钥/密码）
 - `POST /api/ssh/credentials`：创建 SSH 凭据（密码或私钥二选一，密文落盘）

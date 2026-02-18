@@ -2,6 +2,7 @@ package com.linlay.ptyjava.controller;
 
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.ScreenTextResponse;
 import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
 import com.linlay.ptyjava.model.SessionTabViewResponse;
@@ -66,6 +67,11 @@ public class SessionController {
                                                          @RequestParam(name = "afterSeq", defaultValue = "0") long afterSeq,
                                                          @RequestParam(name = "stripAnsi", defaultValue = "false") boolean stripAnsi) {
         return ResponseEntity.ok(terminalSessionService.getTranscript(sessionId, afterSeq, stripAnsi));
+    }
+
+    @GetMapping("/{sessionId}/screen-text")
+    public ResponseEntity<ScreenTextResponse> screenText(@PathVariable String sessionId) {
+        return ResponseEntity.ok(terminalSessionService.getScreenText(sessionId));
     }
 
     @GetMapping("/{sessionId}/context")

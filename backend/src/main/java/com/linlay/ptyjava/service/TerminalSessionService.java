@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.CreateSessionRequest;
 import com.linlay.ptyjava.model.CreateSessionResponse;
+import com.linlay.ptyjava.model.ScreenTextResponse;
 import com.linlay.ptyjava.model.SessionContextResponse;
 import com.linlay.ptyjava.model.SessionSnapshotResponse;
 import com.linlay.ptyjava.model.SessionTabViewResponse;
@@ -106,6 +107,7 @@ public class TerminalSessionService {
                 ioExecutor,
                 new TerminalOutputRingBuffer(properties.getRingBufferMaxBytes(), properties.getRingBufferMaxChunks()),
                 contextTracker,
+                new TerminalScreenTextTracker(params.cols(), params.rows()),
                 Instant.now()
             );
 
@@ -182,6 +184,7 @@ public class TerminalSessionService {
             session.getRuntime().resize(cols, rows);
             session.touchLastActiveAt();
             session.getContextTracker().onResize(cols, rows);
+            session.getScreenTextTracker().onResize(cols, rows);
         } catch (IOException e) {
             throw new InvalidSessionRequestException("Failed to resize session");
         }
@@ -232,6 +235,18 @@ public class TerminalSessionService {
             truncated,
             stripAnsi,
             text
+        );
+    }
+
+    public ScreenTextResponse getScreenText(String sessionId) {
+        TerminalSession session = getRequired(sessionId);
+        TerminalScreenTextTracker.Snapshot snapshot = session.getScreenTextTracker().snapshot();
+        return new ScreenTextResponse(
+            sessionId,
+            snapshot.lastSeq(),
+            snapshot.cols(),
+            snapshot.rows(),
+            snapshot.text()
         );
     }
 
@@ -330,6 +345,7 @@ public class TerminalSessionService {
                     session.getRingBuffer().append(seq, output);
                     session.touchLastActiveAt();
                     String outputText = new String(output, StandardCharsets.UTF_8);
+                    session.getScreenTextTracker().onOutput(seq, outputText);
                     session.getContextTracker().onOutput(seq, outputText);
                     broadcastOutput(session, seq, output);
                 }

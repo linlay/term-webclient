@@ -127,9 +127,9 @@ const copilotSummaryPanel = document.getElementById("copilotSummaryPanel");
 const copilotAgentPanel = document.getElementById("copilotAgentPanel");
 const refreshSessionSummaryBtn = document.getElementById("refreshSessionSummaryBtn");
 const copySessionContextBtn = document.getElementById("copySessionContextBtn");
-const copySessionTranscriptBtn = document.getElementById("copySessionTranscriptBtn");
+const copySessionScreenTextBtn = document.getElementById("copySessionScreenTextBtn");
 const sessionSummaryContextText = document.getElementById("sessionSummaryContextText");
-const sessionSummaryTranscriptText = document.getElementById("sessionSummaryTranscriptText");
+const sessionSummaryScreenText = document.getElementById("sessionSummaryScreenText");
 
 const agentSidebar = document.getElementById("agentSidebar");
 const agentSessionLabel = document.getElementById("agentSessionLabel");
@@ -2199,11 +2199,11 @@ async function fetchSessionContext(tab) {
   return response.json();
 }
 
-async function fetchSessionTranscript(tab) {
+async function fetchSessionScreenText(tab) {
   if (!tab?.sessionId) {
     throw new Error("No active session");
   }
-  const response = await apiFetch(`/api/sessions/${encodeURIComponent(tab.sessionId)}/transcript?afterSeq=0&stripAnsi=false`);
+  const response = await apiFetch(`/api/sessions/${encodeURIComponent(tab.sessionId)}/screen-text`);
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
   }
@@ -2224,12 +2224,12 @@ async function refreshSessionSummary(options = {}) {
       }
       return;
     }
-    const [context, transcript] = await Promise.all([
+    const [context, screenText] = await Promise.all([
       fetchSessionContext(tab),
-      fetchSessionTranscript(tab)
+      fetchSessionScreenText(tab)
     ]);
     sessionSummaryContextText.value = JSON.stringify(context, null, 2);
-    sessionSummaryTranscriptText.value = transcript?.transcript || "";
+    sessionSummaryScreenText.value = screenText?.text || "";
   } catch (error) {
     if (!silent) {
       showNotice(error.message, "error", 4200);
@@ -2722,11 +2722,11 @@ function bindEvents() {
     })();
   });
 
-  copySessionTranscriptBtn.addEventListener("click", () => {
+  copySessionScreenTextBtn.addEventListener("click", () => {
     void (async () => {
       try {
-        await navigator.clipboard.writeText(sessionSummaryTranscriptText.value || "");
-        showNotice("Copied transcript", "success", 1800);
+        await navigator.clipboard.writeText(sessionSummaryScreenText.value || "");
+        showNotice("Copied screen text", "success", 1800);
       } catch {
         showNotice("Copy failed in this browser context", "warn", 2600);
       }
