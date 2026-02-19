@@ -12,3 +12,6 @@ backend/application-local.yml
 frontend/node_modules
 frontend/dist
 frontend/coverage
+
+# packaged runtime
+release

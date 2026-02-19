@@ -5,6 +5,7 @@
 - 后端：Spring Boot + WebSocket + pty4j + Apache MINA SSHD client
 - 前端：Vite + React/TypeScript（迁移中，保留 Vanilla JS legacy 模式）+ xterm.js
 - 生产入口：Node 反向代理（`11949`）+ Nginx（`443 -> 11949`）
+- 运维脚本：`package.sh` / `start.sh` / `stop.sh`
 
 ## 目录
 
@@ -176,6 +177,64 @@ PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
 - 其余 GET 请求回退到 `index.html`（SPA）
 
 服务环境变量示例：`frontend/.env.server.example`
+
+## 一键打包与启停脚本
+
+根目录提供三个脚本：
+
+- `package.sh`：构建前后端并输出统一发布目录（默认 `release/`）
+- `start.sh`：启动发布目录内的后端 jar 与前端 Node 代理
+- `stop.sh`：根据 pid 文件停止服务
+
+### 1) 打包
+
+```bash
+./package.sh
+# 自定义输出目录
+./package.sh /tmp/pty-release
+```
+
+`package.sh` 默认会：
+
+1. 执行后端构建：`mvn -q -DskipTests package`
+2. 执行前端构建：`npm ci && npm run build`
+3. 将可运行产物和配置收拢到同一目录：
+   - `release/backend/app.jar`
+   - `release/backend/application.yml`（若存在）
+   - `release/backend/application-default.yml`
+   - `release/frontend/dist`
+   - `release/frontend/server.js`
+   - `release/frontend/node_modules`（生产依赖）
+   - `release/logs`、`release/run`
+
+### 2) 启动
+
+```bash
+./start.sh
+# 指定发布目录
+./start.sh /tmp/pty-release
+```
+
+默认端口：
+
+- 后端：`127.0.0.1:11948`
+- 前端：`0.0.0.0:11949`
+
+可通过环境变量覆盖：
+
+- `BACKEND_HOST` / `BACKEND_PORT`
+- `FRONTEND_HOST` / `FRONTEND_PORT`
+- `BACKEND_ORIGIN`
+- `BACKEND_JAVA_OPTS`
+- `BACKEND_ARGS`
+
+### 3) 停止
+
+```bash
+./stop.sh
+# 指定发布目录
+./stop.sh /tmp/pty-release
+```
 
 ## Nginx（域名无端口）
 

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本文件用于说明当前仓库的实际实现状态、架构设计和使用方法。
+本文件用于说明当前仓库的实现状态、架构和运维方式。
 
 ## 项目概述
 
@@ -10,126 +10,113 @@
 - SSH 交互终端（`SSH Shell`）
 - SSH 结构化命令执行（`SSH Exec`）
 
-核心目标是让会话在客户端断线/刷新后可恢复，并能在后端保留 1 小时。
+核心目标：会话在客户端断线/刷新后可恢复，并在后端默认保留 1 小时。
 
 ## 当前架构
 
-### 1) 会话层（后端）
+### 1) 前端层（Vite 双入口）
 
-- `TerminalSession`：统一会话对象，包含
-  - `sessionId`
-  - `sessionType`（`LOCAL_PTY` / `SSH_SHELL`）
-  - `TerminalRuntime`（运行时抽象）
-  - `attachedClients`
-  - `nextSeq`
-  - `TerminalOutputRingBuffer`
-  - `killTask`（detach TTL 回收）
+前端支持迁移期双入口：
+
+- `VITE_UI_MODE=legacy`：运行 `frontend/src/main-legacy.js`（默认，全功能）
+- `VITE_UI_MODE=react`：运行 `frontend/src/react/main.tsx`（迁移中）
+
+React 模式已包含：登录、Tab 管理、LOCAL_PTY 会话创建、xterm 容器、WebSocket 自动重连（含 `lastSeenSeq`）。
+
+### 2) 会话层（后端）
+
+- `TerminalSession`：统一会话对象（`LOCAL_PTY` / `SSH_SHELL`）
 - `TerminalRuntime` 抽象
   - `PtyTerminalRuntime`：本地 PTY
-  - `SshShellRuntime`：SSH Shell Channel
+  - `SshShellRuntime`：SSH Shell
+- 会话输出通过 `seq` + `TerminalOutputRingBuffer` 支持断线补发
 
-### 2) 输出与断线恢复
+### 3) 输出与断线恢复
 
-- 会话读循环持续读取运行时输出（即使没有客户端也不停止）。
-- 每段输出都附带递增 `seq` 并写入 ring buffer。
-- WebSocket 重连使用 `clientId + lastSeenSeq`：
-  - 正常补发：发送 `seq > lastSeenSeq`
-  - 缓冲区不足：发送 `truncated`，客户端走 `/snapshot` 补齐
-- 所有客户端断开后，会话保留 `terminal.detached-session-ttl-seconds`（默认 3600s），到期销毁。
+- 后端读循环持续读取运行时输出（即使没有客户端也不停止）
+- WebSocket 重连使用 `clientId + lastSeenSeq`
+- 缓冲不足时发送 `truncated`，客户端可走 `/snapshot` 拉齐
+- 全部客户端断开后，会话按 `terminal.detached-session-ttl-seconds` 回收
 
-### 3) SSH 子系统
+### 4) 安全与可观测
 
-- 客户端库：Apache MINA SSHD（`terminal.ssh.*` 配置项保持不变）
-- `SshCredentialStore`：凭据密文存储（AES-GCM）
-- `TofuHostKeyVerifier`：TOFU 主机指纹校验
-- `SshConnectionPool`：按 `(host,port,username,credentialId)` 复用连接
-- `SshExecService`：每条命令开一个 exec channel，返回结构化结果
+- 登录认证：`HttpSession`
+- 密码校验：`bcrypt 优先`，兼容 `md5` 迁移窗口
+- 登录限流：按 `IP + username` 的窗口限流
+- HTTP 头注入 `X-Request-Id`
+- 日志 MDC 包含 `requestId/sessionId`
+- 新增公开接口：`GET /api/version`
 
-## 前端行为
-
-- Tab 状态与会话信息写入 `localStorage`（`pty.tabs.v2`）。
-- 页面刷新后自动恢复 tab 并重连旧 session。
-- `beforeunload` 不再删除后端会话，只关闭本地 socket。
-- 用户主动关闭 tab（`x`）时，才调用 `DELETE /api/sessions/{id}` 销毁会话。
-- 新建窗口支持 `ssh` 工具，填写 `SSH Credential ID` 创建 SSH Shell。
-
-## 主要接口
+## 关键接口
 
 - `POST /api/sessions`
 - `DELETE /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/snapshot?afterSeq=<long>`
-- `GET /api/workdirTree?path=<optional>`（屏蔽 `.` 前缀隐藏目录）
+- `GET /api/workdirTree?path=<optional>`
+- `GET /api/version`
 - `POST /api/ssh/credentials`
 - `POST /api/ssh/exec`
 - `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>`
 
-## 使用方法
+## 打包与启停脚本
 
-### 1) 保持连接（刷新恢复）
+仓库根目录提供：
 
-1. 正常创建终端窗口并运行命令。
-2. 直接刷新页面。
-3. 页面会自动恢复 tab 并尝试重连旧 session。
+- `package.sh`：构建前后端并生成统一发布目录（默认 `release/`）
+- `start.sh`：启动 `backend(app.jar)` 与 `frontend(node server.js)`
+- `stop.sh`：按 pid 文件停止服务
 
-说明：
+### 发布目录结构（`package.sh` 输出）
 
-- 只要会话没有超过 detach TTL（默认 1 小时），刷新后可以恢复。
-- 若看到 `truncated`，前端会自动通过 `/snapshot` 拉取可用片段继续显示。
+- `release/backend/app.jar`
+- `release/backend/application.yml`（若存在）
+- `release/backend/application-default.yml`
+- `release/frontend/dist`
+- `release/frontend/server.js`
+- `release/frontend/node_modules`（生产依赖）
+- `release/logs`
+- `release/run`
 
-### 2) 使用 SSH 交互终端
+## 常用命令
 
-1. 后端环境变量（必填）：
-
-```bash
-export TERMINAL_SSH_MASTER_KEY="replace-with-strong-secret"
-```
-
-2. 创建 SSH 凭据：
-
-```bash
-curl -X POST http://127.0.0.1:11948/api/ssh/credentials \
-  -H "content-type: application/json" \
-  -d '{"host":"10.0.0.2","port":22,"username":"ubuntu","password":"***"}'
-```
-
-3. 在前端点击 `+`，选择 `ssh`，填入返回的 `credentialId`，创建窗口。
-
-### 3) 使用 SSH Exec
+本地开发：
 
 ```bash
-curl -X POST http://127.0.0.1:11948/api/ssh/exec \
-  -H "content-type: application/json" \
-  -d '{"credentialId":"<id>","command":"pwd","cwd":"/tmp","timeoutSeconds":120}'
+cd backend && mvn spring-boot:run
+cd frontend && npm run dev
 ```
 
-返回：`stdout/stderr/exitCode/durationMs/timedOut` 等结构化字段。
-
-## 关键配置
-
-- `terminal.detached-session-ttl-seconds`
-- `terminal.ring-buffer-max-bytes`
-- `terminal.ring-buffer-max-chunks`
-- `terminal.ssh.connect-timeout-millis`
-- `terminal.ssh.connection-idle-ttl-seconds`
-- `terminal.ssh.exec-default-timeout-seconds`
-- `terminal.ssh.credentials-file`
-- `terminal.ssh.known-hosts-file`
-- `terminal.ssh.master-key-env`
-
-## 本地命令
-
-后端：
+打包：
 
 ```bash
-cd backend
-mvn spring-boot:run
-mvn test
+./package.sh
+# 或自定义输出目录
+./package.sh /tmp/pty-release
 ```
 
-前端：
+启动/停止：
 
 ```bash
-cd frontend
-npm run dev
-npm run build
+./start.sh
+./stop.sh
+
+# 指定发布目录
+./start.sh /tmp/pty-release
+./stop.sh /tmp/pty-release
 ```
+
+## 常用环境变量
+
+启动脚本支持：
+
+- `BACKEND_HOST`（默认 `127.0.0.1`）
+- `BACKEND_PORT`（默认 `11948`）
+- `FRONTEND_HOST`（默认 `0.0.0.0`）
+- `FRONTEND_PORT`（默认 `11949`）
+- `BACKEND_ORIGIN`（默认 `http://127.0.0.1:11948`）
+- `BACKEND_JAVA_OPTS`（默认 `-Xms256m -Xmx512m`）
+- `BACKEND_ARGS`（附加 Spring 参数）
+
+SSH 主密钥建议通过环境变量提供：
+
+- `TERMINAL_SSH_MASTER_KEY`
