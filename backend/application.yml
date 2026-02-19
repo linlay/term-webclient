@@ -26,8 +26,13 @@ terminal:
   auth:
     enabled: true
     username: admin
+    # Prefer BCrypt for production credentials. Keep password-hash for migration compatibility.
+    # password-hash-bcrypt:
     password-hash: f49df27cfc01afd17366e851e15e7754
     session-ttl-seconds: 43200
+    login-rate-limit-enabled: true
+    login-rate-limit-window-seconds: 60
+    login-rate-limit-max-attempts: 10
   ssh:
     credentials-file: data/ssh-credentials.json
     master-key: 123456

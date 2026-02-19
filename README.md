@@ -3,7 +3,7 @@
 前后端分离的 PTY Web Terminal：
 
 - 后端：Spring Boot + WebSocket + pty4j + Apache MINA SSHD client
-- 前端：Vite + Vanilla JS + xterm.js
+- 前端：Vite + React/TypeScript（迁移中，保留 Vanilla JS legacy 模式）+ xterm.js
 - 生产入口：Node 反向代理（`11949`）+ Nginx（`443 -> 11949`）
 
 ## 目录
@@ -50,8 +50,9 @@ mvn spring-boot:run
 
 - 默认开启登录（访问 `http://localhost:11949/` 时必须先登录）。
 - 当前默认账号密码：`admin / Admin@123`。
-- 密码在配置中使用 **MD5** 32 位十六进制字符串（大小写不敏感匹配）。
-- 当前默认密码哈希：`0e7517141fb53f21ee439b355b5a1d0a`（`Admin@123` 的 MD5）。
+- 密码哈希优先使用 `terminal.auth.password-hash-bcrypt`（推荐），兼容读取旧字段 `terminal.auth.password-hash`（MD5，迁移期保留）。
+- 默认仍兼容 MD5（示例：`0e7517141fb53f21ee439b355b5a1d0a` 对应 `Admin@123`）。
+- 登录接口启用最小限流（默认 60 秒窗口最多 10 次失败尝试）。
 - 登录态基于服务端 `HttpSession` 保持；只在 Session 过期（或显式 Logout）后才需要重新登录。
 
 MD5 生成示例：
@@ -148,10 +149,12 @@ npm run dev
 
 ```env
 VITE_API_BASE=
+VITE_UI_MODE=legacy
 VITE_COPILOT_REFRESH_MS=2000
 ```
 
 - `VITE_API_BASE`：可选。为空时前端默认使用同源 `/api` 与 `/ws`；有值时强制使用该地址（调试用途）。
+- `VITE_UI_MODE`：`legacy` 或 `react`。默认 `legacy`，用于迁移期灰度切换。
 - `VITE_COPILOT_REFRESH_MS`：可选。Copilot 自动刷新间隔毫秒，默认 `2000`，最小 `500`。
 
 ## 前端生产模式（Node 代理）
@@ -192,6 +195,7 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 - `GET /api/sessions/{sessionId}/snapshot?afterSeq=<long>`：按序号拉取输出快照
 - `GET /api/sessions/{sessionId}/screen-text`：获取当前可见终端界面的纯文本（后端按控制序列解析后输出）
 - `GET /api/workdirTree?path=<absolutePathOptional>`：列出目录树（仅目录，自动屏蔽 `.` 前缀隐藏目录）
+- `GET /api/version`：返回后端版本信息（`name/version/gitSha/buildTime`）
 - `GET /api/ssh/credentials`：列出 SSH 凭据摘要（不返回密钥/密码）
 - `POST /api/ssh/credentials`：创建 SSH 凭据（密码或私钥二选一，密文落盘）
 - `DELETE /api/ssh/credentials/{credentialId}`：删除 SSH 凭据
@@ -230,10 +234,13 @@ cd backend
 mvn test
 ```
 
-前端构建：
+前端检查与构建：
 
 ```bash
 cd frontend
+npm run lint
+npm run typecheck
+npm run test
 npm run build
 ```
 
@@ -243,3 +250,8 @@ npm run build
 curl http://127.0.0.1:11949/healthz
 curl -I https://pty.linlay.cc
 ```
+
+更多交付文档：
+
+- 架构说明：`docs/architecture.md`
+- 发布与回滚：`docs/release.md`

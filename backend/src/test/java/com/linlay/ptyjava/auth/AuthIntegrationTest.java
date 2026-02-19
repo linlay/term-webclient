@@ -2,6 +2,7 @@ package com.linlay.ptyjava.auth;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,15 @@ class AuthIntegrationTest {
     @Test
     void unauthenticatedApiCallReturns401() throws Exception {
         mockMvc.perform(get("/api/workdirTree"))
+            .andExpect(header().exists("X-Request-Id"))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void versionEndpointIsPublic() throws Exception {
+        mockMvc.perform(get("/api/version"))
+            .andExpect(status().isOk())
+            .andExpect(header().exists("X-Request-Id"));
     }
 
     @Test

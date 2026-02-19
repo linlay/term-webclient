@@ -1,0 +1,266 @@
+@import "xterm/css/xterm.css";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#reactRoot {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 0%, #1f314f 0%, #0b121e 48%);
+  color: #d8e4f3;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.react-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.react-error {
+  color: #f87171;
+}
+
+.react-login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.react-login-card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #0f1b2b;
+  border: 1px solid #274365;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.react-login-card h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.react-login-card label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.react-login-card input,
+.react-login-card button,
+.react-new-session-form input,
+.react-new-session-form select,
+.react-new-session-form button {
+  border-radius: 8px;
+  border: 1px solid #365278;
+  background: #0d1726;
+  color: #d8e4f3;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.react-login-card button,
+.react-new-session-form button {
+  cursor: pointer;
+  background: #1f4f8c;
+  border-color: #3971ba;
+}
+
+.react-login-card button:disabled,
+.react-new-session-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.react-form-error {
+  color: #fda4af;
+  font-size: 12px;
+}
+
+.react-form-error-block {
+  padding: 8px;
+  border: 1px solid #7f1d1d;
+  background: #3b0f12;
+  border-radius: 8px;
+}
+
+.react-app-shell {
+  padding: 16px;
+  max-width: 1320px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.react-top-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.react-top-bar h1 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.react-top-bar p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #9eb2cc;
+}
+
+.react-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.react-top-actions button {
+  border-radius: 8px;
+  border: 1px solid #365278;
+  background: #0d1726;
+  color: inherit;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.react-username {
+  font-size: 12px;
+  color: #9eb2cc;
+}
+
+.react-card {
+  border: 1px solid #274365;
+  border-radius: 14px;
+  background: rgba(13, 23, 38, 0.78);
+  padding: 14px;
+}
+
+.react-card h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.react-form-grid {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.react-tabs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.react-tabs-header span {
+  color: #9eb2cc;
+  font-size: 12px;
+}
+
+.react-empty {
+  padding: 18px;
+  border: 1px dashed #365278;
+  border-radius: 10px;
+  color: #9eb2cc;
+}
+
+.react-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.react-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #365278;
+  background: #0d1726;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.react-tab-item.active {
+  border-color: #5fa1ff;
+}
+
+.react-tab-item > button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.react-tab-close {
+  border: none;
+  background: transparent;
+  color: #fca5a5;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.status-pill {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-pill.connecting {
+  background: #1e3a8a;
+}
+
+.status-pill.connected {
+  background: #0f766e;
+}
+
+.status-pill.disconnected {
+  background: #78350f;
+}
+
+.status-pill.error,
+.status-pill.exited {
+  background: #7f1d1d;
+}
+
+.react-terminal-wrapper {
+  height: min(65vh, 720px);
+  border: 1px solid #365278;
+  border-radius: 10px;
+  background: #020912;
+  overflow: hidden;
+}
+
+.react-terminal-host {
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+}
+
+@media (max-width: 900px) {
+  .react-top-bar {
+    flex-direction: column;
+  }
+
+  .react-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,5 +1,7 @@
 # macOS
 .DS_Store
+node_modules
+.husky/_
 
 # backend
 backend/target
@@ -9,3 +11,4 @@ backend/application-local.yml
 # frontend
 frontend/node_modules
 frontend/dist
+frontend/coverage

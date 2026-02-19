@@ -3,6 +3,8 @@ server:
   port: 11948
 
 spring:
+  application:
+    name: pty-web-backend
   config:
     import:
       - optional:file:application-local.yml
@@ -43,9 +45,13 @@ terminal:
   max-rows: 200
   auth:
     enabled: true
-    # username: 
-    # password-hash: 
+    # username:
+    # password-hash:
+    # password-hash-bcrypt:
     session-ttl-seconds: 43200
+    login-rate-limit-enabled: true
+    login-rate-limit-window-seconds: 60
+    login-rate-limit-max-attempts: 10
   session-event-max-entries: 2048
   command-frame-max-entries: 256
   transcript-max-chars: 200000
@@ -65,3 +71,13 @@ terminal:
     credentials-file: data/ssh-credentials.json
     known-hosts-file: ${user.home}/.pty-web/known-hosts.json
     master-key-env: TERMINAL_SSH_MASTER_KEY
+
+logging:
+  pattern:
+    level: "%5p [req:%X{requestId:-} sess:%X{sessionId:-}]"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

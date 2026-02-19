@@ -34,6 +34,6 @@ public class CorsConfig implements WebMvcConfigurer {
         }
         registry.addInterceptor(authInterceptor)
             .addPathPatterns("/api/**")
-            .excludePathPatterns("/api/auth/**");
+            .excludePathPatterns("/api/auth/**", "/api/version");
     }
 }
