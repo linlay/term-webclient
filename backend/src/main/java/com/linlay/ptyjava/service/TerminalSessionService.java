@@ -53,6 +53,8 @@ public class TerminalSessionService {
     private static final Logger log = LoggerFactory.getLogger(TerminalSessionService.class);
     private static final int DEFAULT_COLS = 120;
     private static final int DEFAULT_ROWS = 30;
+    private static final int LOCAL_PTY_CREATE_MAX_ATTEMPTS = 2;
+    private static final long LOCAL_PTY_CREATE_RETRY_DELAY_MILLIS = 150L;
     private static final Pattern ANSI_ESCAPE = Pattern.compile("\\u001B\\[[;?0-9]*[ -/]*[@-~]");
 
     private final TerminalProperties properties;
@@ -82,7 +84,7 @@ public class TerminalSessionService {
 
         try {
             SessionCreateParams params = normalize(request, sessionType);
-            TerminalRuntime runtime = createRuntime(request, params, sessionType);
+            TerminalRuntime runtime = createRuntimeWithRetry(request, params, sessionType, sessionId);
             ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "terminal-read-" + sessionId);
                 t.setDaemon(true);
@@ -116,6 +118,56 @@ public class TerminalSessionService {
             return new CreateSessionResponse(sessionId, "/ws/" + sessionId, session.getStartedAt());
         } catch (IOException e) {
             throw new RuntimeException("Failed to start terminal runtime", e);
+        }
+    }
+
+    private TerminalRuntime createRuntimeWithRetry(CreateSessionRequest request,
+                                                   SessionCreateParams params,
+                                                   SessionType sessionType,
+                                                   String sessionId) throws IOException {
+        if (sessionType != SessionType.LOCAL_PTY) {
+            return createRuntime(request, params, sessionType);
+        }
+
+        IOException lastIoException = null;
+        RuntimeException lastRuntimeException = null;
+        for (int attempt = 1; attempt <= LOCAL_PTY_CREATE_MAX_ATTEMPTS; attempt++) {
+            try {
+                return createRuntime(request, params, sessionType);
+            } catch (IOException ex) {
+                lastIoException = ex;
+                if (attempt >= LOCAL_PTY_CREATE_MAX_ATTEMPTS) {
+                    throw ex;
+                }
+                log.warn("Failed to start local PTY session {} on attempt {}/{}; retrying",
+                    sessionId, attempt, LOCAL_PTY_CREATE_MAX_ATTEMPTS, ex);
+                sleepBeforeCreateRetry();
+            } catch (RuntimeException ex) {
+                lastRuntimeException = ex;
+                if (attempt >= LOCAL_PTY_CREATE_MAX_ATTEMPTS) {
+                    throw ex;
+                }
+                log.warn("Unexpected local PTY startup error for session {} on attempt {}/{}; retrying",
+                    sessionId, attempt, LOCAL_PTY_CREATE_MAX_ATTEMPTS, ex);
+                sleepBeforeCreateRetry();
+            }
+        }
+
+        if (lastIoException != null) {
+            throw lastIoException;
+        }
+        if (lastRuntimeException != null) {
+            throw lastRuntimeException;
+        }
+        throw new IllegalStateException("unreachable local PTY startup state");
+    }
+
+    private void sleepBeforeCreateRetry() {
+        try {
+            Thread.sleep(LOCAL_PTY_CREATE_RETRY_DELAY_MILLIS);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while retrying terminal startup", interruptedException);
         }
     }
 

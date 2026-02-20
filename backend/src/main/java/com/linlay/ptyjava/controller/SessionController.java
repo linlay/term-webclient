@@ -14,6 +14,8 @@ import com.linlay.ptyjava.service.ssh.SshCredentialNotFoundException;
 import com.linlay.ptyjava.service.ssh.SshSecurityException;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/sessions")
 public class SessionController {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionController.class);
 
     private final TerminalSessionService terminalSessionService;
 
@@ -103,6 +107,7 @@ public class SessionController {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException ex) {
+        log.error("Session operation failed", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(Map.of("error", "terminal session operation failed"));
     }

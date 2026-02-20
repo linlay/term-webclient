@@ -17,7 +17,23 @@ const AUTH_DISABLED_USERNAME = "anonymous";
 const MOBILE_BREAKPOINT_PX = 900;
 const DESKTOP_TERMINAL_FONT_SIZE = 14;
 const MOBILE_TERMINAL_FONT_SIZE = 10;
-const MOBILE_SHORTCUTS = [
+const MOBILE_SHORTCUTS_TERMINAL_SSH = [
+  { label: "ESC", seq: "\u001b" },
+  { label: "/", seq: "/" },
+  { label: "-", seq: "-" },
+  { label: "home", seq: "\u001b[H" },
+  { label: "end", seq: "\u001b[F" },
+  { label: "↑", seq: "\u001b[A" },
+  { label: "收起", action: "collapse" },
+  { label: "TAB", seq: "\t" },
+  { label: "删除", seq: "\u007f" },
+  { label: "粘贴", action: "paste" },
+  { label: "回车", seq: "\r" },
+  { label: "←", seq: "\u001b[D" },
+  { label: "↓", seq: "\u001b[B" },
+  { label: "→", seq: "\u001b[C" }
+];
+const MOBILE_SHORTCUTS_CODEX_CLAUDE = [
   { label: "ESC", seq: "\u001b" },
   { label: "1", seq: "1" },
   { label: "2", seq: "2" },
@@ -26,9 +42,9 @@ const MOBILE_SHORTCUTS = [
   { label: "↑", seq: "\u001b[A" },
   { label: "收起", action: "collapse" },
   { label: "TAB", seq: "\t" },
-  { label: "CTRL+C", seq: "\u0003" },
-  { label: "CTRL+D", seq: "\u0004" },
-  { label: "CTRL+Z", seq: "\u001a" },
+  { label: "PLAN模式", seq: "\u001b[Z" },
+  { label: "粘贴", action: "paste" },
+  { label: "回车", seq: "\r" },
   { label: "←", seq: "\u001b[D" },
   { label: "↓", seq: "\u001b[B" },
   { label: "→", seq: "\u001b[C" }
@@ -74,6 +90,7 @@ const emptyState = document.getElementById("emptyState");
 const mobileShortcutBar = document.getElementById("mobileShortcutBar");
 const mobileShortcutToggleBtn = document.getElementById("mobileShortcutToggleBtn");
 const mobileShortcutKeys = document.getElementById("mobileShortcutKeys");
+const scrollToTerminalBottomBtn = document.getElementById("scrollToTerminalBottomBtn");
 const noticeBar = document.getElementById("noticeBar");
 const appRoot = document.getElementById("app");
 
@@ -216,6 +233,7 @@ function syncMobileViewportHeight() {
     document.documentElement.style.setProperty("--mobile-vh", `${viewportHeight}px`);
   }
   syncMobileShortcutInset();
+  updateScrollToBottomFabVisibility();
   scheduleActiveFit(30);
 }
 
@@ -270,6 +288,7 @@ function setMobileShortcutsExpanded(expanded) {
     mobileShortcutToggleBtn.setAttribute("aria-expanded", String(mobileShortcutsExpanded));
   }
   syncMobileShortcutInset();
+  updateScrollToBottomFabVisibility();
   scheduleActiveFit(30);
 }
 
@@ -283,12 +302,76 @@ function sendMobileShortcut(sequence) {
   tab.term.focus();
 }
 
+function resolveMobileShortcutsForActiveTab() {
+  const tab = getActiveTab();
+  if (!tab) {
+    return MOBILE_SHORTCUTS_TERMINAL_SSH;
+  }
+  const toolId = typeof tab.toolId === "string" ? tab.toolId.trim().toLowerCase() : "";
+  if (tab.sessionType === "SSH_SHELL" || toolId === "ssh" || toolId === "terminal") {
+    return MOBILE_SHORTCUTS_TERMINAL_SSH;
+  }
+  if (toolId === "codex" || toolId === "claude") {
+    return MOBILE_SHORTCUTS_CODEX_CLAUDE;
+  }
+  return MOBILE_SHORTCUTS_TERMINAL_SSH;
+}
+
+async function pasteFromClipboardToActiveTab() {
+  const tab = getActiveTab();
+  if (!tab) {
+    showNotice("No active tab", "warn");
+    return;
+  }
+  try {
+    if (!navigator.clipboard?.readText) {
+      throw new Error("Clipboard API unavailable");
+    }
+    const text = await navigator.clipboard.readText();
+    if (!text) {
+      tab.term.focus();
+      return;
+    }
+    const sent = sendInput(tab, text);
+    if (!sent) {
+      showNotice("Terminal is not connected", "warn", 2600);
+      return;
+    }
+    tab.term.focus();
+  } catch {
+    showNotice("Paste failed in this browser context", "warn", 2600);
+  }
+}
+
+function isActiveTerminalAtBottom() {
+  const tab = getActiveTab();
+  const buffer = tab?.term?.buffer?.active;
+  if (!buffer) {
+    return true;
+  }
+  const viewportY = Number(buffer.viewportY);
+  const baseY = Number(buffer.baseY);
+  if (!Number.isFinite(viewportY) || !Number.isFinite(baseY)) {
+    return true;
+  }
+  return viewportY >= baseY;
+}
+
+function updateScrollToBottomFabVisibility() {
+  if (!scrollToTerminalBottomBtn) {
+    return;
+  }
+  const hasActiveTab = Boolean(getActiveTab());
+  const shouldShow = isMobileViewport() && hasActiveTab && !isActiveTerminalAtBottom();
+  scrollToTerminalBottomBtn.classList.toggle("visible", shouldShow);
+}
+
 function renderMobileShortcutKeys() {
   if (!mobileShortcutKeys) {
     return;
   }
   mobileShortcutKeys.innerHTML = "";
-  MOBILE_SHORTCUTS.forEach((shortcut) => {
+  resolveMobileShortcutsForActiveTab().forEach((shortcut) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "mobile-shortcut-key";
@@ -732,6 +815,11 @@ function createTab(spec) {
     }
     sendInput(tab, text);
   });
+  term.onScroll(() => {
+    if (activeTabId === tab.tabId) {
+      updateScrollToBottomFabVisibility();
+    }
+  });
 
   tabs.set(tabId, tab);
   tabOrder.push(tabId);
@@ -773,6 +861,8 @@ function activateTab(tabId) {
   });
 
   renderTabs();
+  renderMobileShortcutKeys();
+  updateScrollToBottomFabVisibility();
 
   requestAnimationFrame(() => {
     fitAndResize(tab);
@@ -1026,6 +1116,7 @@ function attachSocket(tab) {
     if (activeTabId === tab.tabId) {
       fitAndResize(tab);
       tab.term.focus();
+      updateScrollToBottomFabVisibility();
     }
   };
 
@@ -1048,6 +1139,9 @@ function attachSocket(tab) {
         tab.lastSeenSeq = seq;
       }
       tab.term.write(msg.data || "");
+      if (activeTabId === tab.tabId) {
+        updateScrollToBottomFabVisibility();
+      }
       return;
     }
 
@@ -1060,6 +1154,9 @@ function attachSocket(tab) {
       tab.exitCode = String(msg.exitCode ?? "-");
       clearReconnectTimer(tab);
       setConnectionState(tab, "exited");
+      if (activeTabId === tab.tabId) {
+        updateScrollToBottomFabVisibility();
+      }
       return;
     }
 
@@ -1074,6 +1171,9 @@ function attachSocket(tab) {
       } else {
         setConnectionState(tab, "error");
       }
+      if (activeTabId === tab.tabId) {
+        updateScrollToBottomFabVisibility();
+      }
     }
   };
 
@@ -1085,6 +1185,9 @@ function attachSocket(tab) {
     tab.socket = null;
     if (tab.connectionState !== "error" && tab.connectionState !== "exited") {
       setConnectionState(tab, "disconnected", { lost: tab.lost });
+    }
+    if (activeTabId === tab.tabId) {
+      updateScrollToBottomFabVisibility();
     }
     scheduleReconnect(tab);
   };
@@ -1310,6 +1413,8 @@ async function closeTab(tabId, options = {}) {
 
   renderTabs();
   updateEmptyState();
+  renderMobileShortcutKeys();
+  updateScrollToBottomFabVisibility();
   persistTabsState();
   renderAgentSidebar();
 }
@@ -1433,6 +1538,10 @@ function upsertSharedSessionTab(entry) {
     } else if (tab.connectionState !== "connecting" && tab.connectionState !== "connected") {
       tab.connectionState = remoteState;
     }
+  }
+  if (activeTabId === tab.tabId) {
+    renderMobileShortcutKeys();
+    updateScrollToBottomFabVisibility();
   }
 
   if (remoteState === "exited") {
@@ -2624,11 +2733,25 @@ function bindEvents() {
       setMobileShortcutsExpanded(false);
       return;
     }
+    if (action === "paste") {
+      void pasteFromClipboardToActiveTab();
+      return;
+    }
     const sequence = button.dataset.seq;
     if (!sequence) {
       return;
     }
     sendMobileShortcut(sequence);
+  });
+
+  scrollToTerminalBottomBtn?.addEventListener("click", () => {
+    const tab = getActiveTab();
+    if (!tab?.term) {
+      return;
+    }
+    tab.term.scrollToBottom();
+    tab.term.focus();
+    updateScrollToBottomFabVisibility();
   });
 
   loginForm.addEventListener("submit", (event) => {
@@ -2954,15 +3077,18 @@ function bindEvents() {
       if (active) {
         fitAndResize(active);
       }
+      updateScrollToBottomFabVisibility();
     }, 140);
   });
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", () => {
       syncMobileViewportHeight();
+      updateScrollToBottomFabVisibility();
     });
     window.visualViewport.addEventListener("scroll", () => {
       syncMobileViewportHeight();
+      updateScrollToBottomFabVisibility();
     });
   }
 
@@ -2982,6 +3108,7 @@ function bindEvents() {
   if (typeof ResizeObserver !== "undefined") {
     layoutObserver = new ResizeObserver(() => {
       scheduleActiveFit(30);
+      updateScrollToBottomFabVisibility();
     });
     layoutObserver.observe(terminalArea);
   }

@@ -20,6 +20,7 @@ import com.linlay.ptyjava.service.ssh.SshConnectionPool;
 import com.linlay.ptyjava.service.ssh.SshCredentialStore;
 import com.pty4j.PtyProcess;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.file.Path;
@@ -179,6 +180,32 @@ class TerminalSessionServiceTest {
         assertEquals("-lc", command.get(1));
         assertTrue(command.get(2).contains("export https_proxy"));
         assertTrue(command.get(2).contains("exec 'codex' '--profile' 'fast'"));
+    }
+
+    @Test
+    void createSessionRetriesLocalPtyStartupOnce(@TempDir Path tempDir) throws Exception {
+        TerminalProperties props = baseProps(tempDir);
+        PtyProcessLauncher launcher = mock(PtyProcessLauncher.class);
+        PtyProcess process = mock(PtyProcess.class);
+
+        when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
+        when(process.getInputStream()).thenReturn(new PipedInputStream(new PipedOutputStream()));
+        when(launcher.start(any(), any(), any(), eq(120), eq(30)))
+            .thenThrow(new IOException("temporary pty startup failure"))
+            .thenReturn(process);
+
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            launcher,
+            mock(SshCredentialStore.class),
+            mock(SshConnectionPool.class),
+            new ObjectMapper()
+        );
+        servicesToClose.add(service);
+
+        CreateSessionResponse response = service.createSession(new CreateSessionRequest());
+        assertNotNull(response.sessionId());
+        verify(launcher, org.mockito.Mockito.times(2)).start(any(), any(), eq(tempDir.toString()), eq(120), eq(30));
     }
 
     @Test
