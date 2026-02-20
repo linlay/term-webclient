@@ -7,8 +7,6 @@ spring:
     name: pty-web-backend
   config:
     import:
-      - optional:file:application-local.yml
-      - optional:file:backend/application-local.yml
       - optional:file:backend/application.yml
 
 terminal:

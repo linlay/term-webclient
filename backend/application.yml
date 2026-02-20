@@ -1,6 +1,10 @@
 # External deployment overrides for backend.
 # This file is imported by src/main/resources/application.yml with higher precedence.
 
+server:
+  address: 127.0.0.1
+  port: 11948
+
 terminal:
   cli-clients:
     - id: codex

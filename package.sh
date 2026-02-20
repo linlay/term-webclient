@@ -43,12 +43,8 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/logs" "$OUTPUT_DIR/run"
 
 cp "$backend_jar" "$OUTPUT_DIR/backend/app.jar"
-cp "$BACKEND_DIR/src/main/resources/application.yml" "$OUTPUT_DIR/backend/application-default.yml"
 if [[ -f "$BACKEND_DIR/application.yml" ]]; then
   cp "$BACKEND_DIR/application.yml" "$OUTPUT_DIR/backend/application.yml"
-fi
-if [[ -f "$BACKEND_DIR/application-local.yml" ]]; then
-  cp "$BACKEND_DIR/application-local.yml" "$OUTPUT_DIR/backend/application-local.yml"
 fi
 
 cp "$FRONTEND_DIR/server.js" "$OUTPUT_DIR/frontend/server.js"

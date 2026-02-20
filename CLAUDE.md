@@ -70,7 +70,6 @@ React 模式已包含：登录、Tab 管理、LOCAL_PTY 会话创建、xterm 容
 
 - `release/backend/app.jar`
 - `release/backend/application.yml`（若存在）
-- `release/backend/application-default.yml`
 - `release/frontend/dist`
 - `release/frontend/server.js`
 - `release/frontend/node_modules`（生产依赖）
@@ -109,11 +108,11 @@ cd frontend && npm run dev
 
 启动脚本支持：
 
-- `BACKEND_HOST`（默认 `127.0.0.1`）
-- `BACKEND_PORT`（默认 `11948`）
+- `BACKEND_HOST`（默认读取 `backend/application.yml`，未设置回退 `127.0.0.1`）
+- `BACKEND_PORT`（默认读取 `backend/application.yml`，未设置回退 `11948`）
 - `FRONTEND_HOST`（默认 `0.0.0.0`）
 - `FRONTEND_PORT`（默认 `11949`）
-- `BACKEND_ORIGIN`（默认 `http://127.0.0.1:11948`）
+- `BACKEND_ORIGIN`（默认使用后端生效地址拼接）
 - `BACKEND_JAVA_OPTS`（默认 `-Xms256m -Xmx512m`）
 - `BACKEND_ARGS`（附加 Spring 参数）
 

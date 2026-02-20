@@ -2,7 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RELEASE_DIR="${1:-$ROOT_DIR/release}"
+if [[ $# -ge 1 ]]; then
+  RELEASE_DIR="$1"
+elif [[ -d "$ROOT_DIR/run" ]]; then
+  RELEASE_DIR="$ROOT_DIR"
+else
+  RELEASE_DIR="$ROOT_DIR/release"
+fi
 RUN_DIR="$RELEASE_DIR/run"
 
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
