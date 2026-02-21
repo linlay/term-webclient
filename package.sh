@@ -47,7 +47,7 @@ echo "[package] building frontend dist"
 
 echo "[package] preparing release directory"
 rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/logs" "$OUTPUT_DIR/run"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/logs" "$OUTPUT_DIR/run" "$OUTPUT_DIR/data"
 
 cp "$backend_jar" "$OUTPUT_DIR/backend/app.jar"
 if [[ -f "$BACKEND_DIR/application.yml" ]]; then

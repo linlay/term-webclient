@@ -1,9 +1,10 @@
 # External deployment overrides for backend.
 # This file is imported by src/main/resources/application.yml with higher precedence.
+# Values can be overridden by environment variables (or release root .env).
 
 server:
-  address: 127.0.0.1
-  port: 11930
+  address: ${BACKEND_HOST:127.0.0.1}
+  port: ${BACKEND_PORT:11930}
 
 terminal:
   cli-clients:
@@ -28,26 +29,27 @@ terminal:
         - export HTTPS_PROXY="http://127.0.0.1:8001"
       shell: /bin/zsh
   ssh:
-    credentials-file: data/ssh-credentials.json
+    credentials-file: ${TERMINAL_SSH_CREDENTIALS_FILE:data/ssh-credentials.json}
+    master-key-env: ${TERMINAL_SSH_MASTER_KEY_ENV:TERMINAL_SSH_MASTER_KEY}
     # Set via environment variable TERMINAL_SSH_MASTER_KEY (recommended) or here:
     # master-key:
 
 auth:
-  enabled: true
-  username: admin
+  enabled: ${AUTH_ENABLED:true}
+  username: ${AUTH_USERNAME:admin}
   # Generate bcrypt hash: htpasswd -nbBC 10 '' 'yourpassword' | cut -d: -f2
-  password-hash-bcrypt: $2a$10$XkbhEhxiT/4JC.zkZD9uxuEFf7za4AxEBPbIFmUR41qY0.spPk41q
-  session-ttl-seconds: 43200
-  login-rate-limit-enabled: true
-  login-rate-limit-window-seconds: 60
-  login-rate-limit-max-attempts: 10
+  password-hash-bcrypt: ${AUTH_PASSWORD_HASH_BCRYPT:$2y$10$AZz4SuIf2MU0qLp7JW5VW.0bFnXL4EeoIqEV.oZV9rmOr15bUhUPG}
+  session-ttl-seconds: ${AUTH_SESSION_TTL_SECONDS:43200}
+  login-rate-limit-enabled: ${AUTH_LOGIN_RATE_LIMIT_ENABLED:true}
+  login-rate-limit-window-seconds: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS:60}
+  login-rate-limit-max-attempts: ${AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS:10}
 
 app-auth:
-  enabled: true
+  enabled: ${APP_AUTH_ENABLED:true}
   # local-public-key takes precedence over jwks-uri when configured.
-  local-public-key: ""
-  jwks-uri: ""
-  issuer: ""
-  jwks-cache-seconds: 300
-  audience: ""
-  clock-skew-seconds: 30
+  local-public-key: ${APP_AUTH_LOCAL_PUBLIC_KEY:}
+  jwks-uri: ${APP_AUTH_JWKS_URI:}
+  issuer: ${APP_AUTH_ISSUER:}
+  jwks-cache-seconds: ${APP_AUTH_JWKS_CACHE_SECONDS:300}
+  audience: ${APP_AUTH_AUDIENCE:}
+  clock-skew-seconds: ${APP_AUTH_CLOCK_SKEW_SECONDS:30}

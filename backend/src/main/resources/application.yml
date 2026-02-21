@@ -8,6 +8,7 @@ spring:
   config:
     import:
       - optional:file:backend/application.yml
+      - optional:file:.env[.properties]
 
 terminal:
   default-command: codex

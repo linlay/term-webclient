@@ -53,6 +53,27 @@ read_env_config() {
   ' "$file"
 }
 
+resolve_placeholder_value() {
+  local value="$1"
+  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-|:)([^}]*)\}$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    local default_value="${BASH_REMATCH[3]}"
+    local env_value="${!var_name:-}"
+    if [[ -n "$env_value" ]]; then
+      echo "$env_value"
+    else
+      echo "$default_value"
+    fi
+    return
+  fi
+  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    echo "${!var_name:-}"
+    return
+  fi
+  echo "$value"
+}
+
 is_running() {
   local pid="$1"
   kill -0 "$pid" >/dev/null 2>&1
@@ -179,8 +200,10 @@ resolve_backend_port() {
   local backend_port="11930"
   local backend_config="$release_dir/backend/application.yml"
   if [[ -f "$backend_config" ]]; then
+    local config_backend_port_raw
     local config_backend_port
-    config_backend_port="$(read_server_config "$backend_config" "port" || true)"
+    config_backend_port_raw="$(read_server_config "$backend_config" "port" || true)"
+    config_backend_port="$(resolve_placeholder_value "$config_backend_port_raw")"
     if [[ -n "$config_backend_port" ]]; then
       backend_port="$config_backend_port"
     fi

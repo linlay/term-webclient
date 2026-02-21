@@ -120,7 +120,7 @@ auth:
   username: admin
   password-hash-bcrypt: "$2b$10$..."
 ```
-当前的默认密码是 Admin@Term
+当前的默认密码是 password
 
 登录限流：默认 60 秒窗口内最多 10 次失败尝试（按 IP + 用户名）。
 

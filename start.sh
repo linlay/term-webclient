@@ -83,6 +83,27 @@ read_env_config() {
   ' "$file"
 }
 
+resolve_placeholder_value() {
+  local value="$1"
+  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-|:)([^}]*)\}$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    local default_value="${BASH_REMATCH[3]}"
+    local env_value="${!var_name:-}"
+    if [[ -n "$env_value" ]]; then
+      echo "$env_value"
+    else
+      echo "$default_value"
+    fi
+    return
+  fi
+  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    echo "${!var_name:-}"
+    return
+  fi
+  echo "$value"
+}
+
 is_running() {
   local pid="$1"
   kill -0 "$pid" >/dev/null 2>&1
@@ -96,13 +117,15 @@ require_file() {
   fi
 }
 
-mkdir -p "$RUN_DIR" "$LOG_DIR"
+mkdir -p "$RUN_DIR" "$LOG_DIR" "$RELEASE_DIR/data"
 
 default_backend_host="127.0.0.1"
 default_backend_port="11930"
 if [[ -f "$BACKEND_CONFIG_FILE" ]]; then
-  config_backend_host="$(read_server_config "$BACKEND_CONFIG_FILE" "address" || true)"
-  config_backend_port="$(read_server_config "$BACKEND_CONFIG_FILE" "port" || true)"
+  config_backend_host_raw="$(read_server_config "$BACKEND_CONFIG_FILE" "address" || true)"
+  config_backend_port_raw="$(read_server_config "$BACKEND_CONFIG_FILE" "port" || true)"
+  config_backend_host="$(resolve_placeholder_value "$config_backend_host_raw")"
+  config_backend_port="$(resolve_placeholder_value "$config_backend_port_raw")"
   if [[ -n "$config_backend_host" ]]; then
     default_backend_host="$config_backend_host"
   fi
