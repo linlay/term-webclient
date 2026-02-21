@@ -46,7 +46,7 @@ describe("apiClient", () => {
 
     await apiClient.getWorkdirTree("/tmp/my folder");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/webapi/workdirTree?path=%2Ftmp%2Fmy+folder");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/workdirTree?path=%2Ftmp%2Fmy+folder");
   });
 
   it("requests snapshot with afterSeq", async () => {
@@ -61,7 +61,7 @@ describe("apiClient", () => {
     );
 
     await apiClient.getSessionSnapshot("s1", 12);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/webapi/sessions/s1/snapshot?afterSeq=12");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/snapshot?afterSeq=12");
   });
 
   it("supports agent run create / approve / abort APIs", async () => {
@@ -101,8 +101,8 @@ describe("apiClient", () => {
     await apiClient.approveAgentRun("s1", "r1", { confirmRisk: true });
     await apiClient.abortAgentRun("s1", "r1", { reason: "manual abort" });
 
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/webapi/sessions/s1/agent/runs");
-    expect(fetchSpy.mock.calls[1]?.[0]).toBe("/webapi/sessions/s1/agent/runs/r1/approve");
-    expect(fetchSpy.mock.calls[2]?.[0]).toBe("/webapi/sessions/s1/agent/runs/r1/abort");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/agent/runs");
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe("/term/api/sessions/s1/agent/runs/r1/approve");
+    expect(fetchSpy.mock.calls[2]?.[0]).toBe("/term/api/sessions/s1/agent/runs/r1/abort");
   });
 });

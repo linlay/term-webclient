@@ -100,56 +100,62 @@ app.get("/healthz", (_req, res) => {
   res.status(200).type("text/plain").send("ok");
 });
 
-const webApiProxy = createProxyMiddleware({
-  pathFilter: "/webapi",
-  target: BACKEND_ORIGIN,
-  changeOrigin: true,
-  ws: false
-});
+function createPrefixedProxy(pathFilter, targetPrefix, ws = false) {
+  return createProxyMiddleware({
+    pathFilter: (pathname) => pathname === pathFilter || pathname.startsWith(`${pathFilter}/`),
+    target: BACKEND_ORIGIN,
+    changeOrigin: true,
+    ws,
+    pathRewrite: (incomingPath) => (
+      incomingPath.startsWith(pathFilter)
+        ? `${targetPrefix}${incomingPath.slice(pathFilter.length)}`
+        : incomingPath
+    )
+  });
+}
 
-const appApiProxy = createProxyMiddleware({
-  pathFilter: "/appapi",
-  target: BACKEND_ORIGIN,
-  changeOrigin: true,
-  ws: false
-});
+const termApiProxy = createPrefixedProxy("/term/api", "/webapi");
+const appTermApiProxy = createPrefixedProxy("/appterm/api", "/appapi");
+const termWsProxy = createPrefixedProxy("/term/ws", "/ws", true);
+const appTermWsProxy = createPrefixedProxy("/appterm/ws", "/ws", true);
 
-const wsProxy = createProxyMiddleware({
-  pathFilter: "/ws",
-  target: BACKEND_ORIGIN,
-  changeOrigin: true,
-  ws: true
-});
+app.use(termApiProxy);
+app.use(appTermApiProxy);
+app.use(termWsProxy);
+app.use(appTermWsProxy);
 
-app.use(webApiProxy);
-app.use(appApiProxy);
-app.use(wsProxy);
-
-app.use(express.static(distDir, { index: false }));
+app.use("/term", express.static(distDir, { index: false }));
+app.use("/appterm", express.static(distDir, { index: false }));
 
 app.use((req, res, next) => {
   if (req.method !== "GET") {
     next();
     return;
   }
+  const isTermApiPath = req.path === "/term/api" || req.path.startsWith("/term/api/");
+  const isAppTermApiPath = req.path === "/appterm/api" || req.path.startsWith("/appterm/api/");
+  const isTermWsPath = req.path === "/term/ws" || req.path.startsWith("/term/ws/");
+  const isAppTermWsPath = req.path === "/appterm/ws" || req.path.startsWith("/appterm/ws/");
   if (
-    req.path.startsWith("/webapi")
-    || req.path.startsWith("/appapi")
-    || req.path.startsWith("/ws")
+    isTermApiPath
+    || isAppTermApiPath
+    || isTermWsPath
+    || isAppTermWsPath
     || req.path === "/healthz"
   ) {
     next();
     return;
   }
-  if (req.path === "/") {
-    res.redirect(302, "/term");
+  if (req.path === "/term") {
+    res.redirect(302, "/term/");
     return;
   }
-  const isSpaPath = req.path === "/term"
-    || req.path === "/appterm"
-    || req.path.startsWith("/term/")
-    || req.path.startsWith("/appterm/");
-  if (!isSpaPath) {
+  if (req.path === "/appterm") {
+    res.redirect(302, "/appterm/");
+    return;
+  }
+  const isSpaEntryPath = req.path === "/term/" || req.path === "/appterm/";
+  if (!isSpaEntryPath) {
     next();
     return;
   }
@@ -158,8 +164,13 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 server.on("upgrade", (req, socket, head) => {
-  if (req.url && req.url.startsWith("/ws/")) {
-    wsProxy.upgrade(req, socket, head);
+  const pathName = req.url ? req.url.split("?", 1)[0] : "";
+  if (pathName === "/term/ws" || pathName.startsWith("/term/ws/")) {
+    termWsProxy.upgrade(req, socket, head);
+    return;
+  }
+  if (pathName === "/appterm/ws" || pathName.startsWith("/appterm/ws/")) {
+    appTermWsProxy.upgrade(req, socket, head);
     return;
   }
   socket.destroy();

@@ -6,24 +6,34 @@ export default defineConfig(({ mode }) => {
   const devProxyTarget = env.VITE_DEV_PROXY_TARGET || "http://127.0.0.1:11931";
 
   return {
+    base: "./",
     plugins: [react()],
     server: {
       host: "0.0.0.0",
       port: 11931,
       allowedHosts: true,
       proxy: {
-        "/webapi": {
-          target: devProxyTarget,
-          changeOrigin: true
-        },
-        "/appapi": {
-          target: devProxyTarget,
-          changeOrigin: true
-        },
-        "/ws": {
+        "/term/api": {
           target: devProxyTarget,
           changeOrigin: true,
-          ws: true
+          rewrite: (path) => path.replace(/^\/term\/api/u, "/webapi")
+        },
+        "/appterm/api": {
+          target: devProxyTarget,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/appterm\/api/u, "/appapi")
+        },
+        "/term/ws": {
+          target: devProxyTarget,
+          changeOrigin: true,
+          ws: true,
+          rewrite: (path) => path.replace(/^\/term\/ws/u, "/ws")
+        },
+        "/appterm/ws": {
+          target: devProxyTarget,
+          changeOrigin: true,
+          ws: true,
+          rewrite: (path) => path.replace(/^\/appterm\/ws/u, "/ws")
         }
       }
     }

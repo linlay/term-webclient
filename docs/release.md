@@ -52,17 +52,17 @@ mvn spring-boot:run
 
 ```bash
 curl -sS http://127.0.0.1:11931/healthz
-curl -sS http://127.0.0.1:11931/webapi/version
-curl -sS http://127.0.0.1:11931/appapi/version
+curl -sS http://127.0.0.1:11931/term/api/version
+curl -sS http://127.0.0.1:11931/appterm/api/version
 ```
 
 5. Smoke test:
 
-- Open `http://127.0.0.1:11931/term` and login
+- Open `http://127.0.0.1:11931/term/` and login
 - Create local PTY session
 - Command echo
 - Browser refresh and reconnect
-- Open `http://127.0.0.1:11931/appterm` in WebView and verify token-based access
+- Open `http://127.0.0.1:11931/appterm/` in WebView and verify token-based access
 
 ## Rollback Steps
 

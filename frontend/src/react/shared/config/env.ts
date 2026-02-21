@@ -16,12 +16,17 @@ export function uiBasePath(pathname: string = window.location.pathname): "/term"
   return isAppMode(pathname) ? "/appterm" : "/term";
 }
 
-export function apiPrefix(pathname: string = window.location.pathname): "/webapi" | "/appapi" {
-  return isAppMode(pathname) ? "/appapi" : "/webapi";
+export function apiPrefix(pathname: string = window.location.pathname): "/term/api" | "/appterm/api" {
+  return isAppMode(pathname) ? "/appterm/api" : "/term/api";
 }
 
 export function apiPath(path: string, pathname: string = window.location.pathname): string {
-  if (path.startsWith("/webapi/") || path.startsWith("/appapi/") || path === "/webapi" || path === "/appapi") {
+  if (
+    path.startsWith("/term/api/")
+    || path.startsWith("/appterm/api/")
+    || path === "/term/api"
+    || path === "/appterm/api"
+  ) {
     return path;
   }
   const normalized = path.startsWith("/") ? path : `/${path}`;
@@ -43,9 +48,32 @@ export function wsBaseFromApiBase(): string {
   return `${wsProtocol}//${parsed.host}`;
 }
 
-export function toWsUrl(path: string): string {
+export function wsPrefix(pathname: string = window.location.pathname): "/term/ws" | "/appterm/ws" {
+  return isAppMode(pathname) ? "/appterm/ws" : "/term/ws";
+}
+
+function wsPath(path: string, pathname: string = window.location.pathname): string {
+  if (
+    path.startsWith("/term/ws/")
+    || path.startsWith("/appterm/ws/")
+    || path === "/term/ws"
+    || path === "/appterm/ws"
+  ) {
+    return path;
+  }
+
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const [pathPart, query = ""] = normalized.split("?", 2);
+  const suffix = query ? `?${query}` : "";
+  if (pathPart === "/ws" || pathPart.startsWith("/ws/")) {
+    return `${wsPrefix(pathname)}${pathPart.slice("/ws".length)}${suffix}`;
+  }
+  return `${wsPrefix(pathname)}${pathPart}${suffix}`;
+}
+
+export function toWsUrl(path: string, pathname: string = window.location.pathname): string {
   if (path.startsWith("ws://") || path.startsWith("wss://")) {
     return path;
   }
-  return `${wsBaseFromApiBase()}${path}`;
+  return `${wsBaseFromApiBase()}${wsPath(path, pathname)}`;
 }

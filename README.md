@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-访问 `http://localhost:11931/term`。
+访问 `http://localhost:11931/term/`（Web）或 `http://localhost:11931/appterm/`（App WebView）。
 
 ### 一键打包部署
 
@@ -100,7 +100,7 @@ npm run dev
 
 ### Web 登录（/term）
 
-访问 `/term` 时需要用户名密码登录。
+访问 `/term/` 时需要用户名密码登录。
 
 **设置密码（bcrypt，推荐）**：
 
@@ -126,7 +126,7 @@ auth:
 
 ### App Token 认证（/appterm）
 
-访问 `/appterm` 时使用 JWT Bearer Token（适用于嵌入 WebView 场景）。
+访问 `/appterm/` 时使用 JWT Bearer Token（适用于嵌入 WebView 场景）。
 
 - App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）
 - 401 时自动向 App 请求新 token 并重放请求
@@ -163,7 +163,7 @@ export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
 ```bash
-curl -X POST http://127.0.0.1:11930/webapi/ssh/credentials \
+curl -X POST http://127.0.0.1:11931/term/api/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
     "host": "10.0.0.2",
@@ -178,7 +178,7 @@ curl -X POST http://127.0.0.1:11930/webapi/ssh/credentials \
 ### SSH Exec（结构化命令执行）
 
 ```bash
-curl -X POST http://127.0.0.1:11930/webapi/ssh/exec \
+curl -X POST http://127.0.0.1:11931/term/api/ssh/exec \
   -H "content-type: application/json" \
   -d '{
     "credentialId": "<credential-id>",
@@ -273,7 +273,7 @@ APP_ENV=production ./start.sh /tmp/pty-release
 
 ### Nginx 反向代理
 
-配置样例见 `deploy/nginx/pty.linlay.cc.conf`，职责：
+配置样例见 `deploy/nginx/pty.linlay.cc.conf`（独占域名）与 `deploy/nginx/app.linlay.cc.shared.conf`（共享域名，仅转发 `/term`、`/appterm` 路径树），职责：
 
 - `80 → 443` 重定向
 - `443` TLS 终止
@@ -303,8 +303,7 @@ curl http://127.0.0.1:11931/healthz
 | 路径 | 行为 |
 |---|---|
 | `/healthz` | 返回 200 OK |
-| `/webapi/*`、`/appapi/*` | HTTP 反向代理到后端 |
-| `/ws/*` | WebSocket 反向代理到后端 |
-| `/term`、`/appterm` | 返回 `index.html`（SPA） |
-| `/` | 重定向到 `/term` |
-| 其他 | 静态文件（`dist/`） |
+| `/term/api/*`、`/appterm/api/*` | HTTP 反向代理到后端（分别 rewrite 到 `/webapi/*`、`/appapi/*`） |
+| `/term/ws/*`、`/appterm/ws/*` | WebSocket 反向代理到后端（rewrite 到 `/ws/*`） |
+| `/term/assets/*`、`/appterm/assets/*` | 返回静态资源（`dist/assets`） |
+| `/term/`、`/appterm/` | 返回 `index.html`（SPA 入口） |
