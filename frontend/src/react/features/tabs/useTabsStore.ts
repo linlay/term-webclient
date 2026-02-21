@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CreateSessionRequest, SessionType } from "../../shared/api/types";
+import { generateId } from "../../shared/utils/id";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "exited" | "error";
 
@@ -46,13 +47,6 @@ interface TabsState {
   ) => void;
 }
 
-function makeId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -70,7 +64,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   addTab(tab) {
-    const localId = makeId();
+    const localId = generateId();
     const next: TerminalTab = {
       ...tab,
       localId,

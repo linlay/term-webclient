@@ -6,7 +6,6 @@ import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.ssh.CreateSshCredentialRequest;
 import com.linlay.ptyjava.model.ssh.SshAuthType;
 import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
-import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -130,12 +129,12 @@ public class SshCredentialStore {
         }
     }
 
-    public List<SshCredentialSummaryResponse> listCredentials() {
+    public List<SshCredentialResponse> listCredentials() {
         lock.lock();
         try {
             CredentialFile file = loadFile();
             return file.credentials.stream()
-                .map(item -> new SshCredentialSummaryResponse(
+                .map(item -> new SshCredentialResponse(
                     item.credentialId,
                     item.host,
                     item.port,

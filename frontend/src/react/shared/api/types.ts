@@ -63,16 +63,6 @@ export interface SshCredentialSummaryResponse {
   updatedAt: string;
 }
 
-export interface SshCredentialResponse {
-  credentialId: string;
-  host: string;
-  port: number;
-  username: string;
-  authType: "PASSWORD" | "PRIVATE_KEY";
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface SshPreflightResponse {
   credentialId: string;
   success: boolean;

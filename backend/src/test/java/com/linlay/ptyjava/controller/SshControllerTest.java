@@ -13,7 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.ssh.SshAuthType;
 import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
-import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import com.linlay.ptyjava.model.ssh.SshPreflightResponse;
 import com.linlay.ptyjava.service.ssh.SshCredentialStore;
 import com.linlay.ptyjava.service.ssh.SshCredentialNotFoundException;
@@ -50,7 +49,7 @@ class SshControllerTest {
     @Test
     void listCredentialsReturnsSummaries() throws Exception {
         when(sshCredentialStore.listCredentials()).thenReturn(List.of(
-            new SshCredentialSummaryResponse(
+            new SshCredentialResponse(
                 "cred-1",
                 "10.0.0.2",
                 22,

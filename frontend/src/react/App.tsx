@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
-import { COPILOT_REFRESH_MS, isAppMode } from "./shared/config/env";
-import { parseQuickCommand } from "./shared/terminal/quickCommand";
+import { isAppMode } from "./shared/config/env";
+import { generateId } from "./shared/utils/id";
+import { useViewportHeight } from "./shared/hooks/useViewportHeight";
+import { useNotice } from "./shared/hooks/useNotice";
+import { useCopilotState } from "./shared/hooks/useCopilotState";
+import { useMobileScroll } from "./shared/hooks/useMobileScroll";
 import { LoginForm } from "./features/auth/LoginForm";
 import { isUnauthorizedError, useAuthStatus, useLogout } from "./features/auth/useAuth";
 import { TerminalPane, type TerminalPaneHandle } from "./features/terminal/TerminalPane";
@@ -13,28 +17,8 @@ import { NewWindowModal } from "./features/layout/NewWindowModal";
 import { TabBar, canRebuildTab, type TabContextPayload } from "./features/layout/TabBar";
 import { TabContextMenu, type TabContextMenuState } from "./features/layout/TabContextMenu";
 import { CloseTabConfirmModal } from "./features/layout/CloseTabConfirmModal";
-import type { AgentRunResponse } from "./shared/api/types";
 import type { NewSessionCreatedPayload } from "./features/session/NewSessionForm";
 import type { TerminalTab } from "./features/tabs/useTabsStore";
-
-interface NoticeState {
-  message: string;
-  type: "info" | "warn" | "error" | "success";
-}
-
-function randomClientId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function parseSelectedPaths(value: string): string[] {
-  return value
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
 
 function isMobileViewport(): boolean {
   return window.innerWidth <= 900;
@@ -61,38 +45,37 @@ export default function App(): JSX.Element {
   const terminalHandleMapRef = useRef(new Map<string, TerminalPaneHandle>());
   const hydratedSessionsRef = useRef(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const noticeTimerRef = useRef<number | null>(null);
-
-  const [sideTab, setSideTab] = useState<"summary" | "agent">("summary");
-  const [summaryContext, setSummaryContext] = useState("");
-  const [summaryScreenText, setSummaryScreenText] = useState("");
-  const [summaryError, setSummaryError] = useState("");
-  const [summaryLoading, setSummaryLoading] = useState(false);
-
-  const [agentInstruction, setAgentInstruction] = useState("");
-  const [agentSelectedPaths, setAgentSelectedPaths] = useState("");
-  const [agentQuickCommand, setAgentQuickCommand] = useState("");
-  const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
-  const [agentError, setAgentError] = useState("");
-  const [agentBusy, setAgentBusy] = useState(false);
 
   const [isNewWindowOpen, setIsNewWindowOpen] = useState(false);
-  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
-  const [mobileShortcutsExpanded, setMobileShortcutsExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
-  const [showScrollBottomFab, setShowScrollBottomFab] = useState(false);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
 
-  const closeSession = useMutation({
-    mutationFn: (sessionId: string) => apiClient.closeSession(sessionId)
-  });
+  const { notice, showNotice } = useNotice();
+
+  useViewportHeight();
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.localId === activeTabId) ?? null,
     [activeTabId, tabs]
   );
+
+  const copilot = useCopilotState({
+    activeTab,
+    senderMapRef,
+    showNotice,
+    setTabAgentRunId
+  });
+
+  const { showScrollBottomFab, mobileShortcutsExpanded, setMobileShortcutsExpanded } = useMobileScroll({
+    isMobile,
+    activeTabId,
+    terminalHandleMapRef
+  });
+
+  const closeSession = useMutation({
+    mutationFn: (sessionId: string) => apiClient.closeSession(sessionId)
+  });
 
   const contextTab = useMemo(
     () => (tabContextMenu ? tabs.find((tab) => tab.localId === tabContextMenu.tabId) ?? null : null),
@@ -135,36 +118,16 @@ export default function App(): JSX.Element {
     refetchInterval: 2000
   });
 
-  function showNotice(message: string, type: NoticeState["type"] = "info", timeoutMs = 2600): void {
-    if (noticeTimerRef.current != null) {
-      window.clearTimeout(noticeTimerRef.current);
-      noticeTimerRef.current = null;
-    }
-    setNotice({ message, type });
-    noticeTimerRef.current = window.setTimeout(() => {
-      setNotice(null);
-      noticeTimerRef.current = null;
-    }, timeoutMs);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (noticeTimerRef.current != null) {
-        window.clearTimeout(noticeTimerRef.current);
-      }
-    };
-  }, []);
-
   useEffect(() => {
     if (hydratedSessionsRef.current || !listSessionsQuery.data) {
       return;
     }
     const loaded = listSessionsQuery.data.map((item) => ({
-      localId: randomClientId(),
+      localId: generateId(),
       title: item.title,
       sessionId: item.sessionId,
       wsUrl: item.wsUrl,
-      clientId: randomClientId(),
+      clientId: generateId(),
       status: "connecting" as const,
       createdAt: item.startedAt,
       sessionType: item.sessionType,
@@ -189,84 +152,6 @@ export default function App(): JSX.Element {
       window.removeEventListener("resize", onResize);
     };
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    let settleTimer: number | null = null;
-    let longSettleTimer: number | null = null;
-    const updateViewportVars = (useSafeMax = false) => {
-      const viewport = window.visualViewport;
-      const viewportHeight = viewport ? Math.max(0, viewport.height) : window.innerHeight;
-      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
-      const keyboardInset = viewport ? Math.max(0, layoutHeight - viewportHeight - viewport.offsetTop) : 0;
-
-      const effectiveHeight = useSafeMax && keyboardInset < 10
-        ? Math.max(viewportHeight, window.innerHeight)
-        : viewportHeight;
-
-      root.style.setProperty("--app-vh", `${Math.round(effectiveHeight)}px`);
-      root.style.setProperty("--mobile-shortcut-inset", `${Math.round(keyboardInset)}px`);
-    };
-    const scheduleSettledViewportUpdate = () => {
-      if (settleTimer != null) {
-        window.clearTimeout(settleTimer);
-      }
-      settleTimer = window.setTimeout(() => {
-        settleTimer = null;
-        updateViewportVars();
-      }, 150);
-    };
-    const handleViewportChange = () => {
-      updateViewportVars();
-      scheduleSettledViewportUpdate();
-    };
-    const handleFocusOut = () => {
-      scheduleSettledViewportUpdate();
-      if (longSettleTimer != null) {
-        window.clearTimeout(longSettleTimer);
-      }
-      longSettleTimer = window.setTimeout(() => {
-        longSettleTimer = null;
-        updateViewportVars(true);
-      }, 400);
-    };
-
-    updateViewportVars();
-
-    const viewport = window.visualViewport;
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("orientationchange", handleViewportChange);
-    window.addEventListener("pageshow", handleViewportChange);
-    viewport?.addEventListener("resize", handleViewportChange);
-    viewport?.addEventListener("scroll", handleViewportChange);
-    document.addEventListener("focusin", scheduleSettledViewportUpdate, true);
-    document.addEventListener("focusout", handleFocusOut, true);
-
-    return () => {
-      if (settleTimer != null) {
-        window.clearTimeout(settleTimer);
-      }
-      if (longSettleTimer != null) {
-        window.clearTimeout(longSettleTimer);
-      }
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("orientationchange", handleViewportChange);
-      window.removeEventListener("pageshow", handleViewportChange);
-      viewport?.removeEventListener("resize", handleViewportChange);
-      viewport?.removeEventListener("scroll", handleViewportChange);
-      document.removeEventListener("focusin", scheduleSettledViewportUpdate, true);
-      document.removeEventListener("focusout", handleFocusOut, true);
-    };
-  }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (!isMobile) {
-      root.style.setProperty("--mobile-shortcut-bar-offset", "0px");
-      return;
-    }
-    root.style.setProperty("--mobile-shortcut-bar-offset", mobileShortcutsExpanded ? "72px" : "42px");
-  }, [isMobile, mobileShortcutsExpanded]);
 
   useEffect(() => {
     if (!tabContextMenu) {
@@ -316,101 +201,15 @@ export default function App(): JSX.Element {
         setIsNewWindowOpen(false);
         return;
       }
-      if (isMobile && isCopilotOpen) {
-        setIsCopilotOpen(false);
+      if (isMobile && copilot.isCopilotOpen) {
+        copilot.setIsCopilotOpen(false);
       }
     };
     window.addEventListener("keydown", onEscape);
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, tabContextMenu]);
-
-  useEffect(() => {
-    if (!isMobile || !activeTabId) {
-      setShowScrollBottomFab(false);
-      return;
-    }
-
-    const updateVisibility = () => {
-      const handle = terminalHandleMapRef.current.get(activeTabId);
-      if (!handle) {
-        setShowScrollBottomFab(false);
-        return;
-      }
-      setShowScrollBottomFab(!handle.isNearBottom());
-    };
-
-    updateVisibility();
-    const timer = window.setInterval(updateVisibility, 150);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [activeTabId, isMobile]);
-
-  async function refreshSummary(): Promise<void> {
-    if (!activeTab?.sessionId) {
-      setSummaryContext("");
-      setSummaryScreenText("");
-      setSummaryError("No active tab");
-      return;
-    }
-    setSummaryLoading(true);
-    setSummaryError("");
-    try {
-      const [context, screen] = await Promise.all([
-        apiClient.getSessionContext(activeTab.sessionId),
-        apiClient.getSessionScreenText(activeTab.sessionId)
-      ]);
-      setSummaryContext(JSON.stringify(context, null, 2));
-      setSummaryScreenText(screen.text || "");
-    } catch (error) {
-      setSummaryError(error instanceof Error ? error.message : "Failed to load summary");
-    } finally {
-      setSummaryLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (sideTab !== "summary" || !isCopilotOpen) {
-      return;
-    }
-    void refreshSummary();
-    const timer = window.setInterval(() => {
-      void refreshSummary();
-    }, COPILOT_REFRESH_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideTab, activeTab?.sessionId, isCopilotOpen]);
-
-  async function refreshAgentRun(): Promise<void> {
-    if (!activeTab?.sessionId || !activeTab.agentRunId) {
-      setAgentRun(null);
-      return;
-    }
-    setAgentBusy(true);
-    setAgentError("");
-    try {
-      const run = await apiClient.getAgentRun(activeTab.sessionId, activeTab.agentRunId);
-      setAgentRun(run);
-      setTabAgentRunId(activeTab.localId, run.runId);
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : "Failed to refresh agent run");
-    } finally {
-      setAgentBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (sideTab !== "agent" || !isCopilotOpen) {
-      return;
-    }
-    void refreshAgentRun();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideTab, activeTab?.sessionId, activeTab?.agentRunId, isCopilotOpen]);
+  }, [copilot.isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, tabContextMenu]);
 
   async function copyText(value: string, successNotice: string): Promise<void> {
     if (!value.trim()) {
@@ -487,101 +286,15 @@ export default function App(): JSX.Element {
       replaceTabSession(localId, {
         sessionId: response.sessionId,
         wsUrl: response.wsUrl,
-        clientId: randomClientId(),
+        clientId: generateId(),
         createRequest: tab.createRequest
       });
       showNotice(`Rebuilt ${tab.title}`, "success", 2200);
     } catch (error) {
       setTabStatus(localId, "error");
-      setAgentError(error instanceof Error ? error.message : "Failed to rebuild session");
+      copilot.setAgentError(error instanceof Error ? error.message : "Failed to rebuild session");
       showNotice(error instanceof Error ? error.message : "Failed to rebuild session", "error", 3200);
     }
-  }
-
-  async function startAgentRun(): Promise<void> {
-    if (!activeTab?.sessionId) {
-      setAgentError("No active tab");
-      return;
-    }
-    const instruction = agentInstruction.trim();
-    if (!instruction) {
-      setAgentError("Instruction is required");
-      return;
-    }
-    setAgentBusy(true);
-    setAgentError("");
-    try {
-      const run = await apiClient.createAgentRun(activeTab.sessionId, {
-        instruction,
-        selectedPaths: parseSelectedPaths(agentSelectedPaths),
-        includeGitDiff: true
-      });
-      setAgentRun(run);
-      setTabAgentRunId(activeTab.localId, run.runId);
-      showNotice(`Agent run created: ${run.runId}`, "success", 2200);
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : "Failed to create agent run");
-    } finally {
-      setAgentBusy(false);
-    }
-  }
-
-  async function approveAgentRun(confirmRisk: boolean): Promise<void> {
-    if (!activeTab?.sessionId || !activeTab.agentRunId) {
-      setAgentError("No active run for current tab");
-      return;
-    }
-    setAgentBusy(true);
-    setAgentError("");
-    try {
-      const run = await apiClient.approveAgentRun(activeTab.sessionId, activeTab.agentRunId, { confirmRisk });
-      setAgentRun(run);
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : "Failed to approve run");
-    } finally {
-      setAgentBusy(false);
-    }
-  }
-
-  async function abortAgentRun(): Promise<void> {
-    if (!activeTab?.sessionId || !activeTab.agentRunId) {
-      setAgentError("No active run for current tab");
-      return;
-    }
-    setAgentBusy(true);
-    setAgentError("");
-    try {
-      const run = await apiClient.abortAgentRun(activeTab.sessionId, activeTab.agentRunId, { reason: "manual abort" });
-      setAgentRun(run);
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : "Failed to abort run");
-    } finally {
-      setAgentBusy(false);
-    }
-  }
-
-  function sendQuickCommand(): void {
-    if (!activeTab) {
-      setAgentError("No active tab");
-      return;
-    }
-    const payload = parseQuickCommand(agentQuickCommand);
-    if (!payload) {
-      setAgentError("Quick command is empty");
-      return;
-    }
-    const sender = senderMapRef.current.get(activeTab.localId);
-    if (!sender) {
-      setAgentError("Active terminal is not ready");
-      return;
-    }
-    const ok = sender(payload);
-    if (!ok) {
-      setAgentError("Active terminal websocket is not connected");
-      return;
-    }
-    setAgentQuickCommand("");
-    setAgentError("");
   }
 
   function sendMobileShortcut(sequence: string): void {
@@ -678,7 +391,7 @@ export default function App(): JSX.Element {
               aria-label="Copilot"
               title="Copilot"
               onClick={() => {
-                setIsCopilotOpen((prev) => !prev);
+                copilot.setIsCopilotOpen((prev) => !prev);
               }}
             >
               *
@@ -763,51 +476,51 @@ export default function App(): JSX.Element {
           </main>
 
           <CopilotSidebar
-            open={isCopilotOpen}
-            sideTab={sideTab}
+            open={copilot.isCopilotOpen}
+            sideTab={copilot.sideTab}
             sessionId={activeTab?.sessionId ?? null}
-            summaryLoading={summaryLoading}
-            summaryError={summaryError}
-            summaryContext={summaryContext}
-            summaryScreenText={summaryScreenText}
-            agentBusy={agentBusy}
-            agentError={agentError}
-            agentInstruction={agentInstruction}
-            agentSelectedPaths={agentSelectedPaths}
-            agentQuickCommand={agentQuickCommand}
-            agentRun={agentRun}
-            onTabChange={setSideTab}
+            summaryLoading={copilot.summaryLoading}
+            summaryError={copilot.summaryError}
+            summaryContext={copilot.summaryContext}
+            summaryScreenText={copilot.summaryScreenText}
+            agentBusy={copilot.agentBusy}
+            agentError={copilot.agentError}
+            agentInstruction={copilot.agentInstruction}
+            agentSelectedPaths={copilot.agentSelectedPaths}
+            agentQuickCommand={copilot.agentQuickCommand}
+            agentRun={copilot.agentRun}
+            onTabChange={copilot.setSideTab}
             onRefreshSummary={() => {
-              void refreshSummary();
+              void copilot.refreshSummary();
             }}
             onCopySummaryContext={() => {
-              void copyText(summaryContext, "Copied context JSON");
+              void copyText(copilot.summaryContext, "Copied context JSON");
             }}
             onCopySummaryScreen={() => {
-              void copyText(summaryScreenText, "Copied screen text");
+              void copyText(copilot.summaryScreenText, "Copied screen text");
             }}
-            onAgentInstructionChange={setAgentInstruction}
-            onAgentSelectedPathsChange={setAgentSelectedPaths}
-            onAgentQuickCommandChange={setAgentQuickCommand}
+            onAgentInstructionChange={copilot.setAgentInstruction}
+            onAgentSelectedPathsChange={copilot.setAgentSelectedPaths}
+            onAgentQuickCommandChange={copilot.setAgentQuickCommand}
             onStartAgentRun={() => {
-              void startAgentRun();
+              void copilot.startAgentRun();
             }}
             onRefreshAgentRun={() => {
-              void refreshAgentRun();
+              void copilot.refreshAgentRun();
             }}
             onApproveAgentRun={(confirmRisk) => {
-              void approveAgentRun(confirmRisk);
+              void copilot.approveAgentRun(confirmRisk);
             }}
             onAbortAgentRun={() => {
-              void abortAgentRun();
+              void copilot.abortAgentRun();
             }}
-            onSendQuickCommand={sendQuickCommand}
+            onSendQuickCommand={copilot.sendQuickCommand}
           />
         </div>
       </div>
 
-      {isMobile && isCopilotOpen && (
-        <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => setIsCopilotOpen(false)} />
+      {isMobile && copilot.isCopilotOpen && (
+        <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => copilot.setIsCopilotOpen(false)} />
       )}
 
       {notice && <div className={`notice ${notice.type}`}>{notice.message}</div>}

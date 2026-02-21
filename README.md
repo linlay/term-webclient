@@ -1,113 +1,182 @@
 # pty-webclient
 
-前后端分离的 PTY Web Terminal：
+浏览器多标签终端系统，支持本地 PTY 和 SSH Shell，断线自动恢复。
 
-- 后端：Spring Boot + WebSocket + pty4j + Apache MINA SSHD client
-- 前端：Vite + React/TypeScript + xterm.js
-- 生产入口：Node 反向代理（`11931`）+ Nginx（`443 -> 11931`）
-- 运维脚本：`package.sh` / `start.sh` / `stop.sh`
-
-## 目录
-
-- `backend`：Java 后端服务（会话管理、PTY 进程、WebSocket）
-- `frontend`：xterm 前端页面
+- 后端：Spring Boot + WebSocket + pty4j + Apache SSHD
+- 前端：Vite + React + TypeScript + xterm.js
+- 生产部署：Node 反向代理（`11931`）→ 后端（`11930`）
 
 ## 环境要求
 
 - JDK 21+
 - Maven 3.9+
-- Node.js 20+（建议）
+- Node.js 20+
 
-## 后端启动
+## 快速开始
+
+### 本地开发
+
+后端和前端分别启动：
 
 ```bash
+# 终端 1：启动后端（127.0.0.1:11930）
 cd backend
 mvn spring-boot:run
+
+# 终端 2：启动前端（localhost:11931，自动代理到后端）
+cd frontend
+npm install
+npm run dev
 ```
 
-默认地址端口：`127.0.0.1:11930`
+访问 `http://localhost:11931/term`。
 
-后端配置文件：
-
-- 内置默认：`backend/src/main/resources/application.yml`
-- 外层覆盖：`backend/application.yml`（优先于内置默认；发布目录同路径）
-
-关键配置：
-
-- `terminal.default-command`：默认命令（默认 `codex`）
-- `terminal.default-args`：默认参数列表
-- `terminal.default-workdir`：默认工作目录
-- `terminal.workdir-browse-root`：前端 workdir 目录树浏览根目录（默认 `${user.home}`）
-- `terminal.allowed-origins`：HTTP/WS 允许来源模式（默认 `http://*`,`https://*`）
-- `terminal.detached-session-ttl-seconds`：客户端全断开后保留时长（默认 `3600s`）
-- `terminal.ring-buffer-max-bytes` / `terminal.ring-buffer-max-chunks`：断线补发缓存窗口
-- `terminal.ssh.credentials-file`：SSH 凭据密文文件（默认 `backend/data/ssh-credentials.json`）
-- `terminal.ssh.master-key`：本地开发可用的主密钥明文配置（建议仅本地使用）
-- `terminal.ssh.master-key-env`：生产主密钥环境变量名（默认 `TERMINAL_SSH_MASTER_KEY`）
-- `terminal.app-auth.enabled`：是否启用 `/appapi/**` token 鉴权
-- `terminal.app-auth.local-public-key`：本地 PEM 公钥（优先于 JWKS）
-- `terminal.app-auth.jwks-uri`：JWKS 地址（仅在未配置本地公钥时使用）
-- `terminal.app-auth.issuer`：期望 issuer（配置后强校验）
-- `terminal.app-auth.audience`：可选 audience（配置后校验）
-- `terminal.app-auth.jwks-cache-seconds`：JWKS 缓存秒数
-- `terminal.app-auth.clock-skew-seconds`：exp/nbf 时钟偏移容忍
-
-## 使用说明
-
-### 1) 登录认证（强制）
-
-- 默认开启登录（访问 `http://localhost:11931/term` 时必须先登录）。
-- 当前默认账号密码：`admin / Admin@123`。
-- 密码哈希优先使用 `terminal.auth.password-hash-bcrypt`（推荐），兼容读取旧字段 `terminal.auth.password-hash`（MD5，迁移期保留）。
-- 默认仍兼容 MD5（示例：`0e7517141fb53f21ee439b355b5a1d0a` 对应 `Admin@123`）。
-- 登录接口启用最小限流（默认 60 秒窗口最多 10 次失败尝试）。
-- 登录态基于服务端 `HttpSession` 保持；只在 Session 过期（或显式 Logout）后才需要重新登录。
-
-### 1.1) App Token 认证
-
-- `http://localhost:11931/appterm` 使用 `Bearer access token` 访问 `/appapi/**`。
-- App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）。
-- 当前端请求返回 `401` 时，页面会向 App 请求新 token，并自动重放一次请求。
-- 后端支持 `local-public-key` 优先验签；未配置本地公钥时回退到 `jwks-uri`。
-
-MD5 生成示例：
-
-macOS:
+### 一键打包部署
 
 ```bash
+# 构建
+./package.sh
+
+# 启动
+./start.sh
+
+# 停止
+./stop.sh
+```
+
+默认端口：后端 `127.0.0.1:11930`，前端 `0.0.0.0:11931`。
+
+## 配置
+
+### 后端配置
+
+配置文件加载顺序（后者覆盖前者）：
+
+1. `backend/src/main/resources/application.yml`（内置默认）
+2. `backend/application.yml`（外部覆盖，通过 `spring.config.import` 导入）
+
+关键配置项：
+
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `terminal.default-command` | `codex` | 默认终端命令 |
+| `terminal.workdir-browse-root` | `${user.home}` | 目录浏览根路径 |
+| `terminal.allowed-origins` | `http://*,https://*` | CORS 允许来源 |
+| `terminal.detached-session-ttl-seconds` | `3600` | 断开后会话保留时长（秒） |
+| `terminal.ring-buffer-max-bytes` | `4194304` | 输出缓冲大小（4MB） |
+| `terminal.auth.enabled` | `true` | 是否启用密码认证 |
+| `terminal.auth.username` | `admin` | 登录用户名 |
+| `terminal.auth.password-hash-bcrypt` | 空 | bcrypt 密码哈希（推荐） |
+| `terminal.auth.password-hash` | 空 | MD5 密码哈希（兼容，已弃用） |
+| `terminal.ssh.enabled` | `true` | 是否启用 SSH 功能 |
+| `terminal.ssh.master-key-env` | `TERMINAL_SSH_MASTER_KEY` | SSH 凭据加密主密钥的环境变量名 |
+
+### 前端环境变量
+
+文件 `frontend/.env`：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `VITE_API_BASE` | 空（同源） | API 基础地址，为空时使用同源路径 |
+| `VITE_COPILOT_REFRESH_MS` | `2000` | Copilot 自动刷新间隔（毫秒） |
+| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:11930` | 开发模式代理目标 |
+
+### 启动脚本环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `APP_ENV` | `production` | 环境（`development` / `production`） |
+| `BACKEND_HOST` | 从 `application.yml` 读取 | 后端监听地址 |
+| `BACKEND_PORT` | 从 `application.yml` 读取 | 后端监听端口 |
+| `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
+| `FRONTEND_PORT` | `11931` | 前端监听端口 |
+| `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
+| `BACKEND_JAVA_OPTS` | `-Xms256m -Xmx512m` | JVM 参数 |
+| `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
+| `TERMINAL_SSH_MASTER_KEY` | - | SSH 凭据加密主密钥 |
+
+`start.sh` 会自动加载发布目录下的 `.env.$APP_ENV` 文件（若存在），显式环境变量优先。
+
+## 认证
+
+### Web 登录（/term）
+
+访问 `/term` 时需要用户名密码登录。
+
+**设置密码（bcrypt，推荐）**：
+
+```bash
+# macOS
+htpasswd -nbBC 10 '' 'your-password' | cut -d: -f2
+
+# 或使用 Python
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(10)).decode())"
+```
+
+将生成的哈希写入 `backend/application.yml`：
+
+```yaml
+terminal:
+  auth:
+    enabled: true
+    username: admin
+    password-hash-bcrypt: "$2b$10$..."
+```
+
+**设置密码（MD5，已弃用）**：
+
+```bash
+# macOS
 printf '%s' 'your-password' | md5
-```
 
-Linux:
-
-```bash
+# Linux
 printf '%s' 'your-password' | md5sum | awk '{print $1}'
 ```
 
-### 2) 断线/刷新后保留连接（1 小时）
+```yaml
+terminal:
+  auth:
+    password-hash: "e10adc3949ba59abbe56e057f20f883e"
+```
 
-- 浏览器刷新不会自动删除后端 session；前端会把 tab/session 信息写入 `localStorage`，刷新后自动重连。
-- 同一 tab 重连时会带 `lastSeenSeq`，服务端按 ring buffer 进行补发。
-- WebSocket 断开会自动重连；若 Session 已过期，才会回到登录态。
-- 如果你点击 tab 关闭（`x`），前端会显式调用 `DELETE /webapi/sessions/{sessionId}`，会话会被销毁。
-- 如果所有客户端都断开，后端会保留会话到 `terminal.detached-session-ttl-seconds`（默认 3600 秒），超时后自动回收。
+登录限流：默认 60 秒窗口内最多 10 次失败尝试（按 IP + 用户名）。
 
-### 3) Web SSH（浏览器交互终端）
+### App Token 认证（/appterm）
 
-SSH 客户端实现基于 Apache MINA SSHD，现有 `terminal.ssh.*` 配置项保持不变。
+访问 `/appterm` 时使用 JWT Bearer Token（适用于嵌入 WebView 场景）。
 
-1. 生产环境：在部署层注入环境变量（示例）：
+- App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）
+- 401 时自动向 App 请求新 token 并重放请求
+- 后端支持 `local-public-key` 优先验签，未配置时回退到 `jwks-uri`
+
+```yaml
+terminal:
+  app-auth:
+    enabled: true
+    local-public-key: "MIIBIj..."    # RSA 公钥（优先）
+    jwks-uri: "https://..."           # JWKS 端点（备用）
+    issuer: "your-issuer"
+    audience: "your-audience"
+```
+
+## 功能说明
+
+### 断线恢复
+
+- 浏览器刷新/断网不会销毁后端会话
+- 前端重连时携带 `lastSeenSeq`，服务端自动补发缺失输出
+- 全部客户端断开后，会话默认保留 1 小时（`detached-session-ttl-seconds`）
+- 点击标签页关闭按钮会显式销毁会话
+
+### SSH Shell
+
+1. 设置 SSH 主密钥（生产环境用环境变量）：
 
 ```bash
 export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
 ```
 
-本地开发也可在 `backend/application.yml` 使用 `terminal.ssh.master-key`，默认会自动加载：
-
-```bash
-cd backend
-mvn spring-boot:run
-```
+本地开发可在 `backend/application.yml` 中配置 `terminal.ssh.master-key`。
 
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
@@ -115,244 +184,145 @@ mvn spring-boot:run
 curl -X POST http://127.0.0.1:11930/webapi/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
-    "host":"10.0.0.2",
-    "port":22,
-    "username":"ubuntu",
-    "password":"***"
+    "host": "10.0.0.2",
+    "port": 22,
+    "username": "ubuntu",
+    "password": "***"
   }'
 ```
 
-返回 `credentialId`。也可用列表接口查看：
+3. 前端「新建会话」选择 SSH_SHELL，从已保存配置中选择即可。
 
-```bash
-curl http://127.0.0.1:11930/webapi/ssh/credentials
-```
-
-3. 前端在 `New Session` 区域选择 `SSH_SHELL`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
-4. 已保存 SSH 配置支持删除（`Delete` 按钮，带二次确认）。
-
-### 4) Copilot 侧栏（Summary + Agent）
-
-- 顶部 `Copilot` 按钮打开右侧栏，支持 `Summary` / `Agent` 切换。
-- `Summary` 支持实时刷新（默认 2 秒，可通过 `VITE_COPILOT_REFRESH_MS` 配置），展示 `Context + Screen Text`，可一键复制当前可见界面的纯文本。
-- `Agent` 保留原有 run 创建、审批、终止和 quick command 操作。
-
-### 5) SSH Exec（给 LLM 的结构化命令执行）
+### SSH Exec（结构化命令执行）
 
 ```bash
 curl -X POST http://127.0.0.1:11930/webapi/ssh/exec \
   -H "content-type: application/json" \
   -d '{
-    "credentialId":"<credential-id>",
-    "command":"uname -a",
-    "cwd":"/tmp",
-    "timeoutSeconds":120
+    "credentialId": "<credential-id>",
+    "command": "uname -a",
+    "cwd": "/tmp",
+    "timeoutSeconds": 120
   }'
 ```
 
-## 前端开发模式（Vite）
+### Copilot 侧栏
+
+点击顶部 Copilot 按钮打开右侧栏：
+
+- **Summary**：实时显示会话上下文（Context + Screen Text），默认 2 秒刷新，可一键复制
+- **Agent**：创建 Agent Run、审批高风险步骤、中止运行、Quick Command 发送
+
+### CLI 客户端配置
+
+在 `backend/application.yml` 中注册多个终端工具：
+
+```yaml
+terminal:
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env: {}
+      pre-commands:
+        - export https_proxy="http://127.0.0.1:8001"
+      shell: /bin/zsh
+    - id: claude
+      label: Claude Code
+      command: claude
+      args: []
+      workdir: .
+      shell: /bin/zsh
+```
+
+新建会话时可选择不同的 CLI 客户端。
+
+## 打包与部署
+
+### 打包
 
 ```bash
-cd frontend
-npm install
-npm run dev
-```
-
-默认端口：`11931`（已配置 `allowedHosts` 与 `/webapi`、`/appapi`、`/ws` 代理）
-
-前端环境变量文件：
-
-- `frontend/.env.development`
-- `frontend/.env.production`
-
-```env
-VITE_API_BASE=
-VITE_COPILOT_REFRESH_MS=2000
-VITE_DEV_PROXY_TARGET=http://127.0.0.1:11930
-```
-
-- `VITE_API_BASE`：可选。为空时前端默认使用同源 `/webapi`、`/appapi` 与 `/ws`；有值时强制使用该地址（调试用途）。
-- `VITE_COPILOT_REFRESH_MS`：可选。Copilot 自动刷新间隔毫秒，默认 `2000`，最小 `500`。
-- `VITE_DEV_PROXY_TARGET`：仅开发模式使用的代理目标地址，默认 `http://127.0.0.1:11930`。
-
-## 前端生产模式（Node 代理）
-
-```bash
-cd frontend
-npm install
-npm run build -- --mode production
-PORT=11931 BACKEND_ORIGIN=http://127.0.0.1:11930 npm run serve
-```
-
-生产代理服务行为：
-
-- 监听 `0.0.0.0:11931`
-- 静态资源：`frontend/dist`
-- `GET /healthz`：健康检查（返回 `200 ok`）
-- `/webapi/*` 反向代理到 `BACKEND_ORIGIN`
-- `/appapi/*` 反向代理到 `BACKEND_ORIGIN`
-- `/ws/*` WebSocket 反向代理到 `BACKEND_ORIGIN`
-- `/` 自动重定向到 `/term`
-- 仅 `/term/**` 与 `/appterm/**` 回退到 `index.html`（SPA）
-
-服务环境变量文件（放在发布目录）：
-
-- `release/.env.development`
-- `release/.env.production`
-
-示例内容：
-
-```env
-HOST=0.0.0.0
-PORT=11931
-BACKEND_ORIGIN=http://127.0.0.1:11930
-```
-
-`start.sh` 会按 `APP_ENV` 自动加载 `release/.env.$APP_ENV`（若存在），显式环境变量优先级更高。
-
-## 一键打包与启停脚本
-
-根目录提供三个脚本：
-
-- `package.sh`：构建前后端并输出统一发布目录（默认 `release/`）
-- `start.sh`：启动发布目录内的后端 jar 与前端 Node 代理
-- `stop.sh`：根据 pid 文件停止服务
-
-### 1) 打包
-
-```bash
+# 默认输出到 release/
 ./package.sh
+
 # 自定义输出目录
 ./package.sh /tmp/pty-release
 
-# 指定打包环境（development|production，默认 production）
+# 指定环境
 APP_ENV=development ./package.sh /tmp/pty-release-dev
 ```
 
-`package.sh` 默认会：
+打包产物结构：
 
-1. 执行后端构建：`mvn -q -DskipTests package`
-2. 执行前端构建：`npm ci && npm run build -- --mode $APP_ENV`
-3. 将可运行产物和配置收拢到同一目录：
-   - `release/backend/app.jar`
-   - `release/backend/application.yml`（若存在）
-   - `release/frontend/dist`
-   - `release/frontend/server.js`
-   - `release/frontend/node_modules`（生产依赖）
-   - `release/logs`、`release/run`
+```
+release/
+├── backend/
+│   ├── app.jar
+│   └── application.yml
+├── frontend/
+│   ├── dist/
+│   ├── server.js
+│   ├── node_modules/
+│   ├── package.json
+│   └── package-lock.json
+├── logs/
+├── run/
+├── start.sh
+└── stop.sh
+```
 
-### 2) 启动
+### 启动
 
 ```bash
 ./start.sh
-# 指定发布目录
-./start.sh /tmp/pty-release
-
-# 指定启动环境（development|production，默认 production）
-APP_ENV=development ./start.sh /tmp/pty-release
+# 或指定目录和环境
+APP_ENV=production ./start.sh /tmp/pty-release
 ```
 
-默认端口：
-
-- 后端：`127.0.0.1:11930`
-- 前端：`0.0.0.0:11931`
-
-可通过环境变量覆盖：
-
-- `APP_ENV`（`development` / `production`，默认 `production`）
-- `BACKEND_HOST` / `BACKEND_PORT`（默认读取 `backend/application.yml`，未配置时回退 `127.0.0.1:11930`）
-- `FRONTEND_HOST` / `FRONTEND_PORT`
-- `BACKEND_ORIGIN`（默认使用后端生效地址拼接）
-- `BACKEND_JAVA_OPTS`
-- `BACKEND_ARGS`
-
-`start.sh` 会在发布目录自动读取 `.env.$APP_ENV`（若存在）作为默认值，显式环境变量优先级更高。
-
-### 3) 停止
+### 停止
 
 ```bash
 ./stop.sh
-# 指定发布目录
+# 或指定目录
 ./stop.sh /tmp/pty-release
 ```
 
-## Nginx（域名无端口）
+### Nginx 反向代理
 
-Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
+配置样例见 `deploy/nginx/pty.linlay.cc.conf`，职责：
 
-职责：
-
-- `80 -> 443` 重定向
-- `443` 终止 TLS
+- `80 → 443` 重定向
+- `443` TLS 终止
 - 所有流量反代到 `http://127.0.0.1:11931`
 - 透传 WebSocket Upgrade
 
-## API / WS 协议
-
-- `webapi`（Web Session）与 `appapi`（App Token）业务接口保持同构：
-- `POST /webapi/sessions` / `POST /appapi/sessions`
-- `DELETE /webapi/sessions/{sessionId}` / `DELETE /appapi/sessions/{sessionId}`
-- `GET /webapi/workdirTree` / `GET /appapi/workdirTree`
-- `GET /webapi/ssh/credentials` / `GET /appapi/ssh/credentials`
-- `GET /webapi/version` / `GET /appapi/version`
-- `webapi` 登录接口：
-- `POST /webapi/auth/login`
-- `GET /webapi/auth/me`
-- `POST /webapi/auth/logout`
-- `appapi` 鉴权接口：
-- `GET /appapi/auth/me`
-- `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>&accessToken=<optional>`：终端双向通信 + 断线补发；支持 session 或 token 握手鉴权
-
-WebSocket 客户端消息：
-
-- `{"type":"input","data":"..."}`
-- `{"type":"resize","cols":120,"rows":30}`
-- `{"type":"ping"}`
-
-WebSocket 服务端消息：
-
-- `{"type":"output","seq":123,"data":"..."}`
-- `{"type":"truncated","requestedAfterSeq":100,"firstAvailableSeq":160,"latestSeq":220}`
-- `{"type":"exit","exitCode":0}`
-- `{"type":"error","message":"..."}`
-- `{"type":"pong"}`
-
-## 架构设计（当前实现）
-
-- `TerminalSession`：统一封装本地 PTY 和 SSH Shell，会话内维护 `attachedClients`、`nextSeq`、`ringBuffer`、`killTask`。
-- `TerminalRuntime` 抽象：`PtyTerminalRuntime` / `SshShellRuntime` 通过同一读写接口被 `TerminalSessionService` 管理。
-- 输出链路：运行时输出 -> `seq++` -> ring buffer -> fanout 到在线 WS 客户端。
-- 断线补发：客户端重连携带 `lastSeenSeq`，服务端补发 `seq > lastSeenSeq`；缓存不足时发送 `truncated`，客户端再拉 `/snapshot`。
-- SSH 连接复用：`SshConnectionPool` 按 `(host,port,username,credentialId)` 复用连接，空闲 TTL 默认 1 小时。
-- SSH 安全：`TofuHostKeyVerifier` 首次信任写入 known-hosts，后续强校验；凭据通过 `SshCredentialStore` 采用 AES-GCM 密文存储。
-
-## 测试与构建
-
-后端测试：
+## 测试与验证
 
 ```bash
-cd backend
-mvn test
-```
+# 后端测试
+cd backend && mvn test
 
-前端检查与构建：
-
-```bash
+# 前端检查
 cd frontend
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-```
+npm run lint          # ESLint
+npx tsc --noEmit      # TypeScript 类型检查
+npm run build         # 生产构建
 
-生产连通性检查：
-
-```bash
+# 健康检查
 curl http://127.0.0.1:11931/healthz
-curl -I https://pty.linlay.cc
 ```
 
-更多交付文档：
+### 前端生产代理
 
-- 架构说明：`docs/architecture.md`
-- 发布与回滚：`docs/release.md`
+`server.js` 路由规则：
+
+| 路径 | 行为 |
+|---|---|
+| `/healthz` | 返回 200 OK |
+| `/webapi/*`、`/appapi/*` | HTTP 反向代理到后端 |
+| `/ws/*` | WebSocket 反向代理到后端 |
+| `/term`、`/appterm` | 返回 `index.html`（SPA） |
+| `/` | 重定向到 `/term` |
+| 其他 | 静态文件（`dist/`） |

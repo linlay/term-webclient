@@ -16,7 +16,6 @@ import type {
   SessionSnapshotResponse,
   SessionTabViewResponse,
   SshPreflightResponse,
-  SshCredentialResponse,
   SshCredentialSummaryResponse,
   TerminalClientResponse,
   WorkdirBrowseResponse
@@ -143,8 +142,8 @@ export const apiClient = {
     return request<SshCredentialSummaryResponse[]>("/ssh/credentials");
   },
 
-  createSshCredential(payload: CreateSshCredentialRequest): Promise<SshCredentialResponse> {
-    return request<SshCredentialResponse>("/ssh/credentials", {
+  createSshCredential(payload: CreateSshCredentialRequest): Promise<SshCredentialSummaryResponse> {
+    return request<SshCredentialSummaryResponse>("/ssh/credentials", {
       method: "POST",
       headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)

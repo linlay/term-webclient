@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.ssh.CreateSshCredentialRequest;
-import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
+import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,7 +65,7 @@ class SshCredentialStoreTest {
         SshCredentialStore store = new SshCredentialStore(props, objectMapper());
 
         String credentialId = store.createCredential(passwordRequest()).credentialId();
-        List<SshCredentialSummaryResponse> list = store.listCredentials();
+        List<SshCredentialResponse> list = store.listCredentials();
 
         assertEquals(1, list.size());
         assertEquals(credentialId, list.get(0).credentialId());
@@ -87,7 +87,7 @@ class SshCredentialStoreTest {
 
         store.deleteCredential(credentialId);
 
-        List<SshCredentialSummaryResponse> list = store.listCredentials();
+        List<SshCredentialResponse> list = store.listCredentials();
         assertEquals(0, list.size());
 
         String persisted = Files.readString(tempDir.resolve("ssh-credentials.json"), StandardCharsets.UTF_8);

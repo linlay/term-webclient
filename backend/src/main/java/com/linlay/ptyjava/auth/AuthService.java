@@ -3,6 +3,7 @@ package com.linlay.ptyjava.auth;
 import com.linlay.ptyjava.config.TerminalProperties;
 import com.linlay.ptyjava.model.auth.AuthStatusResponse;
 import com.linlay.ptyjava.model.auth.LoginRequest;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -18,6 +21,7 @@ import org.springframework.util.StringUtils;
 public class AuthService {
 
     public static final String AUTH_USER_SESSION_KEY = "terminal.auth.username";
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private static final Pattern MD5_HEX_PATTERN = Pattern.compile("^[a-fA-F0-9]{32}$");
     private static final Pattern BCRYPT_PATTERN = Pattern.compile("^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$");
     private static final BCryptPasswordEncoder BCRYPT_ENCODER = new BCryptPasswordEncoder();
@@ -28,6 +32,20 @@ public class AuthService {
     public AuthService(TerminalProperties terminalProperties, LoginRateLimiter loginRateLimiter) {
         this.terminalProperties = terminalProperties;
         this.loginRateLimiter = loginRateLimiter;
+    }
+
+    @PostConstruct
+    void warnIfMd5Only() {
+        if (!isEnabled()) {
+            return;
+        }
+        String bcryptHash = safe(terminalProperties.getAuth().getPasswordHashBcrypt());
+        String legacyHash = safe(terminalProperties.getAuth().getPasswordHash());
+        if (!StringUtils.hasText(bcryptHash) && StringUtils.hasText(legacyHash)) {
+            log.warn("Auth is using MD5 password-hash only. MD5 is unsalted and weak — "
+                + "please migrate to password-hash-bcrypt. "
+                + "Generate one with: htpasswd -nbBC 10 '' 'yourpassword' | cut -d: -f2");
+        }
     }
 
     public boolean isEnabled() {

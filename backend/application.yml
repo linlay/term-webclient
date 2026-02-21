@@ -30,9 +30,10 @@ terminal:
   auth:
     enabled: true
     username: admin
-    # Prefer BCrypt for production credentials. Keep password-hash for migration compatibility.
+    # Generate bcrypt hash: htpasswd -nbBC 10 '' 'yourpassword' | cut -d: -f2
     # password-hash-bcrypt:
-    password-hash: f49df27cfc01afd17366e851e15e7754
+    # Legacy MD5 (deprecated, migrate to bcrypt):
+    # password-hash:
     session-ttl-seconds: 43200
     login-rate-limit-enabled: true
     login-rate-limit-window-seconds: 60
@@ -48,4 +49,5 @@ terminal:
     clock-skew-seconds: 30
   ssh:
     credentials-file: data/ssh-credentials.json
-    master-key: 123456
+    # Set via environment variable TERMINAL_SSH_MASTER_KEY (recommended) or here:
+    # master-key:

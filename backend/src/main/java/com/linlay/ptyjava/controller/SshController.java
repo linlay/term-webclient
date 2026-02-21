@@ -2,7 +2,6 @@ package com.linlay.ptyjava.controller;
 
 import com.linlay.ptyjava.model.ssh.CreateSshCredentialRequest;
 import com.linlay.ptyjava.model.ssh.SshCredentialResponse;
-import com.linlay.ptyjava.model.ssh.SshCredentialSummaryResponse;
 import com.linlay.ptyjava.model.ssh.SshExecRequest;
 import com.linlay.ptyjava.model.ssh.SshExecResponse;
 import com.linlay.ptyjava.model.ssh.SshPreflightResponse;
@@ -41,7 +40,7 @@ public class SshController {
     }
 
     @GetMapping("/credentials")
-    public ResponseEntity<List<SshCredentialSummaryResponse>> listCredentials() {
+    public ResponseEntity<List<SshCredentialResponse>> listCredentials() {
         return ResponseEntity.ok(credentialStore.listCredentials());
     }
 

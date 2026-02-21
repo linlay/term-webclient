@@ -1,4 +1,5 @@
 import { isAppMode } from "../config/env";
+import { generateId } from "../utils/id";
 
 const TOKEN_EVENT = "appterm:token";
 const REFRESH_REQUEST_EVENT = "appterm:refresh-token-requested";
@@ -109,13 +110,6 @@ function readWindowToken(): string | null {
   return normalizeToken(window.__APPTERM_ACCESS_TOKEN__);
 }
 
-function nextRequestId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `appterm-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 export function initAppTokenBridge(): void {
   if (initialized || !isAppMode()) {
     return;
@@ -169,7 +163,7 @@ export function refreshAppAccessToken(reason: AppTokenRefreshReason, timeoutMs =
   }
   initAppTokenBridge();
 
-  const requestId = nextRequestId();
+  const requestId = generateId();
   const currentToken = getAppAccessToken();
   const payload = JSON.stringify({
     type: REFRESH_MESSAGE_TYPE,

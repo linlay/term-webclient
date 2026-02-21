@@ -30,18 +30,8 @@ public class MockAgentPlanner implements AgentPlanner {
             false
         ));
 
-        if (normalizedInstruction.toLowerCase(Locale.ROOT).startsWith("cmd:")) {
-            String command = normalizedInstruction.substring(4).trim();
-            if (!command.isEmpty()) {
-                steps.add(new PlannedAgentStep(
-                    "terminal.execute_managed",
-                    "Execute managed command",
-                    Map.of("command", command),
-                    looksHighRisk(command)
-                ));
-            }
-        } else if (normalizedInstruction.toLowerCase(Locale.ROOT).startsWith("command:")) {
-            String command = normalizedInstruction.substring("command:".length()).trim();
+        String command = extractCommandPrefix(normalizedInstruction);
+        if (command != null) {
             if (!command.isEmpty()) {
                 steps.add(new PlannedAgentStep(
                     "terminal.execute_managed",
@@ -63,6 +53,17 @@ public class MockAgentPlanner implements AgentPlanner {
         }
 
         return steps;
+    }
+
+    private String extractCommandPrefix(String instruction) {
+        String lower = instruction.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("cmd:")) {
+            return instruction.substring(4).trim();
+        }
+        if (lower.startsWith("command:")) {
+            return instruction.substring("command:".length()).trim();
+        }
+        return null;
     }
 
     private boolean looksHighRisk(String command) {

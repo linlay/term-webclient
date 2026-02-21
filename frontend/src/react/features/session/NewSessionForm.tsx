@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../shared/api/client";
+import { generateId } from "../../shared/utils/id";
 import type {
   CreateSessionRequest,
   CreateSshCredentialRequest,
@@ -26,13 +27,6 @@ interface NewSessionFormProps {
   onCreated: (payload: NewSessionCreatedPayload) => void;
   variant?: "modal" | "inline";
   onCancel?: () => void;
-}
-
-function randomClientId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function parseArgsInput(value: string): string[] {
@@ -242,7 +236,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     setError("");
     setNotice("");
 
-    const wsClientId = randomClientId();
+    const wsClientId = generateId();
     const titleText = title.trim();
 
     let payload: CreateSessionRequest;
