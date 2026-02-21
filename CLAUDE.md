@@ -14,14 +14,12 @@
 
 ## 当前架构
 
-### 1) 前端层（Vite 双入口）
+### 1) 前端层（Vite + React）
 
-前端支持迁移期双入口：
+前端已收敛为 React 单入口：
 
-- `VITE_UI_MODE=legacy`：运行 `frontend/src/main-legacy.js`（默认，全功能）
-- `VITE_UI_MODE=react`：运行 `frontend/src/react/main.tsx`（迁移中）
-
-React 模式已包含：登录、Tab 管理、LOCAL_PTY 会话创建、xterm 容器、WebSocket 自动重连（含 `lastSeenSeq`）。
+- 固定运行 `frontend/src/react/main.tsx`
+- 默认支持 `LOCAL_PTY` / `SSH_SHELL`、Copilot Summary、Agent Run、WebSocket 自动重连（含 `lastSeenSeq` + `snapshot` 补齐）
 
 ### 2) 会话层（后端）
 
@@ -91,6 +89,9 @@ cd frontend && npm run dev
 ./package.sh
 # 或自定义输出目录
 ./package.sh /tmp/pty-release
+
+# 指定环境（development|production，默认 production）
+APP_ENV=development ./package.sh /tmp/pty-release-dev
 ```
 
 启动/停止：
@@ -102,19 +103,25 @@ cd frontend && npm run dev
 # 指定发布目录
 ./start.sh /tmp/pty-release
 ./stop.sh /tmp/pty-release
+
+# 指定环境（development|production，默认 production）
+APP_ENV=production ./start.sh /tmp/pty-release
 ```
 
 ## 常用环境变量
 
 启动脚本支持：
 
+- `APP_ENV`（`development` / `production`，默认 `production`）
 - `BACKEND_HOST`（默认读取 `backend/application.yml`，未设置回退 `127.0.0.1`）
-- `BACKEND_PORT`（默认读取 `backend/application.yml`，未设置回退 `11948`）
+- `BACKEND_PORT`（默认读取 `backend/application.yml`，未设置回退 `11930`）
 - `FRONTEND_HOST`（默认 `0.0.0.0`）
-- `FRONTEND_PORT`（默认 `11949`）
+- `FRONTEND_PORT`（默认 `11931`）
 - `BACKEND_ORIGIN`（默认使用后端生效地址拼接）
 - `BACKEND_JAVA_OPTS`（默认 `-Xms256m -Xmx512m`）
 - `BACKEND_ARGS`（附加 Spring 参数）
+
+`start.sh` 会尝试读取发布目录下 `.env.$APP_ENV`（若存在）并作为默认值，显式环境变量优先。
 
 SSH 主密钥建议通过环境变量提供：
 

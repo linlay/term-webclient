@@ -1,8 +1,12 @@
 const rawApiBase = typeof import.meta.env.VITE_API_BASE === "string"
   ? import.meta.env.VITE_API_BASE.trim()
   : "";
+const rawCopilotRefreshMs = Number.parseInt(import.meta.env.VITE_COPILOT_REFRESH_MS || "2000", 10);
 
 export const API_BASE = rawApiBase.replace(/\/+$/, "");
+export const COPILOT_REFRESH_MS = Number.isFinite(rawCopilotRefreshMs) && rawCopilotRefreshMs >= 500
+  ? rawCopilotRefreshMs
+  : 2000;
 
 export function isAppMode(pathname: string = window.location.pathname): boolean {
   return pathname === "/appterm" || pathname.startsWith("/appterm/");

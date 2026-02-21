@@ -3,20 +3,20 @@
 ## Runtime Topology
 
 ```
-Browser -> Nginx:443 -> Node proxy:11949 -> Spring Boot:11948
+Browser -> Nginx:443 -> Node proxy:11931 -> Spring Boot:11930
 ```
 
 - Frontend serves static assets from `frontend/dist` and proxies `/webapi` + `/appapi` + `/ws` to backend.
 - Backend owns terminal sessions (`LOCAL_PTY` and `SSH_SHELL`) and WebSocket IO fanout.
 
-## Frontend Modes
+## Frontend Runtime
 
-The frontend supports a dual-mode migration strategy:
+The frontend is React-only (`/Users/linlay-macmini/Project/pty-webclient/frontend/src/react/main.tsx`).
 
-- `VITE_UI_MODE=legacy` (default): runs `/Users/linlay-macmini/Project/pty-webclient/frontend/src/main-legacy.js`.
-- `VITE_UI_MODE=react`: runs `/Users/linlay-macmini/Project/pty-webclient/frontend/src/react/main.tsx`.
+Environment split is handled by:
 
-This allows incremental migration to React/TypeScript with rollback safety.
+- Vite mode (`development` / `production`) via `APP_ENV` in `package.sh`
+- Node proxy runtime env file `release/.env.<env>` via `APP_ENV` in `start.sh`
 
 Runtime entry paths:
 

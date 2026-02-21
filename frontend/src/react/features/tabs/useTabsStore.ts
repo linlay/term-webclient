@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { CreateSessionRequest, SessionType } from "../../shared/api/types";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "exited" | "error";
 
@@ -10,15 +11,39 @@ export interface TerminalTab {
   clientId: string;
   status: ConnectionStatus;
   createdAt: string;
+  sessionType: SessionType;
+  toolId: string;
+  workdir: string;
+  sshCredentialId: string | null;
+  createRequest: CreateSessionRequest | null;
+  agentRunId: string | null;
+  lost?: boolean;
+  exitCode?: string;
 }
+
+export type AddTabInput = Omit<TerminalTab, "localId" | "status" | "createdAt" | "agentRunId" | "lost" | "exitCode"> & {
+  status?: ConnectionStatus;
+  createdAt?: string;
+  agentRunId?: string | null;
+  lost?: boolean;
+  exitCode?: string;
+};
 
 interface TabsState {
   tabs: TerminalTab[];
   activeTabId: string | null;
-  addTab: (tab: Omit<TerminalTab, "localId" | "status" | "createdAt">) => string;
+  setTabs: (tabs: TerminalTab[]) => void;
+  addTab: (tab: AddTabInput) => string;
   removeTab: (localId: string) => void;
   setActiveTab: (localId: string) => void;
   setTabStatus: (localId: string, status: ConnectionStatus) => void;
+  setTabAgentRunId: (localId: string, runId: string | null) => void;
+  setTabLost: (localId: string, lost: boolean) => void;
+  setTabExitCode: (localId: string, exitCode: string) => void;
+  replaceTabSession: (
+    localId: string,
+    replacement: Pick<TerminalTab, "sessionId" | "wsUrl" | "clientId" | "createRequest">
+  ) => void;
 }
 
 function makeId(): string {
@@ -32,13 +57,28 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
+  setTabs(tabs) {
+    set((state) => {
+      const nextActive = state.activeTabId && tabs.some((tab) => tab.localId === state.activeTabId)
+        ? state.activeTabId
+        : (tabs[0]?.localId ?? null);
+      return {
+        tabs,
+        activeTabId: nextActive
+      };
+    });
+  },
+
   addTab(tab) {
     const localId = makeId();
-    const next = {
+    const next: TerminalTab = {
       ...tab,
       localId,
-      status: "connecting" as const,
-      createdAt: new Date().toISOString()
+      status: tab.status ?? "connecting",
+      createdAt: tab.createdAt ?? new Date().toISOString(),
+      agentRunId: tab.agentRunId ?? null,
+      lost: tab.lost ?? false,
+      exitCode: tab.exitCode ?? "-"
     };
 
     set((state) => ({
@@ -75,6 +115,47 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map((tab) => (
         tab.localId === localId ? { ...tab, status } : tab
+      ))
+    }));
+  },
+
+  setTabAgentRunId(localId, runId) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (
+        tab.localId === localId ? { ...tab, agentRunId: runId } : tab
+      ))
+    }));
+  },
+
+  setTabLost(localId, lost) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (
+        tab.localId === localId ? { ...tab, lost } : tab
+      ))
+    }));
+  },
+
+  setTabExitCode(localId, exitCode) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (
+        tab.localId === localId ? { ...tab, exitCode } : tab
+      ))
+    }));
+  },
+
+  replaceTabSession(localId, replacement) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (
+        tab.localId === localId
+          ? {
+            ...tab,
+            ...replacement,
+            status: "connecting",
+            agentRunId: null,
+            lost: false,
+            exitCode: "-"
+          }
+          : tab
       ))
     }));
   }

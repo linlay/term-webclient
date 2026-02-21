@@ -4,11 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./styles.css";
 
-const legacyLoginGate = document.getElementById("loginGate");
-const legacyAppRoot = document.getElementById("app");
-legacyLoginGate?.classList.add("hidden");
-legacyAppRoot?.classList.add("hidden");
-
 let reactRoot = document.getElementById("reactRoot");
 if (!reactRoot) {
   reactRoot = document.createElement("div");

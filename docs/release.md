@@ -17,13 +17,28 @@
 ```bash
 cd /Users/linlay-macmini/Project/pty-webclient/frontend
 npm ci
-npm run build
+npm run build -- --mode production
 ```
 
 2. Start frontend proxy server:
 
 ```bash
-PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
+PORT=11931 BACKEND_ORIGIN=http://127.0.0.1:11930 npm run serve
+```
+
+or use root script (recommended):
+
+```bash
+cd /Users/linlay-macmini/Project/pty-webclient
+APP_ENV=production ./start.sh
+```
+
+If you run from a packaged release directory, you can place proxy runtime defaults in `release/.env.production`:
+
+```env
+HOST=0.0.0.0
+PORT=11931
+BACKEND_ORIGIN=http://127.0.0.1:11930
 ```
 
 3. Start backend:
@@ -36,27 +51,27 @@ mvn spring-boot:run
 4. Verify health and version:
 
 ```bash
-curl -sS http://127.0.0.1:11949/healthz
-curl -sS http://127.0.0.1:11949/webapi/version
-curl -sS http://127.0.0.1:11949/appapi/version
+curl -sS http://127.0.0.1:11931/healthz
+curl -sS http://127.0.0.1:11931/webapi/version
+curl -sS http://127.0.0.1:11931/appapi/version
 ```
 
 5. Smoke test:
 
-- Open `http://127.0.0.1:11949/term` and login
+- Open `http://127.0.0.1:11931/term` and login
 - Create local PTY session
 - Command echo
 - Browser refresh and reconnect
-- Open `http://127.0.0.1:11949/appterm` in WebView and verify token-based access
+- Open `http://127.0.0.1:11931/appterm` in WebView and verify token-based access
 
 ## Rollback Steps
 
-1. Switch frontend to legacy UI mode (`VITE_UI_MODE=legacy`) and rebuild if needed.
-2. Redeploy previous backend artifact/config.
+1. Redeploy previous frontend/backend artifact pair from the last known-good release.
+2. Restart service with `APP_ENV=production`.
 3. Validate:
 
 ```bash
-curl -sS http://127.0.0.1:11949/healthz
+curl -sS http://127.0.0.1:11931/healthz
 curl -I https://<your-domain>
 ```
 

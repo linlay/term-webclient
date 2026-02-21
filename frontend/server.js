@@ -8,9 +8,9 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number.parseInt(process.env.PORT || "11949", 10);
+const PORT = Number.parseInt(process.env.PORT || "11931", 10);
 const HOST = process.env.HOST || "0.0.0.0";
-const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || "http://127.0.0.1:11948";
+const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || "http://127.0.0.1:11930";
 
 const distDir = path.resolve(__dirname, "dist");
 const indexHtml = path.join(distDir, "index.html");

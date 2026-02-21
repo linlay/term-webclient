@@ -3,8 +3,8 @@
 前后端分离的 PTY Web Terminal：
 
 - 后端：Spring Boot + WebSocket + pty4j + Apache MINA SSHD client
-- 前端：Vite + React/TypeScript（迁移中，保留 Vanilla JS legacy 模式）+ xterm.js
-- 生产入口：Node 反向代理（`11949`）+ Nginx（`443 -> 11949`）
+- 前端：Vite + React/TypeScript + xterm.js
+- 生产入口：Node 反向代理（`11931`）+ Nginx（`443 -> 11931`）
 - 运维脚本：`package.sh` / `start.sh` / `stop.sh`
 
 ## 目录
@@ -25,7 +25,7 @@ cd backend
 mvn spring-boot:run
 ```
 
-默认地址端口：`127.0.0.1:11948`
+默认地址端口：`127.0.0.1:11930`
 
 后端配置文件：
 
@@ -56,7 +56,7 @@ mvn spring-boot:run
 
 ### 1) 登录认证（强制）
 
-- 默认开启登录（访问 `http://localhost:11949/term` 时必须先登录）。
+- 默认开启登录（访问 `http://localhost:11931/term` 时必须先登录）。
 - 当前默认账号密码：`admin / Admin@123`。
 - 密码哈希优先使用 `terminal.auth.password-hash-bcrypt`（推荐），兼容读取旧字段 `terminal.auth.password-hash`（MD5，迁移期保留）。
 - 默认仍兼容 MD5（示例：`0e7517141fb53f21ee439b355b5a1d0a` 对应 `Admin@123`）。
@@ -65,7 +65,7 @@ mvn spring-boot:run
 
 ### 1.1) App Token 认证
 
-- `http://localhost:11949/appterm` 使用 `Bearer access token` 访问 `/appapi/**`。
+- `http://localhost:11931/appterm` 使用 `Bearer access token` 访问 `/appapi/**`。
 - App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）。
 - 当前端请求返回 `401` 时，页面会向 App 请求新 token，并自动重放一次请求。
 - 后端支持 `local-public-key` 优先验签；未配置本地公钥时回退到 `jwks-uri`。
@@ -112,7 +112,7 @@ mvn spring-boot:run
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
 ```bash
-curl -X POST http://127.0.0.1:11948/webapi/ssh/credentials \
+curl -X POST http://127.0.0.1:11930/webapi/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
     "host":"10.0.0.2",
@@ -125,10 +125,10 @@ curl -X POST http://127.0.0.1:11948/webapi/ssh/credentials \
 返回 `credentialId`。也可用列表接口查看：
 
 ```bash
-curl http://127.0.0.1:11948/webapi/ssh/credentials
+curl http://127.0.0.1:11930/webapi/ssh/credentials
 ```
 
-3. 前端点击 `+` 新建窗口，`Tool` 选择 `ssh`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
+3. 前端在 `New Session` 区域选择 `SSH_SHELL`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
 4. 已保存 SSH 配置支持删除（`Delete` 按钮，带二次确认）。
 
 ### 4) Copilot 侧栏（Summary + Agent）
@@ -140,7 +140,7 @@ curl http://127.0.0.1:11948/webapi/ssh/credentials
 ### 5) SSH Exec（给 LLM 的结构化命令执行）
 
 ```bash
-curl -X POST http://127.0.0.1:11948/webapi/ssh/exec \
+curl -X POST http://127.0.0.1:11930/webapi/ssh/exec \
   -H "content-type: application/json" \
   -d '{
     "credentialId":"<credential-id>",
@@ -158,32 +158,35 @@ npm install
 npm run dev
 ```
 
-默认端口：`11949`（已配置 `allowedHosts` 与 `/webapi`、`/appapi`、`/ws` 代理）
+默认端口：`11931`（已配置 `allowedHosts` 与 `/webapi`、`/appapi`、`/ws` 代理）
 
-前端环境变量文件：`frontend/.env`
+前端环境变量文件：
+
+- `frontend/.env.development`
+- `frontend/.env.production`
 
 ```env
 VITE_API_BASE=
-VITE_UI_MODE=legacy
 VITE_COPILOT_REFRESH_MS=2000
+VITE_DEV_PROXY_TARGET=http://127.0.0.1:11930
 ```
 
 - `VITE_API_BASE`：可选。为空时前端默认使用同源 `/webapi`、`/appapi` 与 `/ws`；有值时强制使用该地址（调试用途）。
-- `VITE_UI_MODE`：`legacy` 或 `react`。默认 `legacy`，用于迁移期灰度切换。
 - `VITE_COPILOT_REFRESH_MS`：可选。Copilot 自动刷新间隔毫秒，默认 `2000`，最小 `500`。
+- `VITE_DEV_PROXY_TARGET`：仅开发模式使用的代理目标地址，默认 `http://127.0.0.1:11930`。
 
 ## 前端生产模式（Node 代理）
 
 ```bash
 cd frontend
 npm install
-npm run build
-PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
+npm run build -- --mode production
+PORT=11931 BACKEND_ORIGIN=http://127.0.0.1:11930 npm run serve
 ```
 
 生产代理服务行为：
 
-- 监听 `0.0.0.0:11949`
+- 监听 `0.0.0.0:11931`
 - 静态资源：`frontend/dist`
 - `GET /healthz`：健康检查（返回 `200 ok`）
 - `/webapi/*` 反向代理到 `BACKEND_ORIGIN`
@@ -192,7 +195,20 @@ PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
 - `/` 自动重定向到 `/term`
 - 仅 `/term/**` 与 `/appterm/**` 回退到 `index.html`（SPA）
 
-服务环境变量示例：`frontend/.env.server.example`
+服务环境变量文件（放在发布目录）：
+
+- `release/.env.development`
+- `release/.env.production`
+
+示例内容：
+
+```env
+HOST=0.0.0.0
+PORT=11931
+BACKEND_ORIGIN=http://127.0.0.1:11930
+```
+
+`start.sh` 会按 `APP_ENV` 自动加载 `release/.env.$APP_ENV`（若存在），显式环境变量优先级更高。
 
 ## 一键打包与启停脚本
 
@@ -208,12 +224,15 @@ PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
 ./package.sh
 # 自定义输出目录
 ./package.sh /tmp/pty-release
+
+# 指定打包环境（development|production，默认 production）
+APP_ENV=development ./package.sh /tmp/pty-release-dev
 ```
 
 `package.sh` 默认会：
 
 1. 执行后端构建：`mvn -q -DskipTests package`
-2. 执行前端构建：`npm ci && npm run build`
+2. 执行前端构建：`npm ci && npm run build -- --mode $APP_ENV`
 3. 将可运行产物和配置收拢到同一目录：
    - `release/backend/app.jar`
    - `release/backend/application.yml`（若存在）
@@ -228,20 +247,26 @@ PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
 ./start.sh
 # 指定发布目录
 ./start.sh /tmp/pty-release
+
+# 指定启动环境（development|production，默认 production）
+APP_ENV=development ./start.sh /tmp/pty-release
 ```
 
 默认端口：
 
-- 后端：`127.0.0.1:11948`
-- 前端：`0.0.0.0:11949`
+- 后端：`127.0.0.1:11930`
+- 前端：`0.0.0.0:11931`
 
 可通过环境变量覆盖：
 
-- `BACKEND_HOST` / `BACKEND_PORT`（默认读取 `backend/application.yml`，未配置时回退 `127.0.0.1:11948`）
+- `APP_ENV`（`development` / `production`，默认 `production`）
+- `BACKEND_HOST` / `BACKEND_PORT`（默认读取 `backend/application.yml`，未配置时回退 `127.0.0.1:11930`）
 - `FRONTEND_HOST` / `FRONTEND_PORT`
 - `BACKEND_ORIGIN`（默认使用后端生效地址拼接）
 - `BACKEND_JAVA_OPTS`
 - `BACKEND_ARGS`
+
+`start.sh` 会在发布目录自动读取 `.env.$APP_ENV`（若存在）作为默认值，显式环境变量优先级更高。
 
 ### 3) 停止
 
@@ -259,7 +284,7 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 
 - `80 -> 443` 重定向
 - `443` 终止 TLS
-- 所有流量反代到 `http://127.0.0.1:11949`
+- 所有流量反代到 `http://127.0.0.1:11931`
 - 透传 WebSocket Upgrade
 
 ## API / WS 协议
@@ -323,7 +348,7 @@ npm run build
 生产连通性检查：
 
 ```bash
-curl http://127.0.0.1:11949/healthz
+curl http://127.0.0.1:11931/healthz
 curl -I https://pty.linlay.cc
 ```
 

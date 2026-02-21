@@ -1,16 +1,25 @@
 import { apiUrl, isAppMode } from "../config/env";
 import { getAppAccessToken, refreshAppAccessToken } from "../auth/appBridge";
 import type {
+  AbortAgentRunRequest,
+  AgentRunResponse,
+  ApproveAgentRunRequest,
   AppVersionResponse,
   AuthStatusResponse,
+  CreateAgentRunRequest,
   CreateSessionRequest,
   CreateSessionResponse,
   CreateSshCredentialRequest,
   LoginRequest,
+  ScreenTextResponse,
+  SessionContextResponse,
+  SessionSnapshotResponse,
   SessionTabViewResponse,
+  SshPreflightResponse,
   SshCredentialResponse,
   SshCredentialSummaryResponse,
-  TerminalClientResponse
+  TerminalClientResponse,
+  WorkdirBrowseResponse
 } from "./types";
 
 export class ApiError extends Error {
@@ -144,6 +153,65 @@ export const apiClient = {
 
   deleteSshCredential(credentialId: string): Promise<void> {
     return request<void>(`/ssh/credentials/${credentialId}`, { method: "DELETE" });
+  },
+
+  preflightSshCredential(credentialId: string): Promise<SshPreflightResponse> {
+    return request<SshPreflightResponse>(`/ssh/credentials/${credentialId}/preflight`, {
+      method: "POST"
+    });
+  },
+
+  getWorkdirTree(path?: string): Promise<WorkdirBrowseResponse> {
+    if (path && path.trim()) {
+      const query = new URLSearchParams({ path: path.trim() });
+      return request<WorkdirBrowseResponse>(`/workdirTree?${query.toString()}`);
+    }
+    return request<WorkdirBrowseResponse>("/workdirTree");
+  },
+
+  getSessionSnapshot(sessionId: string, afterSeq: number): Promise<SessionSnapshotResponse> {
+    const query = new URLSearchParams({ afterSeq: String(Math.max(0, Math.floor(afterSeq))) });
+    return request<SessionSnapshotResponse>(`/sessions/${sessionId}/snapshot?${query.toString()}`);
+  },
+
+  getSessionContext(sessionId: string, commandLimit = 120, eventLimit = 300): Promise<SessionContextResponse> {
+    const query = new URLSearchParams({
+      commandLimit: String(commandLimit),
+      eventLimit: String(eventLimit)
+    });
+    return request<SessionContextResponse>(`/sessions/${sessionId}/context?${query.toString()}`);
+  },
+
+  getSessionScreenText(sessionId: string): Promise<ScreenTextResponse> {
+    return request<ScreenTextResponse>(`/sessions/${sessionId}/screen-text`);
+  },
+
+  createAgentRun(sessionId: string, payload: CreateAgentRunRequest): Promise<AgentRunResponse> {
+    return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  getAgentRun(sessionId: string, runId: string): Promise<AgentRunResponse> {
+    return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}`);
+  },
+
+  approveAgentRun(sessionId: string, runId: string, payload: ApproveAgentRunRequest = {}): Promise<AgentRunResponse> {
+    return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}/approve`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  abortAgentRun(sessionId: string, runId: string, payload: AbortAgentRunRequest = {}): Promise<AgentRunResponse> {
+    return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}/abort`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
   },
 
   getVersion(): Promise<AppVersionResponse> {

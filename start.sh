@@ -9,9 +9,16 @@ elif [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js
 else
   RELEASE_DIR="$ROOT_DIR/release"
 fi
+APP_ENV="${APP_ENV:-production}"
+if [[ "$APP_ENV" != "development" && "$APP_ENV" != "production" ]]; then
+  echo "[start] invalid APP_ENV: $APP_ENV (expected: development|production)"
+  exit 1
+fi
 RUN_DIR="$RELEASE_DIR/run"
 LOG_DIR="$RELEASE_DIR/logs"
 BACKEND_CONFIG_FILE="$RELEASE_DIR/backend/application.yml"
+FRONTEND_ENV_FILE="$RELEASE_DIR/.env.$APP_ENV"
+LEGACY_FRONTEND_ENV_FILE="$RELEASE_DIR/frontend/.env.server.$APP_ENV"
 
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
@@ -20,8 +27,9 @@ FRONTEND_LOG_FILE="$LOG_DIR/frontend.out"
 
 BACKEND_HOST_OVERRIDE="${BACKEND_HOST:-}"
 BACKEND_PORT_OVERRIDE="${BACKEND_PORT:-}"
-FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
-FRONTEND_PORT="${FRONTEND_PORT:-11949}"
+FRONTEND_HOST="${FRONTEND_HOST:-}"
+FRONTEND_PORT="${FRONTEND_PORT:-}"
+BACKEND_ORIGIN_OVERRIDE="${BACKEND_ORIGIN:-}"
 BACKEND_JAVA_OPTS="${BACKEND_JAVA_OPTS:--Xms256m -Xmx512m}"
 BACKEND_ARGS="${BACKEND_ARGS:-}"
 NODE_OPTIONS_VALUE="${NODE_OPTIONS:-}"
@@ -47,6 +55,34 @@ read_server_config() {
   ' "$file"
 }
 
+read_env_config() {
+  local file="$1"
+  local key="$2"
+  awk -v key="$key" '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      eq=index(line, "=")
+      if (eq <= 0) {
+        next
+      }
+      k=substr(line, 1, eq - 1)
+      sub(/[[:space:]]+$/, "", k)
+      if (k != key) {
+        next
+      }
+      v=substr(line, eq + 1)
+      sub(/^[[:space:]]+/, "", v)
+      sub(/[[:space:]]+$/, "", v)
+      gsub(/^["'"'"']|["'"'"']$/, "", v)
+      print v
+      exit
+    }
+  ' "$file"
+}
+
 is_running() {
   local pid="$1"
   kill -0 "$pid" >/dev/null 2>&1
@@ -63,7 +99,7 @@ require_file() {
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 default_backend_host="127.0.0.1"
-default_backend_port="11948"
+default_backend_port="11930"
 if [[ -f "$BACKEND_CONFIG_FILE" ]]; then
   config_backend_host="$(read_server_config "$BACKEND_CONFIG_FILE" "address" || true)"
   config_backend_port="$(read_server_config "$BACKEND_CONFIG_FILE" "port" || true)"
@@ -75,9 +111,22 @@ if [[ -f "$BACKEND_CONFIG_FILE" ]]; then
   fi
 fi
 
+if [[ ! -f "$FRONTEND_ENV_FILE" ]] && [[ -f "$LEGACY_FRONTEND_ENV_FILE" ]]; then
+  FRONTEND_ENV_FILE="$LEGACY_FRONTEND_ENV_FILE"
+fi
+
+if [[ -f "$FRONTEND_ENV_FILE" ]]; then
+  [[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$FRONTEND_ENV_FILE" "HOST" || true)"
+  [[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$FRONTEND_ENV_FILE" "PORT" || true)"
+  [[ -n "$BACKEND_ORIGIN_OVERRIDE" ]] || BACKEND_ORIGIN_OVERRIDE="$(read_env_config "$FRONTEND_ENV_FILE" "BACKEND_ORIGIN" || true)"
+fi
+
+FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
+FRONTEND_PORT="${FRONTEND_PORT:-11931}"
+
 effective_backend_host="${BACKEND_HOST_OVERRIDE:-$default_backend_host}"
 effective_backend_port="${BACKEND_PORT_OVERRIDE:-$default_backend_port}"
-BACKEND_ORIGIN="${BACKEND_ORIGIN:-http://$effective_backend_host:$effective_backend_port}"
+BACKEND_ORIGIN="${BACKEND_ORIGIN_OVERRIDE:-http://$effective_backend_host:$effective_backend_port}"
 
 backend_overrides=""
 if [[ -n "$BACKEND_HOST_OVERRIDE" ]]; then
@@ -147,4 +196,8 @@ fi
 
 echo "[start] backend  pid=$backend_pid  http://$effective_backend_host:$effective_backend_port"
 echo "[start] frontend pid=$frontend_pid http://$FRONTEND_HOST:$FRONTEND_PORT"
+echo "[start] app env=$APP_ENV"
+if [[ -f "$FRONTEND_ENV_FILE" ]]; then
+  echo "[start] loaded frontend env defaults from $FRONTEND_ENV_FILE"
+fi
 echo "[start] logs: $BACKEND_LOG_FILE , $FRONTEND_LOG_FILE"

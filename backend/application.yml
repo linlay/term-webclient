@@ -3,7 +3,7 @@
 
 server:
   address: 127.0.0.1
-  port: 11948
+  port: 11930
 
 terminal:
   cli-clients:

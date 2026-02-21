@@ -5,9 +5,16 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_DIR="${1:-$ROOT_DIR/release}"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+APP_ENV="${APP_ENV:-production}"
+
+if [[ "$APP_ENV" != "development" && "$APP_ENV" != "production" ]]; then
+  echo "[package] invalid APP_ENV: $APP_ENV (expected: development|production)"
+  exit 1
+fi
 
 echo "[package] root: $ROOT_DIR"
 echo "[package] output: $OUTPUT_DIR"
+echo "[package] app env: $APP_ENV"
 
 if ! command -v mvn >/dev/null 2>&1; then
   echo "[package] maven (mvn) not found"
@@ -35,7 +42,7 @@ echo "[package] building frontend dist"
 (
   cd "$FRONTEND_DIR"
   npm ci
-  npm run build
+  npm run build -- --mode "$APP_ENV"
 )
 
 echo "[package] preparing release directory"
@@ -51,7 +58,6 @@ cp "$FRONTEND_DIR/server.js" "$OUTPUT_DIR/frontend/server.js"
 cp "$FRONTEND_DIR/package.json" "$OUTPUT_DIR/frontend/package.json"
 cp "$FRONTEND_DIR/package-lock.json" "$OUTPUT_DIR/frontend/package-lock.json"
 cp -R "$FRONTEND_DIR/dist" "$OUTPUT_DIR/frontend/dist"
-cp "$FRONTEND_DIR/.env.server.example" "$OUTPUT_DIR/frontend/.env.server.example"
 
 echo "[package] installing frontend runtime dependencies"
 (
