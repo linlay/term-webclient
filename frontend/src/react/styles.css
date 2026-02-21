@@ -181,7 +181,7 @@ body {
   position: relative;
   flex: 1;
   min-height: 0;
-  padding: 8px;
+  padding: 2px;
   overflow: hidden;
 }
 
@@ -472,6 +472,16 @@ textarea {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 6px;
+}
+
+.close-tab-confirm-panel {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.close-tab-confirm-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .primary-btn {

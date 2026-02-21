@@ -12,8 +12,10 @@ import { MobileShortcutBar } from "./features/layout/MobileShortcutBar";
 import { NewWindowModal } from "./features/layout/NewWindowModal";
 import { TabBar, canRebuildTab, type TabContextPayload } from "./features/layout/TabBar";
 import { TabContextMenu, type TabContextMenuState } from "./features/layout/TabContextMenu";
+import { CloseTabConfirmModal } from "./features/layout/CloseTabConfirmModal";
 import type { AgentRunResponse } from "./shared/api/types";
 import type { NewSessionCreatedPayload } from "./features/session/NewSessionForm";
+import type { TerminalTab } from "./features/tabs/useTabsStore";
 
 interface NoticeState {
   message: string;
@@ -81,6 +83,7 @@ export default function App(): JSX.Element {
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
   const [showScrollBottomFab, setShowScrollBottomFab] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
 
   const closeSession = useMutation({
     mutationFn: (sessionId: string) => apiClient.closeSession(sessionId)
@@ -190,13 +193,18 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const root = document.documentElement;
     let settleTimer: number | null = null;
-    const updateViewportVars = () => {
+    let longSettleTimer: number | null = null;
+    const updateViewportVars = (useSafeMax = false) => {
       const viewport = window.visualViewport;
       const viewportHeight = viewport ? Math.max(0, viewport.height) : window.innerHeight;
       const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
       const keyboardInset = viewport ? Math.max(0, layoutHeight - viewportHeight - viewport.offsetTop) : 0;
 
-      root.style.setProperty("--app-vh", `${Math.round(viewportHeight)}px`);
+      const effectiveHeight = useSafeMax && keyboardInset < 10
+        ? Math.max(viewportHeight, window.innerHeight)
+        : viewportHeight;
+
+      root.style.setProperty("--app-vh", `${Math.round(effectiveHeight)}px`);
       root.style.setProperty("--mobile-shortcut-inset", `${Math.round(keyboardInset)}px`);
     };
     const scheduleSettledViewportUpdate = () => {
@@ -212,6 +220,16 @@ export default function App(): JSX.Element {
       updateViewportVars();
       scheduleSettledViewportUpdate();
     };
+    const handleFocusOut = () => {
+      scheduleSettledViewportUpdate();
+      if (longSettleTimer != null) {
+        window.clearTimeout(longSettleTimer);
+      }
+      longSettleTimer = window.setTimeout(() => {
+        longSettleTimer = null;
+        updateViewportVars(true);
+      }, 400);
+    };
 
     updateViewportVars();
 
@@ -222,11 +240,14 @@ export default function App(): JSX.Element {
     viewport?.addEventListener("resize", handleViewportChange);
     viewport?.addEventListener("scroll", handleViewportChange);
     document.addEventListener("focusin", scheduleSettledViewportUpdate, true);
-    document.addEventListener("focusout", scheduleSettledViewportUpdate, true);
+    document.addEventListener("focusout", handleFocusOut, true);
 
     return () => {
       if (settleTimer != null) {
         window.clearTimeout(settleTimer);
+      }
+      if (longSettleTimer != null) {
+        window.clearTimeout(longSettleTimer);
       }
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("orientationchange", handleViewportChange);
@@ -234,7 +255,7 @@ export default function App(): JSX.Element {
       viewport?.removeEventListener("resize", handleViewportChange);
       viewport?.removeEventListener("scroll", handleViewportChange);
       document.removeEventListener("focusin", scheduleSettledViewportUpdate, true);
-      document.removeEventListener("focusout", scheduleSettledViewportUpdate, true);
+      document.removeEventListener("focusout", handleFocusOut, true);
     };
   }, []);
 
@@ -244,7 +265,7 @@ export default function App(): JSX.Element {
       root.style.setProperty("--mobile-shortcut-bar-offset", "0px");
       return;
     }
-    root.style.setProperty("--mobile-shortcut-bar-offset", mobileShortcutsExpanded ? "108px" : "52px");
+    root.style.setProperty("--mobile-shortcut-bar-offset", mobileShortcutsExpanded ? "72px" : "42px");
   }, [isMobile, mobileShortcutsExpanded]);
 
   useEffect(() => {
@@ -283,6 +304,10 @@ export default function App(): JSX.Element {
       if (event.key !== "Escape") {
         return;
       }
+      if (pendingCloseTabId) {
+        cancelCloseTab();
+        return;
+      }
       if (tabContextMenu) {
         setTabContextMenu(null);
         return;
@@ -299,7 +324,7 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [isCopilotOpen, isMobile, isNewWindowOpen, tabContextMenu]);
+  }, [isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, tabContextMenu]);
 
   useEffect(() => {
     if (!isMobile || !activeTabId) {
@@ -412,6 +437,33 @@ export default function App(): JSX.Element {
     senderMapRef.current.delete(localId);
     terminalHandleMapRef.current.delete(localId);
     removeTab(localId);
+  }
+
+  function isTabSessionActive(tab: TerminalTab): boolean {
+    return (tab.status === "connecting" || tab.status === "connected") && !tab.lost;
+  }
+
+  function requestCloseTab(localId: string): void {
+    const tab = tabs.find((item) => item.localId === localId);
+    if (!tab) {
+      return;
+    }
+    if (isTabSessionActive(tab)) {
+      setPendingCloseTabId(localId);
+    } else {
+      void closeTab(localId);
+    }
+  }
+
+  function confirmCloseTab(): void {
+    if (pendingCloseTabId) {
+      void closeTab(pendingCloseTabId);
+    }
+    setPendingCloseTabId(null);
+  }
+
+  function cancelCloseTab(): void {
+    setPendingCloseTabId(null);
   }
 
   async function rebuildTab(localId: string): Promise<void> {
@@ -609,7 +661,7 @@ export default function App(): JSX.Element {
             activeTabId={activeTabId}
             onSelectTab={setActiveTab}
             onCloseTab={(tabId) => {
-              void closeTab(tabId);
+              requestCloseTab(tabId);
             }}
             onOpenNewWindow={() => {
               setIsNewWindowOpen(true);
@@ -632,8 +684,19 @@ export default function App(): JSX.Element {
               *
             </button>
             {!appMode && (
-              <button type="button" className="ghost-btn" onClick={() => logout.mutate()} disabled={logout.isPending}>
-                Logout
+              <button
+                type="button"
+                className="ghost-btn top-icon-btn"
+                aria-label="Logout"
+                title="Logout"
+                onClick={() => logout.mutate()}
+                disabled={logout.isPending}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
               </button>
             )}
           </div>
@@ -786,8 +849,15 @@ export default function App(): JSX.Element {
             return;
           }
           setTabContextMenu(null);
-          void closeTab(contextTab.localId);
+          requestCloseTab(contextTab.localId);
         }}
+      />
+
+      <CloseTabConfirmModal
+        open={pendingCloseTabId !== null}
+        tabTitle={tabs.find((t) => t.localId === pendingCloseTabId)?.title ?? ""}
+        onConfirm={confirmCloseTab}
+        onCancel={cancelCloseTab}
       />
     </>
   );

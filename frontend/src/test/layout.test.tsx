@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TabBar, canRebuildTab } from "../react/features/layout/TabBar";
 import { TabContextMenu } from "../react/features/layout/TabContextMenu";
+import { CloseTabConfirmModal } from "../react/features/layout/CloseTabConfirmModal";
 import type { TerminalTab } from "../react/features/tabs/useTabsStore";
 
 function makeTab(partial: Partial<TerminalTab> = {}): TerminalTab {
@@ -119,5 +120,43 @@ describe("layout components", () => {
     });
     expect(onCloseTab).toHaveBeenCalledTimes(1);
     expect(onRebuild).toHaveBeenCalledTimes(0);
+  });
+
+  it("CloseTabConfirmModal renders nothing when closed", () => {
+    render(
+      <CloseTabConfirmModal open={false} tabTitle="test" onConfirm={vi.fn()} onCancel={vi.fn()} />
+    );
+    const modal = container?.querySelector("[data-testid='close-tab-confirm-modal']");
+    expect(modal).toBeNull();
+  });
+
+  it("CloseTabConfirmModal renders with tab title and triggers callbacks", () => {
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+
+    render(
+      <CloseTabConfirmModal open={true} tabTitle="my-session" onConfirm={onConfirm} onCancel={onCancel} />
+    );
+
+    const modal = container?.querySelector("[data-testid='close-tab-confirm-modal']");
+    expect(modal).not.toBeNull();
+
+    const text = container?.querySelector(".close-tab-confirm-text");
+    expect(text?.textContent).toContain("my-session");
+
+    const buttons = container?.querySelectorAll(".modal-actions button") ?? [];
+    expect(buttons.length).toBe(2);
+
+    // Cancel button
+    act(() => {
+      (buttons[0] as HTMLButtonElement).click();
+    });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // Confirm button
+    act(() => {
+      (buttons[1] as HTMLButtonElement).click();
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
