@@ -1,6 +1,6 @@
 package com.linlay.ptyjava.auth;
 
-import com.linlay.ptyjava.config.TerminalProperties;
+import com.linlay.ptyjava.config.AppAuthProperties;
 import com.linlay.ptyjava.model.auth.AuthStatusResponse;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -32,22 +32,22 @@ public class AppTokenService {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final TerminalProperties terminalProperties;
+    private final AppAuthProperties appAuthProperties;
     private final JwksKeyProvider jwksKeyProvider;
     private final Clock clock;
 
     private volatile String cachedLocalPublicKeyPem;
     private volatile RSAPublicKey cachedLocalPublicKey;
 
-    public AppTokenService(TerminalProperties terminalProperties,
+    public AppTokenService(AppAuthProperties appAuthProperties,
                            JwksKeyProvider jwksKeyProvider) {
-        this.terminalProperties = terminalProperties;
+        this.appAuthProperties = appAuthProperties;
         this.jwksKeyProvider = jwksKeyProvider;
         this.clock = Clock.systemUTC();
     }
 
     public boolean isEnabled() {
-        return terminalProperties.getAppAuth().isEnabled();
+        return appAuthProperties.isEnabled();
     }
 
     public AuthStatusResponse currentStatus(HttpServletRequest request) {
@@ -151,7 +151,7 @@ public class AppTokenService {
     }
 
     private RSAPublicKey resolveLocalPublicKey() {
-        String pem = safe(terminalProperties.getAppAuth().getLocalPublicKey());
+        String pem = safe(appAuthProperties.getLocalPublicKey());
         if (!StringUtils.hasText(pem)) {
             return null;
         }
@@ -195,7 +195,7 @@ public class AppTokenService {
 
     private void validateClaims(JWTClaimsSet claims) {
         Instant now = clock.instant();
-        Duration skew = Duration.ofSeconds(Math.max(0, terminalProperties.getAppAuth().getClockSkewSeconds()));
+        Duration skew = Duration.ofSeconds(Math.max(0, appAuthProperties.getClockSkewSeconds()));
 
         Date expirationTime = claims.getExpirationTime();
         if (expirationTime == null) {
@@ -214,7 +214,7 @@ public class AppTokenService {
             }
         }
 
-        String expectedIssuer = safe(terminalProperties.getAppAuth().getIssuer());
+        String expectedIssuer = safe(appAuthProperties.getIssuer());
         if (StringUtils.hasText(expectedIssuer)) {
             String actualIssuer = safe(claims.getIssuer());
             if (!expectedIssuer.equals(actualIssuer)) {
@@ -222,7 +222,7 @@ public class AppTokenService {
             }
         }
 
-        String configuredAudience = safe(terminalProperties.getAppAuth().getAudience());
+        String configuredAudience = safe(appAuthProperties.getAudience());
         if (StringUtils.hasText(configuredAudience)) {
             List<String> expectedAudiences = parseExpectedAudiences(configuredAudience);
             List<String> actualAudiences = claims.getAudience() == null ? List.of() : claims.getAudience();

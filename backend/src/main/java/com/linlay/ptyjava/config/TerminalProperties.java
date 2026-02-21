@@ -29,8 +29,6 @@ public class TerminalProperties {
     private int sessionEventMaxEntries = 2048;
     private int commandFrameMaxEntries = 256;
     private int transcriptMaxChars = 200_000;
-    private AuthProperties auth = new AuthProperties();
-    private AppAuthProperties appAuth = new AppAuthProperties();
     private AgentProperties agent = new AgentProperties();
     private SshProperties ssh = new SshProperties();
     private List<CliClientProperties> cliClients = new ArrayList<>();
@@ -43,39 +41,12 @@ public class TerminalProperties {
         this.allowedOrigins = new ArrayList<>(allowedOrigins);
     }
 
-    public void setAppAuth(AppAuthProperties appAuth) {
-        this.appAuth = appAuth == null ? new AppAuthProperties() : appAuth;
-    }
-
     public void setCliClients(List<CliClientProperties> cliClients) {
         if (cliClients == null) {
             this.cliClients = new ArrayList<>();
             return;
         }
         this.cliClients = new ArrayList<>(cliClients);
-    }
-
-    @Data
-    public static class AuthProperties {
-        private boolean enabled = false;
-        private String username = "admin";
-        private String passwordHash = "";
-        private String passwordHashBcrypt = "";
-        private int sessionTtlSeconds = 12 * 3600;
-        private boolean loginRateLimitEnabled = true;
-        private int loginRateLimitWindowSeconds = 60;
-        private int loginRateLimitMaxAttempts = 10;
-    }
-
-    @Data
-    public static class AppAuthProperties {
-        private boolean enabled = true;
-        private String localPublicKey = "";
-        private String jwksUri = "";
-        private String issuer = "";
-        private int jwksCacheSeconds = 300;
-        private String audience = "";
-        private int clockSkewSeconds = 30;
     }
 
     @Data

@@ -86,7 +86,7 @@ pty-webclient/
 
 | 模式 | 路径前缀 | 机制 |
 |---|---|---|
-| Web（浏览器） | `/webapi/**` | HttpSession cookie，bcrypt/MD5 密码校验 |
+| Web（浏览器） | `/webapi/**` | HttpSession cookie，bcrypt 密码校验 |
 | App（嵌入端） | `/appapi/**` | Bearer JWT，JWKS 或本地公钥验签 |
 | WebSocket | `/ws/**` | 握手时校验 Session 或 accessToken 参数 |
 
@@ -395,22 +395,21 @@ terminal:
   ring-buffer-max-chunks: 4096              # 输出缓冲最大块数
   max-cols: 500                             # 终端最大列数
   max-rows: 200                             # 终端最大行数
-  auth:
-    enabled: true
-    username: admin
-    password-hash-bcrypt: ""                # bcrypt 哈希（推荐）
-    password-hash: ""                       # MD5 哈希（兼容，已弃用）
-    login-rate-limit-enabled: true          # IP+用户名窗口限流
-  app-auth:
-    enabled: true                           # JWT 认证
-    local-public-key: ""                    # 本地 RSA 公钥（优先）
-    jwks-uri: ""                            # JWKS 端点（备用）
   ssh:
     enabled: true
     credentials-file: data/ssh-credentials.json  # 加密凭据文件
     master-key-env: TERMINAL_SSH_MASTER_KEY       # 主密钥环境变量
   agent:
     enabled: true
+auth:
+  enabled: true
+  username: admin
+  password-hash-bcrypt: ""                  # bcrypt 哈希
+  login-rate-limit-enabled: true            # IP+用户名窗口限流
+app-auth:
+  enabled: true                             # JWT 认证
+  local-public-key: ""                      # 本地 RSA 公钥（优先）
+  jwks-uri: ""                              # JWKS 端点（备用）
 ```
 
 ## 常用开发命令

@@ -11,14 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(properties = {
-    "terminal.auth.password-hash="
-})
 class AuthBcryptIntegrationTest {
 
     private static final String BCRYPT_HASH = new BCryptPasswordEncoder().encode("secret123");
@@ -28,9 +24,9 @@ class AuthBcryptIntegrationTest {
 
     @DynamicPropertySource
     static void authProps(DynamicPropertyRegistry registry) {
-        registry.add("terminal.auth.enabled", () -> "true");
-        registry.add("terminal.auth.username", () -> "tester");
-        registry.add("terminal.auth.password-hash-bcrypt", () -> BCRYPT_HASH);
+        registry.add("auth.enabled", () -> "true");
+        registry.add("auth.username", () -> "tester");
+        registry.add("auth.password-hash-bcrypt", () -> BCRYPT_HASH);
     }
 
     @Test

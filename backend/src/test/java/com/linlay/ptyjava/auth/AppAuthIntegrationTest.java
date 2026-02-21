@@ -37,11 +37,11 @@ class AppAuthIntegrationTest {
 
     @DynamicPropertySource
     static void authProps(DynamicPropertyRegistry registry) {
-        registry.add("terminal.app-auth.enabled", () -> "true");
-        registry.add("terminal.app-auth.local-public-key", () -> APP_PUBLIC_KEY_PEM);
-        registry.add("terminal.app-auth.issuer", () -> ISSUER);
-        registry.add("terminal.app-auth.audience", () -> "appterm");
-        registry.add("terminal.app-auth.jwks-uri", () -> "http://127.0.0.1:65535/should-not-be-called");
+        registry.add("app-auth.enabled", () -> "true");
+        registry.add("app-auth.local-public-key", () -> APP_PUBLIC_KEY_PEM);
+        registry.add("app-auth.issuer", () -> ISSUER);
+        registry.add("app-auth.audience", () -> "appterm");
+        registry.add("app-auth.jwks-uri", () -> "http://127.0.0.1:65535/should-not-be-called");
     }
 
     @Test

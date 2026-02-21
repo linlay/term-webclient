@@ -1,6 +1,6 @@
 package com.linlay.ptyjava.auth;
 
-import com.linlay.ptyjava.config.TerminalProperties;
+import com.linlay.ptyjava.config.AppAuthProperties;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -18,14 +18,14 @@ import org.springframework.util.StringUtils;
 @Component
 public class JwksKeyProvider {
 
-    private final TerminalProperties terminalProperties;
+    private final AppAuthProperties appAuthProperties;
     private final HttpClient httpClient;
     private final Object lock = new Object();
 
     private volatile CachedJwks cached;
 
-    public JwksKeyProvider(TerminalProperties terminalProperties) {
-        this.terminalProperties = terminalProperties;
+    public JwksKeyProvider(AppAuthProperties appAuthProperties) {
+        this.appAuthProperties = appAuthProperties;
         this.httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -61,7 +61,7 @@ public class JwksKeyProvider {
     }
 
     private JWKSet loadJwks() {
-        String jwksUri = safe(terminalProperties.getAppAuth().getJwksUri());
+        String jwksUri = safe(appAuthProperties.getJwksUri());
         if (!StringUtils.hasText(jwksUri)) {
             return null;
         }
@@ -80,7 +80,7 @@ public class JwksKeyProvider {
             }
 
             JWKSet jwkSet = fetchJwks(jwksUri);
-            int cacheSeconds = Math.max(1, terminalProperties.getAppAuth().getJwksCacheSeconds());
+            int cacheSeconds = Math.max(1, appAuthProperties.getJwksCacheSeconds());
             cached = new CachedJwks(jwkSet, now.plusSeconds(cacheSeconds));
             return jwkSet;
         }

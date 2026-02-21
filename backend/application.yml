@@ -27,27 +27,27 @@ terminal:
         - export https_proxy="http://127.0.0.1:8001"
         - export HTTPS_PROXY="http://127.0.0.1:8001"
       shell: /bin/zsh
-  auth:
-    enabled: true
-    username: admin
-    # Generate bcrypt hash: htpasswd -nbBC 10 '' 'yourpassword' | cut -d: -f2
-    # password-hash-bcrypt:
-    # Legacy MD5 (deprecated, migrate to bcrypt):
-    # password-hash:
-    session-ttl-seconds: 43200
-    login-rate-limit-enabled: true
-    login-rate-limit-window-seconds: 60
-    login-rate-limit-max-attempts: 10
-  app-auth:
-    enabled: true
-    # local-public-key takes precedence over jwks-uri when configured.
-    local-public-key: ""
-    jwks-uri: ""
-    issuer: ""
-    jwks-cache-seconds: 300
-    audience: ""
-    clock-skew-seconds: 30
   ssh:
     credentials-file: data/ssh-credentials.json
     # Set via environment variable TERMINAL_SSH_MASTER_KEY (recommended) or here:
     # master-key:
+
+auth:
+  enabled: true
+  username: admin
+  # Generate bcrypt hash: htpasswd -nbBC 10 '' 'yourpassword' | cut -d: -f2
+  password-hash-bcrypt: $2a$10$XkbhEhxiT/4JC.zkZD9uxuEFf7za4AxEBPbIFmUR41qY0.spPk41q
+  session-ttl-seconds: 43200
+  login-rate-limit-enabled: true
+  login-rate-limit-window-seconds: 60
+  login-rate-limit-max-attempts: 10
+
+app-auth:
+  enabled: true
+  # local-public-key takes precedence over jwks-uri when configured.
+  local-public-key: ""
+  jwks-uri: ""
+  issuer: ""
+  jwks-cache-seconds: 300
+  audience: ""
+  clock-skew-seconds: 30

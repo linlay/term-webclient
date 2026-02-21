@@ -1,12 +1,14 @@
 package com.linlay.ptyjava;
 
+import com.linlay.ptyjava.config.AppAuthProperties;
+import com.linlay.ptyjava.config.AuthProperties;
 import com.linlay.ptyjava.config.TerminalProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties(TerminalProperties.class)
+@EnableConfigurationProperties({TerminalProperties.class, AuthProperties.class, AppAuthProperties.class})
 public class TerminalApplication {
 
     public static void main(String[] args) {

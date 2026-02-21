@@ -1,6 +1,6 @@
 package com.linlay.ptyjava.auth;
 
-import com.linlay.ptyjava.config.TerminalProperties;
+import com.linlay.ptyjava.config.AuthProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -13,11 +13,11 @@ import org.springframework.util.StringUtils;
 @Component
 public class LoginRateLimiter {
 
-    private final TerminalProperties terminalProperties;
+    private final AuthProperties authProperties;
     private final Map<String, Deque<Long>> failures = new ConcurrentHashMap<>();
 
-    public LoginRateLimiter(TerminalProperties terminalProperties) {
-        this.terminalProperties = terminalProperties;
+    public LoginRateLimiter(AuthProperties authProperties) {
+        this.authProperties = authProperties;
     }
 
     public String resolveRateLimitKey(HttpServletRequest request, String username) {
@@ -74,15 +74,15 @@ public class LoginRateLimiter {
     }
 
     private boolean isEnabled() {
-        return terminalProperties.getAuth().isLoginRateLimitEnabled();
+        return authProperties.isLoginRateLimitEnabled();
     }
 
     private int maxAttempts() {
-        return Math.max(1, terminalProperties.getAuth().getLoginRateLimitMaxAttempts());
+        return Math.max(1, authProperties.getLoginRateLimitMaxAttempts());
     }
 
     private int windowSeconds() {
-        return Math.max(10, terminalProperties.getAuth().getLoginRateLimitWindowSeconds());
+        return Math.max(10, authProperties.getLoginRateLimitWindowSeconds());
     }
 
     private void trim(Deque<Long> queue, long cutoffMillis) {

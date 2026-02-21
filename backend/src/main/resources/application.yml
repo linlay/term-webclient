@@ -41,23 +41,6 @@ terminal:
   ring-buffer-max-chunks: 4096
   max-cols: 500
   max-rows: 200
-  auth:
-    enabled: true
-    # username:
-    # password-hash:
-    # password-hash-bcrypt:
-    session-ttl-seconds: 43200
-    login-rate-limit-enabled: true
-    login-rate-limit-window-seconds: 60
-    login-rate-limit-max-attempts: 10
-  app-auth:
-    enabled: true
-    local-public-key: ""
-    jwks-uri: ""
-    issuer: ""
-    jwks-cache-seconds: 300
-    audience: ""
-    clock-skew-seconds: 30
   session-event-max-entries: 2048
   command-frame-max-entries: 256
   transcript-max-chars: 200000
@@ -77,6 +60,24 @@ terminal:
     credentials-file: data/ssh-credentials.json
     known-hosts-file: ${user.home}/.pty-web/known-hosts.json
     master-key-env: TERMINAL_SSH_MASTER_KEY
+
+auth:
+  enabled: true
+  # username:
+  # password-hash-bcrypt:
+  session-ttl-seconds: 43200
+  login-rate-limit-enabled: true
+  login-rate-limit-window-seconds: 60
+  login-rate-limit-max-attempts: 10
+
+app-auth:
+  enabled: true
+  local-public-key: ""
+  jwks-uri: ""
+  issuer: ""
+  jwks-cache-seconds: 300
+  audience: ""
+  clock-skew-seconds: 30
 
 logging:
   pattern:

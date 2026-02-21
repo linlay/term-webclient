@@ -2,17 +2,56 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ $# -ge 1 ]]; then
-  RELEASE_DIR="$1"
-elif [[ -d "$ROOT_DIR/run" ]]; then
-  RELEASE_DIR="$ROOT_DIR"
-else
-  RELEASE_DIR="$ROOT_DIR/release"
-fi
-RUN_DIR="$RELEASE_DIR/run"
+APP_ENV="${APP_ENV:-production}"
 
-BACKEND_PID_FILE="$RUN_DIR/backend.pid"
-FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+read_server_config() {
+  local file="$1"
+  local key="$2"
+  awk -v key="$key" '
+    /^[[:space:]]*#/ { next }
+    /^server:[[:space:]]*$/ { in_server=1; next }
+    in_server && /^[^[:space:]]/ { in_server=0 }
+    in_server {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ "^" key ":[[:space:]]*") {
+        sub("^" key ":[[:space:]]*", "", line)
+        sub(/[[:space:]]+#.*$/, "", line)
+        gsub(/^["'\'']|["'\'']$/, "", line)
+        print line
+        exit
+      }
+    }
+  ' "$file"
+}
+
+read_env_config() {
+  local file="$1"
+  local key="$2"
+  awk -v key="$key" '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      eq=index(line, "=")
+      if (eq <= 0) {
+        next
+      }
+      k=substr(line, 1, eq - 1)
+      sub(/[[:space:]]+$/, "", k)
+      if (k != key) {
+        next
+      }
+      v=substr(line, eq + 1)
+      sub(/^[[:space:]]+/, "", v)
+      sub(/[[:space:]]+$/, "", v)
+      gsub(/^["'"'"']|["'"'"']$/, "", v)
+      print v
+      exit
+    }
+  ' "$file"
+}
 
 is_running() {
   local pid="$1"
@@ -58,5 +97,153 @@ stop_by_pid_file() {
   echo "[stop] $name forced to stop (pid=$pid)"
 }
 
-stop_by_pid_file "frontend" "$FRONTEND_PID_FILE"
-stop_by_pid_file "backend" "$BACKEND_PID_FILE"
+is_expected_command() {
+  local name="$1"
+  local cmd="$2"
+
+  case "$name" in
+    backend)
+      if [[ "$cmd" != *java* ]]; then
+        return 1
+      fi
+      if [[ "$cmd" == *"backend/app.jar"* || "$cmd" == *"org.springframework.boot.loader"* || "$cmd" == *spring-boot* ]]; then
+        return 0
+      fi
+      return 1
+      ;;
+    frontend)
+      if [[ "$cmd" == *node* && "$cmd" == *server.js* ]]; then
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+stop_by_port() {
+  local name="$1"
+  local port="$2"
+
+  if [[ -z "$port" ]]; then
+    return
+  fi
+
+  if ! command -v lsof >/dev/null 2>&1; then
+    echo "[stop] lsof not found, skip port fallback for $name:$port"
+    return
+  fi
+
+  local pids
+  pids="$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -z "$pids" ]]; then
+    echo "[stop] $name not running on port $port"
+    return
+  fi
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    if ! is_running "$pid"; then
+      echo "[stop] $name listener pid=$pid on port $port is not signalable, skipped"
+      continue
+    fi
+
+    local cmd
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    if ! is_expected_command "$name" "$cmd"; then
+      echo "[stop] $name listener pid=$pid on port $port skipped (unexpected command: $cmd)"
+      continue
+    fi
+
+    kill "$pid" >/dev/null 2>&1 || true
+
+    for _ in $(seq 1 15); do
+      if ! is_running "$pid"; then
+        echo "[stop] $name stopped by port fallback (pid=$pid port=$port)"
+        break
+      fi
+      sleep 1
+    done
+
+    if is_running "$pid"; then
+      kill -9 "$pid" >/dev/null 2>&1 || true
+      echo "[stop] $name forced to stop by port fallback (pid=$pid port=$port)"
+    fi
+  done <<< "$pids"
+}
+
+resolve_backend_port() {
+  local release_dir="$1"
+  local backend_port="11930"
+  local backend_config="$release_dir/backend/application.yml"
+  if [[ -f "$backend_config" ]]; then
+    local config_backend_port
+    config_backend_port="$(read_server_config "$backend_config" "port" || true)"
+    if [[ -n "$config_backend_port" ]]; then
+      backend_port="$config_backend_port"
+    fi
+  fi
+  echo "$backend_port"
+}
+
+resolve_frontend_port() {
+  local release_dir="$1"
+  local frontend_port="11931"
+  local frontend_env_file="$release_dir/.env.$APP_ENV"
+  local legacy_frontend_env_file="$release_dir/frontend/.env.server.$APP_ENV"
+  if [[ ! -f "$frontend_env_file" ]] && [[ -f "$legacy_frontend_env_file" ]]; then
+    frontend_env_file="$legacy_frontend_env_file"
+  fi
+  if [[ -f "$frontend_env_file" ]]; then
+    local config_frontend_port
+    config_frontend_port="$(read_env_config "$frontend_env_file" "PORT" || true)"
+    if [[ -n "$config_frontend_port" ]]; then
+      frontend_port="$config_frontend_port"
+    fi
+  fi
+  echo "$frontend_port"
+}
+
+add_release_dir() {
+  local dir="$1"
+  [[ -z "$dir" ]] && return
+  if [[ "${#RELEASE_DIRS[@]}" -gt 0 ]]; then
+    for existing in "${RELEASE_DIRS[@]}"; do
+      if [[ "$existing" == "$dir" ]]; then
+        return
+      fi
+    done
+  fi
+  RELEASE_DIRS+=("$dir")
+}
+
+RELEASE_DIRS=()
+if [[ $# -ge 1 ]]; then
+  add_release_dir "$1"
+else
+  if [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js" ]]; then
+    add_release_dir "$ROOT_DIR"
+  fi
+  if [[ -d "$ROOT_DIR/release" ]]; then
+    add_release_dir "$ROOT_DIR/release"
+  fi
+  if [[ "${#RELEASE_DIRS[@]}" -eq 0 ]]; then
+    add_release_dir "$ROOT_DIR"
+  fi
+fi
+
+for release_dir in "${RELEASE_DIRS[@]}"; do
+  run_dir="$release_dir/run"
+  echo "[stop] checking $release_dir"
+  stop_by_pid_file "frontend" "$run_dir/frontend.pid"
+  stop_by_pid_file "backend" "$run_dir/backend.pid"
+done
+
+for release_dir in "${RELEASE_DIRS[@]}"; do
+  backend_port="$(resolve_backend_port "$release_dir")"
+  frontend_port="$(resolve_frontend_port "$release_dir")"
+  stop_by_port "frontend" "$frontend_port"
+  stop_by_port "backend" "$backend_port"
+done

@@ -64,10 +64,9 @@ npm run dev
 | `terminal.allowed-origins` | `http://*,https://*` | CORS 允许来源 |
 | `terminal.detached-session-ttl-seconds` | `3600` | 断开后会话保留时长（秒） |
 | `terminal.ring-buffer-max-bytes` | `4194304` | 输出缓冲大小（4MB） |
-| `terminal.auth.enabled` | `true` | 是否启用密码认证 |
-| `terminal.auth.username` | `admin` | 登录用户名 |
-| `terminal.auth.password-hash-bcrypt` | 空 | bcrypt 密码哈希（推荐） |
-| `terminal.auth.password-hash` | 空 | MD5 密码哈希（兼容，已弃用） |
+| `auth.enabled` | `true` | 是否启用密码认证 |
+| `auth.username` | `admin` | 登录用户名 |
+| `auth.password-hash-bcrypt` | 空 | bcrypt 密码哈希 |
 | `terminal.ssh.enabled` | `true` | 是否启用 SSH 功能 |
 | `terminal.ssh.master-key-env` | `TERMINAL_SSH_MASTER_KEY` | SSH 凭据加密主密钥的环境变量名 |
 
@@ -116,27 +115,10 @@ python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(
 将生成的哈希写入 `backend/application.yml`：
 
 ```yaml
-terminal:
-  auth:
-    enabled: true
-    username: admin
-    password-hash-bcrypt: "$2b$10$..."
-```
-
-**设置密码（MD5，已弃用）**：
-
-```bash
-# macOS
-printf '%s' 'your-password' | md5
-
-# Linux
-printf '%s' 'your-password' | md5sum | awk '{print $1}'
-```
-
-```yaml
-terminal:
-  auth:
-    password-hash: "e10adc3949ba59abbe56e057f20f883e"
+auth:
+  enabled: true
+  username: admin
+  password-hash-bcrypt: "$2b$10$..."
 ```
 
 登录限流：默认 60 秒窗口内最多 10 次失败尝试（按 IP + 用户名）。
@@ -150,13 +132,12 @@ terminal:
 - 后端支持 `local-public-key` 优先验签，未配置时回退到 `jwks-uri`
 
 ```yaml
-terminal:
-  app-auth:
-    enabled: true
-    local-public-key: "MIIBIj..."    # RSA 公钥（优先）
-    jwks-uri: "https://..."           # JWKS 端点（备用）
-    issuer: "your-issuer"
-    audience: "your-audience"
+app-auth:
+  enabled: true
+  local-public-key: "MIIBIj..."    # RSA 公钥（优先）
+  jwks-uri: "https://..."           # JWKS 端点（备用）
+  issuer: "your-issuer"
+  audience: "your-audience"
 ```
 
 ## 功能说明

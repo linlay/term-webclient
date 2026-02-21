@@ -30,16 +30,15 @@ Auth is dual-mode:
 - `/webapi/**` uses session auth (`HttpSession`) except `/webapi/auth/**` and `/webapi/version`.
 - `/appapi/**` uses bearer token auth except `/appapi/version`.
 
-Password verification order:
+Password verification uses bcrypt only:
 
-1. `terminal.auth.password-hash-bcrypt` (preferred)
-2. `terminal.auth.password-hash` (legacy MD5 compatibility window)
+1. `auth.password-hash-bcrypt`
 
 Login endpoint rate limiting is enabled by default:
 
-- `terminal.auth.login-rate-limit-enabled=true`
-- `terminal.auth.login-rate-limit-window-seconds=60`
-- `terminal.auth.login-rate-limit-max-attempts=10`
+- `auth.login-rate-limit-enabled=true`
+- `auth.login-rate-limit-window-seconds=60`
+- `auth.login-rate-limit-max-attempts=10`
 
 ## Request Context
 
