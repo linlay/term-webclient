@@ -1,6 +1,7 @@
 package com.linlay.ptyjava.config;
 
-import com.linlay.ptyjava.auth.AuthInterceptor;
+import com.linlay.ptyjava.auth.AppApiAuthInterceptor;
+import com.linlay.ptyjava.auth.WebApiAuthInterceptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -11,17 +12,24 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
 
     private final TerminalProperties terminalProperties;
-    private final AuthInterceptor authInterceptor;
+    private final WebApiAuthInterceptor webApiAuthInterceptor;
+    private final AppApiAuthInterceptor appApiAuthInterceptor;
 
     public CorsConfig(TerminalProperties terminalProperties,
-                      ObjectProvider<AuthInterceptor> authInterceptorProvider) {
+                      ObjectProvider<WebApiAuthInterceptor> webApiAuthInterceptorProvider,
+                      ObjectProvider<AppApiAuthInterceptor> appApiAuthInterceptorProvider) {
         this.terminalProperties = terminalProperties;
-        this.authInterceptor = authInterceptorProvider.getIfAvailable();
+        this.webApiAuthInterceptor = webApiAuthInterceptorProvider.getIfAvailable();
+        this.appApiAuthInterceptor = appApiAuthInterceptorProvider.getIfAvailable();
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
+        registry.addMapping("/webapi/**")
+            .allowedOriginPatterns(terminalProperties.getAllowedOrigins().toArray(String[]::new))
+            .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+            .allowedHeaders("*");
+        registry.addMapping("/appapi/**")
             .allowedOriginPatterns(terminalProperties.getAllowedOrigins().toArray(String[]::new))
             .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
             .allowedHeaders("*");
@@ -29,11 +37,15 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        if (authInterceptor == null) {
-            return;
+        if (webApiAuthInterceptor != null) {
+            registry.addInterceptor(webApiAuthInterceptor)
+                .addPathPatterns("/webapi/**")
+                .excludePathPatterns("/webapi/auth/**", "/webapi/version");
         }
-        registry.addInterceptor(authInterceptor)
-            .addPathPatterns("/api/**")
-            .excludePathPatterns("/api/auth/**", "/api/version");
+        if (appApiAuthInterceptor != null) {
+            registry.addInterceptor(appApiAuthInterceptor)
+                .addPathPatterns("/appapi/**")
+                .excludePathPatterns("/appapi/version");
+        }
     }
 }

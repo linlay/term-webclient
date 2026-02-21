@@ -10,11 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
-public class AuthInterceptor implements HandlerInterceptor {
+public class WebApiAuthInterceptor implements HandlerInterceptor {
 
     private final AuthService authService;
 
-    public AuthInterceptor(ObjectProvider<AuthService> authServiceProvider) {
+    public WebApiAuthInterceptor(ObjectProvider<AuthService> authServiceProvider) {
         this.authService = authServiceProvider.getIfAvailable();
     }
 

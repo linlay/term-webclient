@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/sessions")
+@RequestMapping({"/webapi/sessions", "/appapi/sessions"})
 public class SessionController {
 
     private static final Logger log = LoggerFactory.getLogger(SessionController.class);

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/workdirTree")
+@RequestMapping({"/webapi/workdirTree", "/appapi/workdirTree"})
 public class WorkdirController {
 
     private final WorkdirBrowseService workdirBrowseService;

@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/sessions/{sessionId}/agent")
+@RequestMapping({"/webapi/sessions/{sessionId}/agent", "/appapi/sessions/{sessionId}/agent"})
 public class AgentController {
 
     private final AgentRunService agentRunService;

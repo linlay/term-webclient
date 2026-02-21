@@ -8,7 +8,11 @@ export default defineConfig({
     port: 11949,
     allowedHosts: true,
     proxy: {
-      "/api": {
+      "/webapi": {
+        target: "http://127.0.0.1:11948",
+        changeOrigin: true
+      },
+      "/appapi": {
         target: "http://127.0.0.1:11948",
         changeOrigin: true
       },

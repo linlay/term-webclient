@@ -23,6 +23,7 @@ public class TerminalProperties {
     private int commandFrameMaxEntries = 256;
     private int transcriptMaxChars = 200_000;
     private AuthProperties auth = new AuthProperties();
+    private AppAuthProperties appAuth = new AppAuthProperties();
     private AgentProperties agent = new AgentProperties();
     private SshProperties ssh = new SshProperties();
     private List<CliClientProperties> cliClients = new ArrayList<>();
@@ -159,6 +160,14 @@ public class TerminalProperties {
         this.auth = auth;
     }
 
+    public AppAuthProperties getAppAuth() {
+        return appAuth;
+    }
+
+    public void setAppAuth(AppAuthProperties appAuth) {
+        this.appAuth = appAuth == null ? new AppAuthProperties() : appAuth;
+    }
+
     public AgentProperties getAgent() {
         return agent;
     }
@@ -260,6 +269,73 @@ public class TerminalProperties {
 
         public void setLoginRateLimitMaxAttempts(int loginRateLimitMaxAttempts) {
             this.loginRateLimitMaxAttempts = loginRateLimitMaxAttempts;
+        }
+    }
+
+    public static class AppAuthProperties {
+
+        private boolean enabled = true;
+        private String localPublicKey = "";
+        private String jwksUri = "";
+        private String issuer = "";
+        private int jwksCacheSeconds = 300;
+        private String audience = "";
+        private int clockSkewSeconds = 30;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getLocalPublicKey() {
+            return localPublicKey;
+        }
+
+        public void setLocalPublicKey(String localPublicKey) {
+            this.localPublicKey = localPublicKey;
+        }
+
+        public String getJwksUri() {
+            return jwksUri;
+        }
+
+        public void setJwksUri(String jwksUri) {
+            this.jwksUri = jwksUri;
+        }
+
+        public String getIssuer() {
+            return issuer;
+        }
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+
+        public int getJwksCacheSeconds() {
+            return jwksCacheSeconds;
+        }
+
+        public void setJwksCacheSeconds(int jwksCacheSeconds) {
+            this.jwksCacheSeconds = jwksCacheSeconds;
+        }
+
+        public String getAudience() {
+            return audience;
+        }
+
+        public void setAudience(String audience) {
+            this.audience = audience;
+        }
+
+        public int getClockSkewSeconds() {
+            return clockSkewSeconds;
+        }
+
+        public void setClockSkewSeconds(int clockSkewSeconds) {
+            this.clockSkewSeconds = clockSkewSeconds;
         }
     }
 

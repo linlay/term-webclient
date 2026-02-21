@@ -1,4 +1,5 @@
-import { apiUrl } from "../config/env";
+import { apiUrl, isAppMode } from "../config/env";
+import { getAppAccessToken, refreshAppAccessToken } from "../auth/appBridge";
 import type {
   AppVersionResponse,
   AuthStatusResponse,
@@ -21,6 +22,15 @@ export class ApiError extends Error {
   }
 }
 
+let tokenRefreshPromise: Promise<string | null> | null = null;
+
+function withContentTypeJson(headers: Headers): Headers {
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  return headers;
+}
+
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
     const body = await response.json();
@@ -33,11 +43,44 @@ async function parseErrorMessage(response: Response): Promise<string> {
   return `${response.status} ${response.statusText}`;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    credentials: "include",
-    ...init
+async function refreshTokenLocked(reason: "missing" | "unauthorized"): Promise<string | null> {
+  if (tokenRefreshPromise) {
+    return tokenRefreshPromise;
+  }
+  tokenRefreshPromise = refreshAppAccessToken(reason).finally(() => {
+    tokenRefreshPromise = null;
   });
+  return tokenRefreshPromise;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, allowReplay = true): Promise<T> {
+  const appMode = isAppMode();
+  const headers = new Headers(init.headers ?? undefined);
+
+  const requestInit: RequestInit = {
+    ...init,
+    headers,
+    credentials: appMode ? "omit" : "include"
+  };
+
+  if (appMode) {
+    let accessToken = getAppAccessToken();
+    if (!accessToken) {
+      accessToken = await refreshTokenLocked("missing");
+    }
+    if (accessToken) {
+      headers.set("authorization", `Bearer ${accessToken}`);
+    }
+  }
+
+  const response = await fetch(apiUrl(path), requestInit);
+
+  if (response.status === 401 && appMode && allowReplay) {
+    const refreshedToken = await refreshTokenLocked("unauthorized");
+    if (refreshedToken) {
+      return request<T>(path, init, false);
+    }
+  }
 
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorMessage(response));
@@ -52,58 +95,58 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const apiClient = {
   getAuthStatus(): Promise<AuthStatusResponse> {
-    return request<AuthStatusResponse>("/api/auth/me");
+    return request<AuthStatusResponse>("/auth/me");
   },
 
   login(payload: LoginRequest): Promise<AuthStatusResponse> {
-    return request<AuthStatusResponse>("/api/auth/login", {
+    return request<AuthStatusResponse>("/auth/login", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
 
   logout(): Promise<{ ok: boolean }> {
-    return request<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+    return request<{ ok: boolean }>("/auth/logout", { method: "POST" });
   },
 
   createSession(payload: CreateSessionRequest): Promise<CreateSessionResponse> {
-    return request<CreateSessionResponse>("/api/sessions", {
+    return request<CreateSessionResponse>("/sessions", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
 
   listSessions(): Promise<SessionTabViewResponse[]> {
-    return request<SessionTabViewResponse[]>("/api/sessions");
+    return request<SessionTabViewResponse[]>("/sessions");
   },
 
   closeSession(sessionId: string): Promise<void> {
-    return request<void>(`/api/sessions/${sessionId}`, { method: "DELETE" });
+    return request<void>(`/sessions/${sessionId}`, { method: "DELETE" });
   },
 
   listTerminalClients(): Promise<TerminalClientResponse[]> {
-    return request<TerminalClientResponse[]>("/api/terminal-clients");
+    return request<TerminalClientResponse[]>("/terminal/clients");
   },
 
   listSshCredentials(): Promise<SshCredentialSummaryResponse[]> {
-    return request<SshCredentialSummaryResponse[]>("/api/ssh/credentials");
+    return request<SshCredentialSummaryResponse[]>("/ssh/credentials");
   },
 
   createSshCredential(payload: CreateSshCredentialRequest): Promise<SshCredentialResponse> {
-    return request<SshCredentialResponse>("/api/ssh/credentials", {
+    return request<SshCredentialResponse>("/ssh/credentials", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
 
   deleteSshCredential(credentialId: string): Promise<void> {
-    return request<void>(`/api/ssh/credentials/${credentialId}`, { method: "DELETE" });
+    return request<void>(`/ssh/credentials/${credentialId}`, { method: "DELETE" });
   },
 
   getVersion(): Promise<AppVersionResponse> {
-    return request<AppVersionResponse>("/api/version");
+    return request<AppVersionResponse>("/version");
   }
 };

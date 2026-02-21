@@ -37,6 +37,15 @@ terminal:
     login-rate-limit-enabled: true
     login-rate-limit-window-seconds: 60
     login-rate-limit-max-attempts: 10
+  app-auth:
+    enabled: true
+    # local-public-key takes precedence over jwks-uri when configured.
+    local-public-key: ""
+    jwks-uri: ""
+    issuer: ""
+    jwks-cache-seconds: 300
+    audience: ""
+    clock-skew-seconds: 30
   ssh:
     credentials-file: data/ssh-credentials.json
     master-key: 123456

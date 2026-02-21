@@ -24,8 +24,15 @@ app.get("/healthz", (_req, res) => {
   res.status(200).type("text/plain").send("ok");
 });
 
-const apiProxy = createProxyMiddleware({
-  pathFilter: "/api",
+const webApiProxy = createProxyMiddleware({
+  pathFilter: "/webapi",
+  target: BACKEND_ORIGIN,
+  changeOrigin: true,
+  ws: false
+});
+
+const appApiProxy = createProxyMiddleware({
+  pathFilter: "/appapi",
   target: BACKEND_ORIGIN,
   changeOrigin: true,
   ws: false
@@ -38,7 +45,8 @@ const wsProxy = createProxyMiddleware({
   ws: true
 });
 
-app.use(apiProxy);
+app.use(webApiProxy);
+app.use(appApiProxy);
 app.use(wsProxy);
 
 app.use(express.static(distDir, { index: false }));
@@ -48,7 +56,24 @@ app.use((req, res, next) => {
     next();
     return;
   }
-  if (req.path.startsWith("/api") || req.path.startsWith("/ws") || req.path === "/healthz") {
+  if (
+    req.path.startsWith("/webapi")
+    || req.path.startsWith("/appapi")
+    || req.path.startsWith("/ws")
+    || req.path === "/healthz"
+  ) {
+    next();
+    return;
+  }
+  if (req.path === "/") {
+    res.redirect(302, "/term");
+    return;
+  }
+  const isSpaPath = req.path === "/term"
+    || req.path === "/appterm"
+    || req.path.startsWith("/term/")
+    || req.path.startsWith("/appterm/");
+  if (!isSpaPath) {
     next();
     return;
   }

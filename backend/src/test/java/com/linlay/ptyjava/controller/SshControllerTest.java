@@ -60,7 +60,7 @@ class SshControllerTest {
             )
         ));
 
-        mockMvc.perform(get("/api/ssh/credentials"))
+        mockMvc.perform(get("/webapi/ssh/credentials"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
             .andExpect(jsonPath("$[0].credentialId").value("cred-1"))
@@ -78,7 +78,7 @@ class SshControllerTest {
             Instant.parse("2026-02-14T00:00:00Z")
         ));
 
-        mockMvc.perform(post("/api/ssh/credentials")
+        mockMvc.perform(post("/webapi/ssh/credentials")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -95,7 +95,7 @@ class SshControllerTest {
     void createCredentialReturns400OnSecurityError() throws Exception {
         when(sshCredentialStore.createCredential(any())).thenThrow(new SshSecurityException("bad request"));
 
-        mockMvc.perform(post("/api/ssh/credentials")
+        mockMvc.perform(post("/webapi/ssh/credentials")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isBadRequest())
@@ -107,7 +107,7 @@ class SshControllerTest {
         when(sshPreflightService.preflight("cred-1"))
             .thenReturn(new SshPreflightResponse("cred-1", false, "failed", 100));
 
-        mockMvc.perform(post("/api/ssh/credentials/cred-1/preflight"))
+        mockMvc.perform(post("/webapi/ssh/credentials/cred-1/preflight"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.credentialId").value("cred-1"))
             .andExpect(jsonPath("$.success").value(false));
@@ -115,7 +115,7 @@ class SshControllerTest {
 
     @Test
     void deleteCredentialReturns204() throws Exception {
-        mockMvc.perform(delete("/api/ssh/credentials/cred-1"))
+        mockMvc.perform(delete("/webapi/ssh/credentials/cred-1"))
             .andExpect(status().isNoContent());
     }
 
@@ -124,7 +124,7 @@ class SshControllerTest {
         doThrow(new SshCredentialNotFoundException("missing"))
             .when(sshCredentialStore).deleteCredential(eq("missing"));
 
-        mockMvc.perform(delete("/api/ssh/credentials/missing"))
+        mockMvc.perform(delete("/webapi/ssh/credentials/missing"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("SSH credential not found: missing"));
     }

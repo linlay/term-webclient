@@ -43,7 +43,7 @@ class SessionControllerTest {
         when(terminalSessionService.createSession(any()))
             .thenReturn(new CreateSessionResponse("abc", "/ws/abc", Instant.parse("2026-02-12T00:00:00Z")));
 
-        mockMvc.perform(post("/api/sessions")
+        mockMvc.perform(post("/webapi/sessions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isCreated())
@@ -56,7 +56,7 @@ class SessionControllerTest {
         when(terminalSessionService.createSession(any()))
             .thenThrow(new InvalidSessionRequestException("bad"));
 
-        mockMvc.perform(post("/api/sessions")
+        mockMvc.perform(post("/webapi/sessions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isBadRequest())
@@ -68,7 +68,7 @@ class SessionControllerTest {
         when(terminalSessionService.createSession(any()))
             .thenThrow(new RuntimeException("boom"));
 
-        mockMvc.perform(post("/api/sessions")
+        mockMvc.perform(post("/webapi/sessions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isInternalServerError())
@@ -79,7 +79,7 @@ class SessionControllerTest {
     void deleteSessionReturns404WhenMissing() throws Exception {
         when(terminalSessionService.exists(eq("missing"))).thenReturn(false);
 
-        mockMvc.perform(delete("/api/sessions/missing"))
+        mockMvc.perform(delete("/webapi/sessions/missing"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("Session not found: missing"));
     }
@@ -99,7 +99,7 @@ class SessionControllerTest {
             )
         ));
 
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/sessions"))
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/webapi/sessions"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].sessionId").value("abc"))
             .andExpect(jsonPath("$[0].title").value("Codex"))
@@ -112,7 +112,7 @@ class SessionControllerTest {
         when(terminalSessionService.getScreenText("abc"))
             .thenReturn(new ScreenTextResponse("abc", 42L, 120, 30, "line1\nline2"));
 
-        mockMvc.perform(get("/api/sessions/abc/screen-text"))
+        mockMvc.perform(get("/webapi/sessions/abc/screen-text"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sessionId").value("abc"))
             .andExpect(jsonPath("$.lastSeq").value(42))
@@ -126,7 +126,7 @@ class SessionControllerTest {
         when(terminalSessionService.getScreenText("missing"))
             .thenThrow(new SessionNotFoundException("missing"));
 
-        mockMvc.perform(get("/api/sessions/missing/screen-text"))
+        mockMvc.perform(get("/webapi/sessions/missing/screen-text"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("Session not found: missing"));
     }

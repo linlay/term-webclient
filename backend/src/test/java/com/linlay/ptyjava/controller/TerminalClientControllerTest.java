@@ -32,7 +32,7 @@ class TerminalClientControllerTest {
         when(terminalProperties.getCliClients()).thenReturn(List.of(codex));
         when(terminalProperties.getDefaultWorkdir()).thenReturn(".");
 
-        mockMvc.perform(get("/api/terminal/clients"))
+        mockMvc.perform(get("/webapi/terminal/clients"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].id").value("codex"))
             .andExpect(jsonPath("$[0].label").value("Codex"))

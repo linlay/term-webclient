@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/workspace")
+@RequestMapping({"/webapi/workspace", "/appapi/workspace"})
 public class WorkspaceContextController {
 
     private final WorkspaceContextService workspaceContextService;

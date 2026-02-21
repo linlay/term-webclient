@@ -44,17 +44,31 @@ mvn spring-boot:run
 - `terminal.ssh.credentials-file`：SSH 凭据密文文件（默认 `backend/data/ssh-credentials.json`）
 - `terminal.ssh.master-key`：本地开发可用的主密钥明文配置（建议仅本地使用）
 - `terminal.ssh.master-key-env`：生产主密钥环境变量名（默认 `TERMINAL_SSH_MASTER_KEY`）
+- `terminal.app-auth.enabled`：是否启用 `/appapi/**` token 鉴权
+- `terminal.app-auth.local-public-key`：本地 PEM 公钥（优先于 JWKS）
+- `terminal.app-auth.jwks-uri`：JWKS 地址（仅在未配置本地公钥时使用）
+- `terminal.app-auth.issuer`：期望 issuer（配置后强校验）
+- `terminal.app-auth.audience`：可选 audience（配置后校验）
+- `terminal.app-auth.jwks-cache-seconds`：JWKS 缓存秒数
+- `terminal.app-auth.clock-skew-seconds`：exp/nbf 时钟偏移容忍
 
 ## 使用说明
 
 ### 1) 登录认证（强制）
 
-- 默认开启登录（访问 `http://localhost:11949/` 时必须先登录）。
+- 默认开启登录（访问 `http://localhost:11949/term` 时必须先登录）。
 - 当前默认账号密码：`admin / Admin@123`。
 - 密码哈希优先使用 `terminal.auth.password-hash-bcrypt`（推荐），兼容读取旧字段 `terminal.auth.password-hash`（MD5，迁移期保留）。
 - 默认仍兼容 MD5（示例：`0e7517141fb53f21ee439b355b5a1d0a` 对应 `Admin@123`）。
 - 登录接口启用最小限流（默认 60 秒窗口最多 10 次失败尝试）。
 - 登录态基于服务端 `HttpSession` 保持；只在 Session 过期（或显式 Logout）后才需要重新登录。
+
+### 1.1) App Token 认证
+
+- `http://localhost:11949/appterm` 使用 `Bearer access token` 访问 `/appapi/**`。
+- App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）。
+- 当前端请求返回 `401` 时，页面会向 App 请求新 token，并自动重放一次请求。
+- 后端支持 `local-public-key` 优先验签；未配置本地公钥时回退到 `jwks-uri`。
 
 MD5 生成示例：
 
@@ -75,7 +89,7 @@ printf '%s' 'your-password' | md5sum | awk '{print $1}'
 - 浏览器刷新不会自动删除后端 session；前端会把 tab/session 信息写入 `localStorage`，刷新后自动重连。
 - 同一 tab 重连时会带 `lastSeenSeq`，服务端按 ring buffer 进行补发。
 - WebSocket 断开会自动重连；若 Session 已过期，才会回到登录态。
-- 如果你点击 tab 关闭（`x`），前端会显式调用 `DELETE /api/sessions/{sessionId}`，会话会被销毁。
+- 如果你点击 tab 关闭（`x`），前端会显式调用 `DELETE /webapi/sessions/{sessionId}`，会话会被销毁。
 - 如果所有客户端都断开，后端会保留会话到 `terminal.detached-session-ttl-seconds`（默认 3600 秒），超时后自动回收。
 
 ### 3) Web SSH（浏览器交互终端）
@@ -98,7 +112,7 @@ mvn spring-boot:run
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
 ```bash
-curl -X POST http://127.0.0.1:11948/api/ssh/credentials \
+curl -X POST http://127.0.0.1:11948/webapi/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
     "host":"10.0.0.2",
@@ -111,7 +125,7 @@ curl -X POST http://127.0.0.1:11948/api/ssh/credentials \
 返回 `credentialId`。也可用列表接口查看：
 
 ```bash
-curl http://127.0.0.1:11948/api/ssh/credentials
+curl http://127.0.0.1:11948/webapi/ssh/credentials
 ```
 
 3. 前端点击 `+` 新建窗口，`Tool` 选择 `ssh`，从已保存配置列表选择（或先新增），创建后即进入 SSH Shell。
@@ -126,7 +140,7 @@ curl http://127.0.0.1:11948/api/ssh/credentials
 ### 5) SSH Exec（给 LLM 的结构化命令执行）
 
 ```bash
-curl -X POST http://127.0.0.1:11948/api/ssh/exec \
+curl -X POST http://127.0.0.1:11948/webapi/ssh/exec \
   -H "content-type: application/json" \
   -d '{
     "credentialId":"<credential-id>",
@@ -144,7 +158,7 @@ npm install
 npm run dev
 ```
 
-默认端口：`11949`（已配置 `allowedHosts` 与 `/api`、`/ws` 代理）
+默认端口：`11949`（已配置 `allowedHosts` 与 `/webapi`、`/appapi`、`/ws` 代理）
 
 前端环境变量文件：`frontend/.env`
 
@@ -154,7 +168,7 @@ VITE_UI_MODE=legacy
 VITE_COPILOT_REFRESH_MS=2000
 ```
 
-- `VITE_API_BASE`：可选。为空时前端默认使用同源 `/api` 与 `/ws`；有值时强制使用该地址（调试用途）。
+- `VITE_API_BASE`：可选。为空时前端默认使用同源 `/webapi`、`/appapi` 与 `/ws`；有值时强制使用该地址（调试用途）。
 - `VITE_UI_MODE`：`legacy` 或 `react`。默认 `legacy`，用于迁移期灰度切换。
 - `VITE_COPILOT_REFRESH_MS`：可选。Copilot 自动刷新间隔毫秒，默认 `2000`，最小 `500`。
 
@@ -172,9 +186,11 @@ PORT=11949 BACKEND_ORIGIN=http://127.0.0.1:11948 npm run serve
 - 监听 `0.0.0.0:11949`
 - 静态资源：`frontend/dist`
 - `GET /healthz`：健康检查（返回 `200 ok`）
-- `/api/*` 反向代理到 `BACKEND_ORIGIN`
+- `/webapi/*` 反向代理到 `BACKEND_ORIGIN`
+- `/appapi/*` 反向代理到 `BACKEND_ORIGIN`
 - `/ws/*` WebSocket 反向代理到 `BACKEND_ORIGIN`
-- 其余 GET 请求回退到 `index.html`（SPA）
+- `/` 自动重定向到 `/term`
+- 仅 `/term/**` 与 `/appterm/**` 回退到 `index.html`（SPA）
 
 服务环境变量示例：`frontend/.env.server.example`
 
@@ -248,17 +264,19 @@ Nginx 配置样例：`deploy/nginx/pty.linlay.cc.conf`
 
 ## API / WS 协议
 
-- `POST /api/sessions`：创建会话（`LOCAL_PTY` 或 `SSH_SHELL`）
-- `DELETE /api/sessions/{sessionId}`：关闭会话
-- `GET /api/sessions/{sessionId}/snapshot?afterSeq=<long>`：按序号拉取输出快照
-- `GET /api/sessions/{sessionId}/screen-text`：获取当前可见终端界面的纯文本（后端按控制序列解析后输出）
-- `GET /api/workdirTree?path=<absolutePathOptional>`：列出目录树（仅目录，自动屏蔽 `.` 前缀隐藏目录）
-- `GET /api/version`：返回后端版本信息（`name/version/gitSha/buildTime`）
-- `GET /api/ssh/credentials`：列出 SSH 凭据摘要（不返回密钥/密码）
-- `POST /api/ssh/credentials`：创建 SSH 凭据（密码或私钥二选一，密文落盘）
-- `DELETE /api/ssh/credentials/{credentialId}`：删除 SSH 凭据
-- `POST /api/ssh/exec`：执行 SSH 命令（返回 `stdout/stderr/exitCode`）
-- `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>`：终端双向通信 + 断线补发
+- `webapi`（Web Session）与 `appapi`（App Token）业务接口保持同构：
+- `POST /webapi/sessions` / `POST /appapi/sessions`
+- `DELETE /webapi/sessions/{sessionId}` / `DELETE /appapi/sessions/{sessionId}`
+- `GET /webapi/workdirTree` / `GET /appapi/workdirTree`
+- `GET /webapi/ssh/credentials` / `GET /appapi/ssh/credentials`
+- `GET /webapi/version` / `GET /appapi/version`
+- `webapi` 登录接口：
+- `POST /webapi/auth/login`
+- `GET /webapi/auth/me`
+- `POST /webapi/auth/logout`
+- `appapi` 鉴权接口：
+- `GET /appapi/auth/me`
+- `WS /ws/{sessionId}?clientId=<tabId>&lastSeenSeq=<long>&accessToken=<optional>`：终端双向通信 + 断线补发；支持 session 或 token 握手鉴权
 
 WebSocket 客户端消息：
 

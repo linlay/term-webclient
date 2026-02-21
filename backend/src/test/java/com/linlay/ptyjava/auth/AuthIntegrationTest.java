@@ -32,21 +32,21 @@ class AuthIntegrationTest {
 
     @Test
     void unauthenticatedApiCallReturns401() throws Exception {
-        mockMvc.perform(get("/api/workdirTree"))
+        mockMvc.perform(get("/webapi/workdirTree"))
             .andExpect(header().exists("X-Request-Id"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
     void versionEndpointIsPublic() throws Exception {
-        mockMvc.perform(get("/api/version"))
+        mockMvc.perform(get("/webapi/version"))
             .andExpect(status().isOk())
             .andExpect(header().exists("X-Request-Id"));
     }
 
     @Test
     void loginCreatesSessionAndAllowsApiCall() throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
+        MvcResult result = mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -59,7 +59,7 @@ class AuthIntegrationTest {
 
         MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
 
-        mockMvc.perform(get("/api/workdirTree").session(session))
+        mockMvc.perform(get("/webapi/workdirTree").session(session))
             .andExpect(status().isOk());
     }
 }

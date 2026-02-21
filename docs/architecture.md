@@ -6,7 +6,7 @@
 Browser -> Nginx:443 -> Node proxy:11949 -> Spring Boot:11948
 ```
 
-- Frontend serves static assets from `frontend/dist` and proxies `/api` + `/ws` to backend.
+- Frontend serves static assets from `frontend/dist` and proxies `/webapi` + `/appapi` + `/ws` to backend.
 - Backend owns terminal sessions (`LOCAL_PTY` and `SSH_SHELL`) and WebSocket IO fanout.
 
 ## Frontend Modes
@@ -18,9 +18,17 @@ The frontend supports a dual-mode migration strategy:
 
 This allows incremental migration to React/TypeScript with rollback safety.
 
+Runtime entry paths:
+
+- `/term` -> web mode (`/webapi` + session auth)
+- `/appterm` -> app mode (`/appapi` + bearer token auth)
+
 ## Backend Auth
 
-Auth is session-based (`HttpSession`) and protects `/api/**` except `/api/auth/**` and `/api/version`.
+Auth is dual-mode:
+
+- `/webapi/**` uses session auth (`HttpSession`) except `/webapi/auth/**` and `/webapi/version`.
+- `/appapi/**` uses bearer token auth except `/appapi/version`.
 
 Password verification order:
 
@@ -42,6 +50,5 @@ Every HTTP response includes `X-Request-Id`. Backend logs include MDC fields:
 
 ## API Compatibility
 
-Existing API and WebSocket contracts remain unchanged. Added endpoint:
-
-- `GET /api/version` -> `{ name, version, gitSha, buildTime }`
+- `GET /webapi/version` and `GET /appapi/version` -> `{ name, version, gitSha, buildTime }`
+- `WS /ws/{sessionId}` accepts either session auth or `accessToken` query parameter.

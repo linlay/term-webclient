@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
+import { isAppMode } from "./shared/config/env";
 import { LoginForm } from "./features/auth/LoginForm";
 import { isUnauthorizedError, useAuthStatus, useLogout } from "./features/auth/useAuth";
 import { NewSessionForm } from "./features/session/NewSessionForm";
@@ -25,6 +26,7 @@ function statusLabel(status: string): string {
 }
 
 export default function App(): JSX.Element {
+  const appMode = isAppMode();
   const authQuery = useAuthStatus();
   const logout = useLogout();
 
@@ -50,6 +52,9 @@ export default function App(): JSX.Element {
 
   if (authQuery.isError) {
     if (isUnauthorizedError(authQuery.error)) {
+      if (appMode) {
+        return <div className="react-loading">Waiting for app access token...</div>;
+      }
       return <LoginForm />;
     }
     return (
@@ -63,7 +68,7 @@ export default function App(): JSX.Element {
   if (!auth) {
     return <div className="react-loading">Loading...</div>;
   }
-  if (auth.enabled && !auth.authenticated) {
+  if (!appMode && auth.enabled && !auth.authenticated) {
     return <LoginForm />;
   }
 
@@ -76,9 +81,11 @@ export default function App(): JSX.Element {
         </div>
         <div className="react-top-actions">
           <span className="react-username">{auth.username}</span>
-          <button type="button" onClick={() => logout.mutate()} disabled={logout.isPending}>
-            Logout
-          </button>
+          {!appMode && (
+            <button type="button" onClick={() => logout.mutate()} disabled={logout.isPending}>
+              Logout
+            </button>
+          )}
         </div>
       </header>
 

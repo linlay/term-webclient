@@ -38,17 +38,17 @@ class AuthRateLimitIntegrationTest {
             }
             """;
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(wrongPayload))
             .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(wrongPayload))
             .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(wrongPayload))
             .andExpect(status().isTooManyRequests());

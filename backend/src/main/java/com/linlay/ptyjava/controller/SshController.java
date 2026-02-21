@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/ssh")
+@RequestMapping({"/webapi/ssh", "/appapi/ssh"})
 public class SshController {
 
     private final SshCredentialStore credentialStore;

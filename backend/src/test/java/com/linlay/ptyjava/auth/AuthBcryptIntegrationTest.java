@@ -35,7 +35,7 @@ class AuthBcryptIntegrationTest {
 
     @Test
     void bcryptLoginWorks() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -48,7 +48,7 @@ class AuthBcryptIntegrationTest {
 
     @Test
     void bcryptLoginRejectsWrongPassword() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/webapi/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {

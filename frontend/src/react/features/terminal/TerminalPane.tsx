@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import type { WsServerMessage } from "../../shared/api/types";
-import { toWsUrl } from "../../shared/config/env";
+import { isAppMode, toWsUrl } from "../../shared/config/env";
+import { getAppAccessToken, refreshAppAccessToken } from "../../shared/auth/appBridge";
 import type { TerminalTab } from "../tabs/useTabsStore";
 
 interface TerminalPaneProps {
@@ -133,11 +134,11 @@ export function TerminalPane({ tab, onStatusChange }: TerminalPaneProps): JSX.El
       onStatusChange("connecting");
       clearReconnectTimer();
       reconnectTimer = window.setTimeout(() => {
-        connect();
+        void connect();
       }, delay);
     }
 
-    function connect() {
+    async function connect() {
       if (disposed || exited) {
         return;
       }
@@ -145,6 +146,18 @@ export function TerminalPane({ tab, onStatusChange }: TerminalPaneProps): JSX.El
       const query = new URLSearchParams({ clientId: tab.clientId });
       if (lastSeenSeq > 0) {
         query.set("lastSeenSeq", String(lastSeenSeq));
+      }
+      if (isAppMode()) {
+        let accessToken = getAppAccessToken();
+        if (!accessToken) {
+          accessToken = await refreshAppAccessToken("missing");
+        }
+        if (!accessToken) {
+          onStatusChange("error");
+          scheduleReconnect();
+          return;
+        }
+        query.set("accessToken", accessToken);
       }
 
       const socket = new WebSocket(toWsUrl(`${tab.wsUrl}?${query.toString()}`));
@@ -207,7 +220,7 @@ export function TerminalPane({ tab, onStatusChange }: TerminalPaneProps): JSX.El
       });
     }
 
-    connect();
+    void connect();
 
     return () => {
       disposed = true;

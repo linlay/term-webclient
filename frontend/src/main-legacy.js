@@ -5,6 +5,12 @@ const rawApiBase = typeof import.meta.env.VITE_API_BASE === "string"
   ? import.meta.env.VITE_API_BASE.trim()
   : "";
 const API_BASE = rawApiBase.replace(/\/+$/, "");
+const APP_MODE = window.location.pathname === "/appterm" || window.location.pathname.startsWith("/appterm/");
+const API_PREFIX = APP_MODE ? "/appapi" : "/webapi";
+const APP_TOKEN_EVENT = "appterm:token";
+const APP_TOKEN_MESSAGE_TYPE = "appterm:token";
+const APP_REFRESH_MESSAGE_TYPE = "appterm:refresh-token";
+const APP_REFRESH_REQUEST_EVENT = "appterm:refresh-token-requested";
 const rawCopilotRefreshMs = Number.parseInt(import.meta.env.VITE_COPILOT_REFRESH_MS || "2000", 10);
 const COPILOT_REFRESH_MS = Number.isFinite(rawCopilotRefreshMs) && rawCopilotRefreshMs >= 500
   ? rawCopilotRefreshMs
@@ -188,6 +194,9 @@ let authState = {
   authenticated: false,
   username: AUTH_DISABLED_USERNAME
 };
+let appAccessToken = null;
+let appBridgeInitialized = false;
+let appTokenRefreshPromise = null;
 
 const toolCounters = {
   terminal: 0,
@@ -206,8 +215,147 @@ const modalState = {
   sshCredentialsError: ""
 };
 
+function normalizeToken(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const token = value.trim();
+  return token || null;
+}
+
+function setAppAccessToken(token) {
+  appAccessToken = normalizeToken(token);
+  if (appAccessToken) {
+    window.__APPTERM_ACCESS_TOKEN__ = appAccessToken;
+  }
+}
+
+function parseBridgePayload(value) {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") {
+    return value;
+  }
+  return null;
+}
+
+function resolveBridgeTokenPayload(payload) {
+  if (!payload || payload.type !== APP_TOKEN_MESSAGE_TYPE) {
+    return null;
+  }
+  return {
+    accessToken: normalizeToken(payload.accessToken),
+    requestId: typeof payload.requestId === "string" ? payload.requestId : ""
+  };
+}
+
+function initializeAppBridge() {
+  if (appBridgeInitialized || !APP_MODE) {
+    return;
+  }
+  appBridgeInitialized = true;
+  setAppAccessToken(window.__APPTERM_ACCESS_TOKEN__);
+  window.addEventListener(APP_TOKEN_EVENT, (event) => {
+    const detail = event?.detail || {};
+    const payload = resolveBridgeTokenPayload({
+      type: APP_TOKEN_MESSAGE_TYPE,
+      accessToken: detail.accessToken,
+      requestId: detail.requestId
+    });
+    if (!payload) {
+      return;
+    }
+    setAppAccessToken(payload.accessToken);
+  });
+  window.addEventListener("message", (event) => {
+    const payload = resolveBridgeTokenPayload(parseBridgePayload(event.data));
+    if (!payload) {
+      return;
+    }
+    setAppAccessToken(payload.accessToken);
+  });
+}
+
+function currentAppAccessToken() {
+  if (!APP_MODE) {
+    return null;
+  }
+  initializeAppBridge();
+  if (appAccessToken) {
+    return appAccessToken;
+  }
+  setAppAccessToken(window.__APPTERM_ACCESS_TOKEN__);
+  return appAccessToken;
+}
+
+function requestAppTokenRefresh(reason = "unauthorized") {
+  if (!APP_MODE) {
+    return Promise.resolve(null);
+  }
+  if (appTokenRefreshPromise) {
+    return appTokenRefreshPromise;
+  }
+
+  initializeAppBridge();
+  const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `appterm-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  appTokenRefreshPromise = new Promise((resolve) => {
+    const onToken = (event) => {
+      const detail = event?.detail || {};
+      if (detail.requestId && detail.requestId !== requestId) {
+        return;
+      }
+      window.clearTimeout(timeout);
+      window.removeEventListener(APP_TOKEN_EVENT, onToken);
+      resolve(currentAppAccessToken());
+    };
+
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener(APP_TOKEN_EVENT, onToken);
+      resolve(currentAppAccessToken());
+    }, 8000);
+
+    window.addEventListener(APP_TOKEN_EVENT, onToken);
+    window.dispatchEvent(new CustomEvent(APP_REFRESH_REQUEST_EVENT, { detail: { reason, requestId } }));
+    if (window.ReactNativeWebView?.postMessage) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: APP_REFRESH_MESSAGE_TYPE,
+        reason,
+        requestId
+      }));
+    }
+  }).finally(() => {
+    appTokenRefreshPromise = null;
+  });
+
+  return appTokenRefreshPromise;
+}
+
+function withApiPrefix(path) {
+  if (path === "/api") {
+    return API_PREFIX;
+  }
+  if (path.startsWith("/api/")) {
+    return `${API_PREFIX}${path.slice(4)}`;
+  }
+  if (path.startsWith("/webapi/") || path.startsWith("/appapi/")) {
+    return path;
+  }
+  return path;
+}
+
 function apiUrl(path) {
-  return `${API_BASE}${path}`;
+  return `${API_BASE}${withApiPrefix(path)}`;
 }
 
 function isMobileViewport() {
@@ -396,6 +544,11 @@ function showLoginError(message) {
 }
 
 function renderAuthGate() {
+  if (APP_MODE) {
+    loginGate.classList.add("hidden");
+    appRoot.classList.remove("hidden");
+    return;
+  }
   const shouldShowLogin = authState.enabled && !authState.authenticated;
   loginGate.classList.toggle("hidden", !shouldShowLogin);
   appRoot.classList.toggle("hidden", shouldShowLogin);
@@ -422,18 +575,42 @@ function enterLoggedOutState() {
   stopCopilotRefresh();
   stopSharedSessionsSync();
   disconnectAllTabsForAuth();
-  authState.authenticated = false;
-  authState.username = AUTH_DISABLED_USERNAME;
+  authState = {
+    enabled: APP_MODE ? false : authState.enabled,
+    authenticated: false,
+    username: AUTH_DISABLED_USERNAME
+  };
   renderAuthGate();
 }
 
-async function apiFetch(path, options = {}) {
+async function apiFetch(path, options = {}, allowReplay = true) {
   const fetchOptions = {
-    credentials: "include",
     ...options
   };
+
+  if (APP_MODE) {
+    const headers = new Headers(options.headers || {});
+    let accessToken = currentAppAccessToken();
+    if (!accessToken) {
+      accessToken = await requestAppTokenRefresh("missing");
+    }
+    if (accessToken) {
+      headers.set("authorization", `Bearer ${accessToken}`);
+    }
+    fetchOptions.headers = headers;
+    fetchOptions.credentials = "omit";
+  } else {
+    fetchOptions.credentials = "include";
+  }
+
   const response = await fetch(apiUrl(path), fetchOptions);
   if (response.status === 401) {
+    if (APP_MODE && allowReplay) {
+      const refreshed = await requestAppTokenRefresh("unauthorized");
+      if (refreshed) {
+        return apiFetch(path, options, false);
+      }
+    }
     enterLoggedOutState();
   }
   return response;
@@ -458,10 +635,7 @@ async function verifyAuthForReconnect() {
     return true;
   }
   try {
-    const response = await fetch(apiUrl("/api/auth/me"), {
-      method: "GET",
-      credentials: "include"
-    });
+    const response = await apiFetch("/api/auth/me");
     if (response.status === 401) {
       enterLoggedOutState();
       return false;
@@ -487,6 +661,9 @@ async function verifyAuthForReconnect() {
 }
 
 async function loginWithForm() {
+  if (APP_MODE) {
+    return false;
+  }
   const username = (loginUsernameInput.value || "").trim();
   const password = loginPasswordInput.value || "";
   if (!username || !password) {
@@ -517,6 +694,10 @@ async function loginWithForm() {
 }
 
 async function logout() {
+  if (APP_MODE) {
+    enterLoggedOutState();
+    return;
+  }
   try {
     await apiFetch("/api/auth/logout", { method: "POST" });
   } catch {
@@ -1005,10 +1186,13 @@ function closeSocket(tab, options = {}) {
   }
 }
 
-function buildSessionSocketUrl(tab) {
+function buildSessionSocketUrl(tab, accessToken = null) {
   const baseUrl = new URL(buildWsUrl(tab.wsUrl), window.location.href);
   baseUrl.searchParams.set("clientId", tab.tabId);
   baseUrl.searchParams.set("lastSeenSeq", String(Math.max(0, Number(tab.lastSeenSeq) || 0)));
+  if (APP_MODE && accessToken) {
+    baseUrl.searchParams.set("accessToken", accessToken);
+  }
   return baseUrl.toString();
 }
 
@@ -1102,28 +1286,42 @@ function attachSocket(tab) {
   closeSocket(tab);
   setConnectionState(tab, "connecting", { lost: false });
 
-  const socket = new WebSocket(buildSessionSocketUrl(tab));
-  tab.socket = socket;
+  void (async () => {
+    let accessToken = null;
+    if (APP_MODE) {
+      accessToken = currentAppAccessToken();
+      if (!accessToken) {
+        accessToken = await requestAppTokenRefresh("missing");
+      }
+      if (!accessToken) {
+        setConnectionState(tab, "error", { lost: true });
+        scheduleReconnect(tab);
+        return;
+      }
+    }
 
-  socket.onopen = () => {
-    if (tab.socket !== socket) {
-      return;
-    }
-    tab.reconnectAttempt = 0;
-    clearReconnectTimer(tab);
-    tab.manualClose = false;
-    setConnectionState(tab, "connected", { lost: false });
-    if (activeTabId === tab.tabId) {
-      fitAndResize(tab);
-      tab.term.focus();
-      updateScrollToBottomFabVisibility();
-    }
-  };
+    const socket = new WebSocket(buildSessionSocketUrl(tab, accessToken));
+    tab.socket = socket;
 
-  socket.onmessage = (event) => {
-    if (tab.socket !== socket) {
-      return;
-    }
+    socket.onopen = () => {
+      if (tab.socket !== socket) {
+        return;
+      }
+      tab.reconnectAttempt = 0;
+      clearReconnectTimer(tab);
+      tab.manualClose = false;
+      setConnectionState(tab, "connected", { lost: false });
+      if (activeTabId === tab.tabId) {
+        fitAndResize(tab);
+        tab.term.focus();
+        updateScrollToBottomFabVisibility();
+      }
+    };
+
+    socket.onmessage = (event) => {
+      if (tab.socket !== socket) {
+        return;
+      }
 
     const msg = parseMessage(event.data);
     if (!msg || typeof msg !== "object") {
@@ -1175,29 +1373,30 @@ function attachSocket(tab) {
         updateScrollToBottomFabVisibility();
       }
     }
-  };
+    };
 
-  socket.onclose = () => {
-    if (tab.socket !== socket) {
-      return;
-    }
+    socket.onclose = () => {
+      if (tab.socket !== socket) {
+        return;
+      }
 
-    tab.socket = null;
-    if (tab.connectionState !== "error" && tab.connectionState !== "exited") {
-      setConnectionState(tab, "disconnected", { lost: tab.lost });
-    }
-    if (activeTabId === tab.tabId) {
-      updateScrollToBottomFabVisibility();
-    }
-    scheduleReconnect(tab);
-  };
+      tab.socket = null;
+      if (tab.connectionState !== "error" && tab.connectionState !== "exited") {
+        setConnectionState(tab, "disconnected", { lost: tab.lost });
+      }
+      if (activeTabId === tab.tabId) {
+        updateScrollToBottomFabVisibility();
+      }
+      scheduleReconnect(tab);
+    };
 
-  socket.onerror = () => {
-    if (tab.socket !== socket) {
-      return;
-    }
-    // Reconnect is handled by onclose with backoff.
-  };
+    socket.onerror = () => {
+      if (tab.socket !== socket) {
+        return;
+      }
+      // Reconnect is handled by onclose with backoff.
+    };
+  })();
 }
 
 async function extractErrorMessage(response) {
@@ -2703,6 +2902,9 @@ function toggleCopilotSidebar() {
 }
 
 function bindEvents() {
+  if (APP_MODE) {
+    logoutBtn?.classList.add("hidden");
+  }
   renderMobileShortcutKeys();
   renderToolOptions("terminal");
   setMobileShortcutsExpanded(false);
@@ -3140,6 +3342,16 @@ async function bootstrap() {
   try {
     await fetchAuthStatus();
   } catch (error) {
+    if (APP_MODE) {
+      authState = {
+        enabled: false,
+        authenticated: false,
+        username: AUTH_DISABLED_USERNAME
+      };
+      renderAuthGate();
+      initializeApp();
+      return;
+    }
     showLoginError(`Auth check failed: ${error.message}`);
     authState = {
       enabled: true,
@@ -3156,6 +3368,11 @@ async function bootstrap() {
       initializeApp();
       return;
     }
+    return;
+  }
+
+  if (APP_MODE) {
+    initializeApp();
     return;
   }
 
