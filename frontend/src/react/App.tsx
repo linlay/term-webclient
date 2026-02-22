@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
 import { isAppMode } from "./shared/config/env";
+import { consumeOpenNewSessionNonce, parseRouteIntent } from "./shared/routing/routeIntent";
 import { generateId } from "./shared/utils/id";
 import { useViewportHeight } from "./shared/hooks/useViewportHeight";
 import { useNotice } from "./shared/hooks/useNotice";
@@ -44,6 +45,8 @@ export default function App(): JSX.Element {
   const senderMapRef = useRef(new Map<string, (data: string) => boolean>());
   const terminalHandleMapRef = useRef(new Map<string, TerminalPaneHandle>());
   const hydratedSessionsRef = useRef(false);
+  const routeIntentRef = useRef(parseRouteIntent(window.location.search));
+  const routeSessionActivatedRef = useRef(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [isNewWindowOpen, setIsNewWindowOpen] = useState(false);
@@ -142,6 +145,32 @@ export default function App(): JSX.Element {
     setTabs(loaded);
     hydratedSessionsRef.current = true;
   }, [listSessionsQuery.data, setTabs]);
+
+  useEffect(() => {
+    const { openNewSession, openNonce } = routeIntentRef.current;
+    if (!openNewSession || !openNonce) {
+      return;
+    }
+    if (consumeOpenNewSessionNonce(window.sessionStorage, openNonce)) {
+      setIsNewWindowOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (routeSessionActivatedRef.current) {
+      return;
+    }
+    const targetSessionId = routeIntentRef.current.sessionId;
+    if (!targetSessionId) {
+      return;
+    }
+    const matchedTab = tabs.find((tab) => tab.sessionId === targetSessionId);
+    if (!matchedTab) {
+      return;
+    }
+    routeSessionActivatedRef.current = true;
+    setActiveTab(matchedTab.localId);
+  }, [setActiveTab, tabs]);
 
   useEffect(() => {
     const onResize = () => {
