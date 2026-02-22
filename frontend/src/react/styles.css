@@ -13,6 +13,7 @@
   --err: #ef4444;
   --info: #60a5fa;
   --app-vh: 100vh;
+  --app-vtop: 0px;
   --mobile-shortcut-inset: 0px;
   --mobile-shortcut-bar-offset: 0px;
 }
@@ -27,6 +28,9 @@ body,
   margin: 0;
   height: var(--app-vh);
   min-height: var(--app-vh);
+  max-height: var(--app-vh);
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -50,8 +54,10 @@ body {
 .layout {
   height: var(--app-vh);
   min-height: var(--app-vh);
+  max-height: var(--app-vh);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .top-row {
@@ -346,6 +352,16 @@ body {
   color: var(--muted);
 }
 
+.new-session-tool-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.new-session-tool-select {
+  width: 100%;
+}
+
 select,
 input,
 textarea,
@@ -388,6 +404,9 @@ textarea {
   border-radius: 10px;
   padding: 8px;
   background: rgba(10, 16, 26, 0.7);
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: clamp(11px, 0.72vw, 13px);
+  line-height: 1.35;
 }
 
 .tree-list {
@@ -395,17 +414,36 @@ textarea {
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .tree-label {
   all: unset;
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   min-width: 0;
   padding: 6px 8px;
   border-radius: 6px;
   color: var(--text);
   cursor: pointer;
+}
+
+.tree-root {
+  font-weight: 600;
+}
+
+.tree-prefix {
+  flex: 0 0 auto;
+  width: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.tree-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -421,8 +459,12 @@ textarea {
 }
 
 .tree-status {
-  font-size: 12px;
+  font-size: clamp(11px, 0.68vw, 12px);
   color: var(--muted);
+}
+
+.tree-status-indented {
+  padding-inline-start: 24px;
 }
 
 .tree-status.error {
@@ -431,11 +473,12 @@ textarea {
 
 .selected-workdir {
   color: var(--muted);
-  font-size: 12px;
+  font-size: clamp(11px, 0.72vw, 12px);
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
 .selected-workdir code {
@@ -447,6 +490,8 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: clamp(11px, 0.72vw, 13px);
 }
 
 .advanced-section {
@@ -501,11 +546,20 @@ textarea {
   width: 28px;
   height: 28px;
   padding: 0;
-  display: inline-grid;
-  place-items: center;
-  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   flex: 0 0 auto;
   font-size: 15px;
+}
+
+.top-icon-btn svg {
+  display: block;
+}
+
+.copilot-toggle-btn {
+  font-size: 0;
 }
 
 .context-menu {
@@ -555,6 +609,24 @@ textarea {
 .agent-title {
   font-size: 14px;
   font-weight: 600;
+}
+
+.agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.copilot-close-btn {
+  display: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .copilot-tabs {
@@ -686,17 +758,29 @@ textarea {
 }
 
 @media (max-width: 900px) {
-  #reactRoot,
-  .layout {
+  #reactRoot {
+    position: fixed;
+    top: var(--app-vtop);
+    left: 0;
+    right: 0;
+    width: 100%;
     height: var(--app-vh);
     min-height: var(--app-vh);
     max-height: var(--app-vh);
+    overflow: hidden;
+  }
+
+  .layout {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
 
   .terminal-area {
     padding-bottom: calc(
       8px +
-      var(--mobile-shortcut-inset) +
       var(--mobile-shortcut-bar-offset) +
       env(safe-area-inset-bottom, 0px)
     );
@@ -764,7 +848,7 @@ textarea {
   }
 
   .tab-title {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .tab-close {
@@ -779,6 +863,26 @@ textarea {
 
   .workdir-tree {
     max-height: 260px;
+    font-size: 12px;
+  }
+
+  .tree-label {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  .selected-workdir {
+    font-size: 11px;
+    align-items: flex-start;
+  }
+
+  .selected-workdir code {
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  .copilot-close-btn {
+    display: inline-flex;
   }
 
   .mobile-shortcut-bar {

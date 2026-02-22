@@ -19,6 +19,20 @@ interface WsResizeMessage {
   rows: number;
 }
 
+const DESKTOP_TERMINAL_FONT_SIZE = 14;
+const MOBILE_TERMINAL_FONT_SIZE = 12;
+
+function getTerminalFontSize(): number {
+  return window.innerWidth <= 900 ? MOBILE_TERMINAL_FONT_SIZE : DESKTOP_TERMINAL_FONT_SIZE;
+}
+
+function syncTerminalFontSize(terminal: Terminal): void {
+  const nextFontSize = getTerminalFontSize();
+  if (terminal.options.fontSize !== nextFontSize) {
+    terminal.options.fontSize = nextFontSize;
+  }
+}
+
 export interface TerminalPaneHandle {
   scrollToBottom: () => void;
   isNearBottom: () => boolean;
@@ -90,7 +104,7 @@ export function TerminalPane({
 
     const terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: getTerminalFontSize(),
       fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
       scrollback: 5000,
       convertEol: true,
@@ -128,6 +142,7 @@ export function TerminalPane({
       if (!isActiveRef.current) {
         return;
       }
+      syncTerminalFontSize(terminal);
       try {
         fitAddon.fit();
       } catch {
@@ -163,6 +178,7 @@ export function TerminalPane({
     const fitAddon = fitRef.current;
 
     const rafId = window.requestAnimationFrame(() => {
+      syncTerminalFontSize(terminal);
       try {
         fitAddon.fit();
       } catch {

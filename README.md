@@ -128,7 +128,7 @@ auth:
 
 访问 `/appterm/` 时使用 JWT Bearer Token（适用于嵌入 WebView 场景）。
 
-- App 通过 React Native WebView bridge 提供 token（事件：`appterm:token`，请求：`appterm:refresh-token`）
+- App 通过 React Native WebView bridge 提供 token（消息：`auth_token`，请求：`auth_refresh_request`，回包：`auth_refresh_result`）
 - 401 时自动向 App 请求新 token 并重放请求
 - 后端支持 `local-public-key` 优先验签，未配置时回退到 `jwks-uri`
 
@@ -273,7 +273,7 @@ APP_ENV=production ./start.sh /tmp/pty-release
 
 ### Nginx 反向代理
 
-配置样例见 `deploy/nginx/pty.linlay.cc.conf`（独占域名）与 `deploy/nginx/app.linlay.cc.shared.conf`（共享域名，仅转发 `/term`、`/appterm` 路径树），职责：
+Nginx 反向代理职责：
 
 - `80 → 443` 重定向
 - `443` TLS 终止

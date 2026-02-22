@@ -1,10 +1,12 @@
 import { isAppMode } from "../config/env";
 import { generateId } from "../utils/id";
 
-const TOKEN_EVENT = "appterm:token";
-const REFRESH_REQUEST_EVENT = "appterm:refresh-token-requested";
-const TOKEN_MESSAGE_TYPE = "appterm:token";
-const REFRESH_MESSAGE_TYPE = "appterm:refresh-token";
+const TOKEN_EVENT = "auth_token";
+const REFRESH_REQUEST_EVENT = "auth_refresh_request_requested";
+const TOKEN_MESSAGE_TYPE = "auth_token";
+const REFRESH_REQUEST_MESSAGE_TYPE = "auth_refresh_request";
+const REFRESH_RESULT_MESSAGE_TYPE = "auth_refresh_result";
+const REFRESH_REQUEST_SOURCE = "appterm";
 
 let initialized = false;
 let accessToken: string | null = null;
@@ -18,6 +20,10 @@ interface BridgeTokenPayload {
   accessToken?: string;
   requestId?: string;
   expiresAt?: string | number;
+  ok?: boolean;
+  error?: string;
+  source?: string;
+  reason?: AppTokenRefreshReason;
 }
 
 declare global {
@@ -100,7 +106,18 @@ function parseMessagePayload(data: unknown): BridgeTokenPayload | null {
 
 function handleWindowMessage(event: MessageEvent): void {
   const payload = parseMessagePayload(event.data);
-  if (!payload || payload.type !== TOKEN_MESSAGE_TYPE) {
+  if (!payload) {
+    return;
+  }
+  if (payload.type === TOKEN_MESSAGE_TYPE) {
+    handleTokenPayload(payload);
+    return;
+  }
+  if (payload.type !== REFRESH_RESULT_MESSAGE_TYPE) {
+    return;
+  }
+  if (payload.ok !== true) {
+    resolvePendingRefresh(payload.requestId, null);
     return;
   }
   handleTokenPayload(payload);
@@ -147,14 +164,17 @@ export function requestAppTokenRefresh(reason: AppTokenRefreshReason): void {
     return;
   }
   initAppTokenBridge();
+  const requestId = generateId();
   const payload = JSON.stringify({
-    type: REFRESH_MESSAGE_TYPE,
+    type: REFRESH_REQUEST_MESSAGE_TYPE,
+    requestId,
+    source: REFRESH_REQUEST_SOURCE,
     reason
   });
   if (window.ReactNativeWebView?.postMessage) {
     window.ReactNativeWebView.postMessage(payload);
   }
-  window.dispatchEvent(new CustomEvent(REFRESH_REQUEST_EVENT, { detail: { reason } }));
+  window.dispatchEvent(new CustomEvent(REFRESH_REQUEST_EVENT, { detail: { reason, requestId } }));
 }
 
 export function refreshAppAccessToken(reason: AppTokenRefreshReason, timeoutMs = 8000): Promise<string | null> {
@@ -164,18 +184,18 @@ export function refreshAppAccessToken(reason: AppTokenRefreshReason, timeoutMs =
   initAppTokenBridge();
 
   const requestId = generateId();
-  const currentToken = getAppAccessToken();
   const payload = JSON.stringify({
-    type: REFRESH_MESSAGE_TYPE,
+    type: REFRESH_REQUEST_MESSAGE_TYPE,
     reason,
-    requestId
+    requestId,
+    source: REFRESH_REQUEST_SOURCE
   });
 
   const promise = new Promise<string | null>((resolve) => {
     const timeout = window.setTimeout(() => {
       pendingRefreshResolvers.delete(requestId);
-      resolve(getAppAccessToken());
-    }, Math.max(500, timeoutMs));
+      resolve(null);
+    }, Math.max(300, timeoutMs));
 
     pendingRefreshResolvers.set(requestId, (token) => {
       window.clearTimeout(timeout);
@@ -189,9 +209,9 @@ export function refreshAppAccessToken(reason: AppTokenRefreshReason, timeoutMs =
   window.dispatchEvent(new CustomEvent(REFRESH_REQUEST_EVENT, { detail: { reason, requestId } }));
 
   return promise.then((token) => {
-    if (token && token !== currentToken) {
-      return token;
+    if (!token) {
+      return null;
     }
-    return getAppAccessToken();
+    return token;
   });
 }

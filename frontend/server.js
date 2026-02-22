@@ -9,6 +9,45 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function getErrorCode(error) {
+  return error && typeof error === "object" && "code" in error
+    ? error.code
+    : null;
+}
+
+function isIgnorableSocketError(error) {
+  const code = getErrorCode(error);
+  return code === "EPIPE" || code === "ECONNRESET";
+}
+
+function safeWrite(stream, message) {
+  if (!stream || stream.destroyed || stream.writableEnded) {
+    return;
+  }
+  try {
+    stream.write(message);
+  } catch (error) {
+    if (!isIgnorableSocketError(error)) {
+      throw error;
+    }
+  }
+}
+
+function logServerError(scope, error, req) {
+  if (isIgnorableSocketError(error)) {
+    return;
+  }
+  const requestPath = req?.url ? ` url=${req.url}` : "";
+  const message = error instanceof Error ? (error.stack || error.message) : String(error);
+  safeWrite(process.stderr, `[server] ${scope}${requestPath} ${message}\n`);
+}
+
+function attachSocketErrorGuard(socket, scope, req) {
+  socket.on("error", (error) => {
+    logServerError(`${scope} socket error`, error, req);
+  });
+}
+
 function parseEnvValue(rawValue) {
   const trimmed = rawValue.trim();
   if (
@@ -46,7 +85,7 @@ function parsePort(rawValue, fallback, name) {
   if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
     return parsed;
   }
-  process.stderr.write(`[server] invalid ${name}=${rawValue}, fallback to ${fallback}\n`);
+  safeWrite(process.stderr, `[server] invalid ${name}=${rawValue}, fallback to ${fallback}\n`);
   return fallback;
 }
 
@@ -106,6 +145,14 @@ function createPrefixedProxy(pathFilter, targetPrefix, ws = false) {
     target: BACKEND_ORIGIN,
     changeOrigin: true,
     ws,
+    on: {
+      error: (error, req) => {
+        logServerError(`proxy error (${pathFilter})`, error, req);
+      },
+      econnreset: (error, req) => {
+        logServerError(`proxy reset (${pathFilter})`, error, req);
+      }
+    },
     pathRewrite: (incomingPath) => (
       incomingPath.startsWith(pathFilter)
         ? `${targetPrefix}${incomingPath.slice(pathFilter.length)}`
@@ -163,7 +210,17 @@ app.use((req, res, next) => {
 });
 
 const server = http.createServer(app);
+server.on("clientError", (error, socket) => {
+  if (isIgnorableSocketError(error)) {
+    socket.destroy();
+    return;
+  }
+  logServerError("client error", error);
+  socket.destroy();
+});
+
 server.on("upgrade", (req, socket, head) => {
+  attachSocketErrorGuard(socket, "upgrade", req);
   const pathName = req.url ? req.url.split("?", 1)[0] : "";
   if (pathName === "/term/ws" || pathName.startsWith("/term/ws/")) {
     termWsProxy.upgrade(req, socket, head);
@@ -178,8 +235,8 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(PORT, HOST, () => {
   if (loadedEnvFiles.length > 0) {
-    process.stdout.write(`[server] loaded env file(s): ${loadedEnvFiles.join(", ")}\n`);
+    safeWrite(process.stdout, `[server] loaded env file(s): ${loadedEnvFiles.join(", ")}\n`);
   }
-  process.stdout.write(`[server] backend origin: ${BACKEND_ORIGIN}\n`);
-  process.stdout.write(`Proxy server listening on http://${HOST}:${PORT}\n`);
+  safeWrite(process.stdout, `[server] backend origin: ${BACKEND_ORIGIN}\n`);
+  safeWrite(process.stdout, `Proxy server listening on http://${HOST}:${PORT}\n`);
 });

@@ -1,21 +1,39 @@
 import { useEffect } from "react";
 
+function getViewportMetrics(): { viewportHeight: number; viewportTop: number; keyboardInset: number } {
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    return {
+      viewportHeight: Math.max(0, window.innerHeight),
+      viewportTop: 0,
+      keyboardInset: 0
+    };
+  }
+
+  const viewportHeight = Math.max(0, viewport.height);
+  const viewportTop = Math.max(0, viewport.offsetTop);
+  const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+  const keyboardInset = Math.max(0, layoutHeight - viewportHeight - viewportTop);
+
+  return { viewportHeight, viewportTop, keyboardInset };
+}
+
 export function useViewportHeight(): void {
   useEffect(() => {
     const root = document.documentElement;
     let settleTimer: number | null = null;
     let longSettleTimer: number | null = null;
     const updateViewportVars = (useSafeMax = false) => {
-      const viewport = window.visualViewport;
-      const viewportHeight = viewport ? Math.max(0, viewport.height) : window.innerHeight;
-      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
-      const keyboardInset = viewport ? Math.max(0, layoutHeight - viewportHeight - viewport.offsetTop) : 0;
+      const { viewportHeight, viewportTop, keyboardInset } = getViewportMetrics();
+      const safeMaxEnabled = useSafeMax && keyboardInset < 10;
 
-      const effectiveHeight = useSafeMax && keyboardInset < 10
-        ? Math.max(viewportHeight, window.innerHeight)
+      const effectiveHeight = safeMaxEnabled
+        ? Math.max(viewportHeight, Math.max(0, window.innerHeight))
         : viewportHeight;
+      const effectiveTop = safeMaxEnabled ? 0 : viewportTop;
 
       root.style.setProperty("--app-vh", `${Math.round(effectiveHeight)}px`);
+      root.style.setProperty("--app-vtop", `${Math.round(effectiveTop)}px`);
       root.style.setProperty("--mobile-shortcut-inset", `${Math.round(keyboardInset)}px`);
     };
     const scheduleSettledViewportUpdate = () => {

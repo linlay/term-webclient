@@ -8,6 +8,7 @@ import type {
   SessionType,
   SshCredentialSummaryResponse,
   TerminalClientResponse,
+  WorkdirEntry,
   WorkdirBrowseResponse
 } from "../../shared/api/types";
 
@@ -92,21 +93,29 @@ function formatCredential(credential: SshCredentialSummaryResponse): string {
   return `${credential.username}@${credential.host}:${credential.port} (${credential.authType})`;
 }
 
+const ROOT_WORKDIR_LOADING_KEY = "__root__";
+
+interface VisibleWorkdirEntry {
+  depth: number;
+  entry: WorkdirEntry;
+}
+
 export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSessionFormProps): JSX.Element {
   const [toolId, setToolId] = useState("terminal");
   const [terminalClients, setTerminalClients] = useState<TerminalClientResponse[]>([]);
-  const [terminalClientsLoading, setTerminalClientsLoading] = useState(false);
   const [terminalClientsError, setTerminalClientsError] = useState("");
 
   const [title, setTitle] = useState("");
   const [command, setCommand] = useState("/bin/zsh");
   const [args, setArgs] = useState("-l");
-  const [workdir, setWorkdir] = useState(".");
+  const [workdir, setWorkdir] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [workdirTree, setWorkdirTree] = useState<WorkdirBrowseResponse | null>(null);
-  const [workdirLoading, setWorkdirLoading] = useState(false);
+  const [workdirChildrenMap, setWorkdirChildrenMap] = useState<Record<string, WorkdirEntry[]>>({});
+  const [workdirExpandedMap, setWorkdirExpandedMap] = useState<Record<string, boolean>>({});
+  const [workdirLoadingMap, setWorkdirLoadingMap] = useState<Record<string, boolean>>({});
   const [workdirError, setWorkdirError] = useState("");
 
   const [sshCredentials, setSshCredentials] = useState<SshCredentialSummaryResponse[]>([]);
@@ -162,6 +171,37 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     ];
   }, [terminalClients]);
 
+  const workdirLoading = useMemo(
+    () => Object.keys(workdirLoadingMap).length > 0,
+    [workdirLoadingMap]
+  );
+
+  const visibleWorkdirEntries = useMemo<VisibleWorkdirEntry[]>(() => {
+    if (!workdirTree) {
+      return [];
+    }
+
+    const flattened: VisibleWorkdirEntry[] = [];
+    const visited = new Set<string>();
+
+    const walk = (parentPath: string, depth: number) => {
+      if (visited.has(parentPath)) {
+        return;
+      }
+      visited.add(parentPath);
+      const children = workdirChildrenMap[parentPath] || [];
+      for (const entry of children) {
+        flattened.push({ depth, entry });
+        if (workdirExpandedMap[entry.path]) {
+          walk(entry.path, depth + 1);
+        }
+      }
+    };
+
+    walk(workdirTree.rootPath, 0);
+    return flattened;
+  }, [workdirChildrenMap, workdirExpandedMap, workdirTree]);
+
   useEffect(() => {
     if (toolId === "terminal") {
       setCommand("/bin/zsh");
@@ -169,9 +209,9 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       return;
     }
     if (selectedClient && !workdir.trim()) {
-      setWorkdir(selectedClient.defaultWorkdir || ".");
+      setWorkdir(selectedClient.defaultWorkdir || workdirTree?.currentPath || ".");
     }
-  }, [selectedClient, toolId, workdir]);
+  }, [selectedClient, toolId, workdir, workdirTree]);
 
   useEffect(() => {
     void refreshCredentials();
@@ -181,7 +221,6 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   }, []);
 
   async function refreshTerminalClients(): Promise<void> {
-    setTerminalClientsLoading(true);
     setTerminalClientsError("");
     try {
       const next = await apiClient.listTerminalClients();
@@ -192,8 +231,6 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       }
     } catch (e) {
       setTerminalClientsError(e instanceof Error ? e.message : "Failed to load terminal clients");
-    } finally {
-      setTerminalClientsLoading(false);
     }
   }
 
@@ -215,19 +252,74 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     }
   }
 
+  function setWorkdirPathLoading(pathKey: string, loading: boolean): void {
+    setWorkdirLoadingMap((prev) => {
+      if (loading) {
+        return { ...prev, [pathKey]: true };
+      }
+      if (!prev[pathKey]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[pathKey];
+      return next;
+    });
+  }
+
   async function browseWorkdir(path?: string): Promise<void> {
-    setWorkdirLoading(true);
+    const normalizedPath = path?.trim();
+    const requestPath = normalizedPath && normalizedPath.length > 0 ? normalizedPath : undefined;
+    const loadingKey = requestPath || ROOT_WORKDIR_LOADING_KEY;
+    setWorkdirPathLoading(loadingKey, true);
     setWorkdirError("");
     try {
-      const next = await apiClient.getWorkdirTree(path);
+      const next = await apiClient.getWorkdirTree(requestPath);
       setWorkdirTree(next);
+      setWorkdirChildrenMap((prev) => ({
+        ...prev,
+        [next.currentPath]: next.entries
+      }));
+      setWorkdirExpandedMap((prev) => ({
+        ...prev,
+        [next.rootPath]: true,
+        [next.currentPath]: true
+      }));
       if (!workdir.trim()) {
         setWorkdir(next.currentPath || ".");
       }
     } catch (e) {
       setWorkdirError(e instanceof Error ? e.message : "Failed to browse workdir");
     } finally {
-      setWorkdirLoading(false);
+      setWorkdirPathLoading(loadingKey, false);
+    }
+  }
+
+  async function onSelectRootWorkdir(): Promise<void> {
+    if (!workdirTree) {
+      await browseWorkdir();
+      return;
+    }
+    setWorkdir(workdirTree.rootPath);
+    setWorkdirExpandedMap((prev) => ({
+      ...prev,
+      [workdirTree.rootPath]: true
+    }));
+    if (!workdirChildrenMap[workdirTree.rootPath]) {
+      await browseWorkdir(workdirTree.rootPath);
+    }
+  }
+
+  async function onSelectWorkdirEntry(entry: WorkdirEntry): Promise<void> {
+    setWorkdir(entry.path);
+    if (!entry.hasChildren) {
+      return;
+    }
+    setWorkdirExpandedMap((prev) => ({
+      ...prev,
+      [entry.path]: true
+    }));
+    if (!workdirChildrenMap[entry.path]) {
+      await browseWorkdir(entry.path);
     }
   }
 
@@ -256,7 +348,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         }
       };
     } else if (selectedClient) {
-      const resolvedWorkdir = workdir.trim() || selectedClient.defaultWorkdir || ".";
+      const resolvedWorkdir = workdir.trim() || selectedClient.defaultWorkdir || workdirTree?.currentPath || ".";
       payload = {
         sessionType: "LOCAL_PTY",
         clientId: selectedClient.id,
@@ -278,7 +370,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         tabTitle: titleText || "terminal",
         command: command.trim() || "/bin/zsh",
         args: parsedArgs,
-        workdir: workdir.trim() || "."
+        workdir: workdir.trim() || workdirTree?.currentPath || "."
       };
     }
 
@@ -384,9 +476,10 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   return (
     <form className={`new-session-form ${variant === "modal" ? "modal-body" : ""}`} onSubmit={onSubmit}>
       <label className="field-label" htmlFor="new-session-tool">Tool</label>
-      <div className="agent-inline-row">
+      <div className="new-session-tool-row">
         <select
           id="new-session-tool"
+          className="new-session-tool-select"
           value={toolId}
           onChange={(event) => setToolId(event.target.value)}
         >
@@ -394,9 +487,6 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
-        <button type="button" className="ghost-btn" onClick={() => void refreshTerminalClients()} disabled={terminalClientsLoading}>
-          {terminalClientsLoading ? "Loading" : "Refresh"}
-        </button>
       </div>
       {terminalClientsError && <div className="tree-status error">{terminalClientsError}</div>}
 
@@ -411,53 +501,61 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       {sessionType === "LOCAL_PTY" && (
         <>
           <section className="advanced-section">
-            <label className="field-label" htmlFor="new-session-workdir">Workdir</label>
-            <input
-              id="new-session-workdir"
-              value={workdir}
-              onChange={(event) => setWorkdir(event.target.value)}
-              placeholder="."
-            />
+            <label className="field-label" htmlFor="new-session-workdir-tree">Workdir</label>
 
-            <div className="agent-inline-row">
-              <button type="button" className="ghost-btn" onClick={() => void browseWorkdir(workdirTree?.currentPath)}>
-                Refresh Workdir
-              </button>
+            <div id="new-session-workdir-tree" className="workdir-tree" role="tree">
+              {!workdirTree && workdirLoading && <div className="tree-status">Loading workdir...</div>}
+              {!workdirTree && !workdirLoading && !workdirError && <div className="tree-status">No directory data</div>}
+              {workdirError && <div className="tree-status error">{workdirError}</div>}
+
               {workdirTree && (
-                <button type="button" className="ghost-btn" onClick={() => void browseWorkdir(workdirTree.rootPath)}>
-                  Go Root
-                </button>
-              )}
-            </div>
-
-            <div className="workdir-tree" role="tree">
-              {workdirLoading && <div className="tree-status">Loading workdir...</div>}
-              {!workdirLoading && workdirError && <div className="tree-status error">{workdirError}</div>}
-              {!workdirLoading && !workdirError && workdirTree && (
                 <div className="tree-list">
-                  {workdirTree.entries.length === 0 ? (
-                    <div className="tree-status">No entries</div>
+                  <button
+                    type="button"
+                    className={`tree-label tree-root ${workdir === workdirTree.rootPath ? "selected" : ""}`}
+                    title={workdirTree.rootPath}
+                    onClick={() => void onSelectRootWorkdir()}
+                  >
+                    <span className="tree-prefix">/</span>
+                    <span className="tree-name">{workdirTree.rootPath}</span>
+                  </button>
+
+                  {(workdirLoadingMap[ROOT_WORKDIR_LOADING_KEY] || workdirLoadingMap[workdirTree.rootPath]) && (
+                    <div className="tree-status tree-status-indented">Loading...</div>
+                  )}
+
+                  {visibleWorkdirEntries.length === 0 && !workdirLoading && !workdirError ? (
+                    <div className="tree-status tree-status-indented">No directories</div>
                   ) : (
-                    workdirTree.entries.map((entry) => (
-                      <button
-                        key={entry.path}
-                        type="button"
-                        className={`tree-label ${workdir === entry.path ? "selected" : ""}`}
-                        title={entry.path}
-                        onClick={() => {
-                          setWorkdir(entry.path);
-                          if (entry.hasChildren) {
-                            void browseWorkdir(entry.path);
-                          }
-                        }}
-                      >
-                        {entry.name}
-                      </button>
+                    visibleWorkdirEntries.map((row) => (
+                      <div key={row.entry.path}>
+                        <button
+                          type="button"
+                          className={`tree-label ${workdir === row.entry.path ? "selected" : ""}`}
+                          title={row.entry.path}
+                          style={{ paddingInlineStart: `${8 + (row.depth + 1) * 16}px` }}
+                          onClick={() => void onSelectWorkdirEntry(row.entry)}
+                        >
+                          <span className="tree-prefix">
+                            {row.entry.hasChildren ? (workdirExpandedMap[row.entry.path] ? "v" : ">") : "-"}
+                          </span>
+                          <span className="tree-name">{row.entry.name}</span>
+                        </button>
+                        {workdirLoadingMap[row.entry.path] && (
+                          <div
+                            className="tree-status tree-status-indented"
+                            style={{ paddingInlineStart: `${24 + (row.depth + 1) * 16}px` }}
+                          >
+                            Loading...
+                          </div>
+                        )}
+                      </div>
                     ))
                   )}
                 </div>
               )}
             </div>
+
             <div className="selected-workdir">Selected: <code>{workdir || "-"}</code></div>
           </section>
 

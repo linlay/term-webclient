@@ -387,14 +387,18 @@ export default function App(): JSX.Element {
           <div className="top-actions">
             <button
               type="button"
-              className="ghost-btn top-icon-btn"
+              className="ghost-btn top-icon-btn copilot-toggle-btn"
               aria-label="Copilot"
               title="Copilot"
               onClick={() => {
                 copilot.setIsCopilotOpen((prev) => !prev);
               }}
             >
-              *
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6h16" />
+                <path d="M4 12h16" />
+                <path d="M4 18h16" />
+              </svg>
             </button>
             {!appMode && (
               <button
@@ -515,6 +519,7 @@ export default function App(): JSX.Element {
               void copilot.abortAgentRun();
             }}
             onSendQuickCommand={copilot.sendQuickCommand}
+            onClose={() => copilot.setIsCopilotOpen(false)}
           />
         </div>
       </div>

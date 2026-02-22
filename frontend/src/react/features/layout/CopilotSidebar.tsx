@@ -27,6 +27,7 @@ interface CopilotSidebarProps {
   onApproveAgentRun: (confirmRisk: boolean) => void;
   onAbortAgentRun: () => void;
   onSendQuickCommand: () => void;
+  onClose: () => void;
 }
 
 function onTextareaChange(event: ChangeEvent<HTMLTextAreaElement>, setter: (value: string) => void): void {
@@ -62,11 +63,23 @@ export function CopilotSidebar({
   onRefreshAgentRun,
   onApproveAgentRun,
   onAbortAgentRun,
-  onSendQuickCommand
+  onSendQuickCommand,
+  onClose
 }: CopilotSidebarProps): JSX.Element {
   return (
     <aside className={`agent-sidebar ${open ? "" : "hidden"}`} aria-hidden={open ? "false" : "true"}>
-      <div className="agent-title">Copilot</div>
+      <div className="agent-header">
+        <div className="agent-title">Copilot</div>
+        <button
+          type="button"
+          className="ghost-btn copilot-close-btn"
+          aria-label="Close Copilot"
+          title="Close Copilot"
+          onClick={onClose}
+        >
+          x
+        </button>
+      </div>
       <div className="copilot-tabs">
         <button
           type="button"
