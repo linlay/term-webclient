@@ -4,7 +4,7 @@
 
 - 后端：Spring Boot + WebSocket + pty4j + Apache SSHD
 - 前端：Vite + React + TypeScript + xterm.js
-- 生产部署：Node 反向代理（`11931`）→ 后端（`11930`）
+- 生产部署：Node 反向代理（`11947`）→ 后端（`11946`）
 
 ## 环境要求
 
@@ -19,17 +19,17 @@
 后端和前端分别启动：
 
 ```bash
-# 终端 1：启动后端（127.0.0.1:11930）
+# 终端 1：启动后端（127.0.0.1:11946）
 cd backend
 mvn spring-boot:run
 
-# 终端 2：启动前端（localhost:11931，自动代理到后端）
+# 终端 2：启动前端（localhost:11947，自动代理到后端）
 cd frontend
 npm install
 npm run dev
 ```
 
-访问 `http://localhost:11931/term/`（Web）或 `http://localhost:11931/appterm/`（App WebView）。
+访问 `http://localhost:11947/term/`（Web）或 `http://localhost:11947/appterm/`（App WebView）。
 
 ### 一键打包部署
 
@@ -44,7 +44,7 @@ npm run dev
 ./stop.sh
 ```
 
-默认端口：后端 `127.0.0.1:11930`，前端 `0.0.0.0:11931`。
+默认端口：后端 `127.0.0.1:11946`，前端 `0.0.0.0:11947`。
 
 ## 配置
 
@@ -78,7 +78,7 @@ npm run dev
 |---|---|---|
 | `VITE_API_BASE` | 空（同源） | API 基础地址，为空时使用同源路径 |
 | `VITE_COPILOT_REFRESH_MS` | `2000` | Copilot 自动刷新间隔（毫秒） |
-| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:11930` | 开发模式代理目标 |
+| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:11946` | 开发模式代理目标 |
 
 ### 启动脚本环境变量
 
@@ -88,7 +88,7 @@ npm run dev
 | `BACKEND_HOST` | 从 `application.yml` 读取 | 后端监听地址 |
 | `BACKEND_PORT` | 从 `application.yml` 读取 | 后端监听端口 |
 | `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
-| `FRONTEND_PORT` | `11931` | 前端监听端口 |
+| `FRONTEND_PORT` | `11947` | 前端监听端口 |
 | `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
 | `BACKEND_JAVA_OPTS` | `-Xms256m -Xmx512m` | JVM 参数 |
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
@@ -163,7 +163,7 @@ export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
 ```bash
-curl -X POST http://127.0.0.1:11931/term/api/ssh/credentials \
+curl -X POST http://127.0.0.1:11947/term/api/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
     "host": "10.0.0.2",
@@ -178,7 +178,7 @@ curl -X POST http://127.0.0.1:11931/term/api/ssh/credentials \
 ### SSH Exec（结构化命令执行）
 
 ```bash
-curl -X POST http://127.0.0.1:11931/term/api/ssh/exec \
+curl -X POST http://127.0.0.1:11947/term/api/ssh/exec \
   -H "content-type: application/json" \
   -d '{
     "credentialId": "<credential-id>",
@@ -277,7 +277,7 @@ Nginx 反向代理职责：
 
 - `80 → 443` 重定向
 - `443` TLS 终止
-- 所有流量反代到 `http://127.0.0.1:11931`
+- 所有流量反代到 `http://127.0.0.1:11947`
 - 透传 WebSocket Upgrade
 
 ## 测试与验证
@@ -293,7 +293,7 @@ npx tsc --noEmit      # TypeScript 类型检查
 npm run build         # 生产构建
 
 # 健康检查
-curl http://127.0.0.1:11931/healthz
+curl http://127.0.0.1:11947/healthz
 ```
 
 ### 前端生产代理

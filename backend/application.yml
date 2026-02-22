@@ -4,7 +4,7 @@
 
 server:
   address: ${BACKEND_HOST:127.0.0.1}
-  port: ${BACKEND_PORT:11930}
+  port: ${BACKEND_PORT:11946}
 
 terminal:
   cli-clients:

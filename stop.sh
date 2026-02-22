@@ -197,7 +197,7 @@ stop_by_port() {
 
 resolve_backend_port() {
   local release_dir="$1"
-  local backend_port="11930"
+  local backend_port="11946"
   local backend_config="$release_dir/backend/application.yml"
   if [[ -f "$backend_config" ]]; then
     local config_backend_port_raw
@@ -213,7 +213,7 @@ resolve_backend_port() {
 
 resolve_frontend_port() {
   local release_dir="$1"
-  local frontend_port="11931"
+  local frontend_port="11947"
   local frontend_env_file="$release_dir/.env.$APP_ENV"
   local legacy_frontend_env_file="$release_dir/frontend/.env.server.$APP_ENV"
   if [[ ! -f "$frontend_env_file" ]] && [[ -f "$legacy_frontend_env_file" ]]; then

@@ -120,7 +120,7 @@ require_file() {
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$RELEASE_DIR/data"
 
 default_backend_host="127.0.0.1"
-default_backend_port="11930"
+default_backend_port="11946"
 if [[ -f "$BACKEND_CONFIG_FILE" ]]; then
   config_backend_host_raw="$(read_server_config "$BACKEND_CONFIG_FILE" "address" || true)"
   config_backend_port_raw="$(read_server_config "$BACKEND_CONFIG_FILE" "port" || true)"
@@ -145,7 +145,7 @@ if [[ -f "$FRONTEND_ENV_FILE" ]]; then
 fi
 
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
-FRONTEND_PORT="${FRONTEND_PORT:-11931}"
+FRONTEND_PORT="${FRONTEND_PORT:-11947}"
 
 effective_backend_host="${BACKEND_HOST_OVERRIDE:-$default_backend_host}"
 effective_backend_port="${BACKEND_PORT_OVERRIDE:-$default_backend_port}"

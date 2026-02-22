@@ -115,12 +115,12 @@ for (const envFile of envCandidates) {
 
 const HOST = fileEnv.FRONTEND_HOST || fileEnv.HOST || process.env.FRONTEND_HOST || process.env.HOST || "0.0.0.0";
 const PORT = parsePort(
-  fileEnv.FRONTEND_PORT || fileEnv.PORT || process.env.FRONTEND_PORT || process.env.PORT || "11931",
-  11931,
+  fileEnv.FRONTEND_PORT || fileEnv.PORT || process.env.FRONTEND_PORT || process.env.PORT || "11947",
+  11947,
   "PORT"
 );
 const backendHost = fileEnv.BACKEND_HOST || process.env.BACKEND_HOST || "127.0.0.1";
-const backendPort = parsePort(fileEnv.BACKEND_PORT || process.env.BACKEND_PORT || "11930", 11930, "BACKEND_PORT");
+const backendPort = parsePort(fileEnv.BACKEND_PORT || process.env.BACKEND_PORT || "11946", 11946, "BACKEND_PORT");
 const hasFileBackendAddress = Boolean(fileEnv.BACKEND_HOST || fileEnv.BACKEND_PORT);
 const BACKEND_ORIGIN = fileEnv.BACKEND_ORIGIN
   || (hasFileBackendAddress ? `http://${backendHost}:${backendPort}` : null)
