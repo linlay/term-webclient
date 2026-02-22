@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-`pty-webclient` 是浏览器多标签终端系统。
+`term-webclient` 是浏览器多标签终端系统。
 
 - **后端**：Spring Boot 3.3.8 / Java 21 / Maven
 - **前端**：React 18 + TypeScript / Vite / Zustand / xterm.js
@@ -15,7 +15,7 @@
 ## 目录结构
 
 ```
-pty-webclient/
+term-webclient/
 ├── backend/
 │   ├── src/main/java/com/linlay/ptyjava/
 │   │   ├── TerminalApplication.java          # Spring Boot 入口
