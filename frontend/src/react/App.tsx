@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
 import { isAppMode } from "./shared/config/env";
-import { consumeOpenNewSessionNonce, parseRouteIntent } from "./shared/routing/routeIntent";
+import { buildRouteSearch, parseRouteIntent, writeRouteSearch, type RouteIntentPatch } from "./shared/routing/routeIntent";
 import { generateId } from "./shared/utils/id";
 import { useViewportHeight } from "./shared/hooks/useViewportHeight";
 import { useNotice } from "./shared/hooks/useNotice";
@@ -45,10 +45,9 @@ export default function App(): JSX.Element {
   const senderMapRef = useRef(new Map<string, (data: string) => boolean>());
   const terminalHandleMapRef = useRef(new Map<string, TerminalPaneHandle>());
   const hydratedSessionsRef = useRef(false);
-  const routeIntentRef = useRef(parseRouteIntent(window.location.search));
-  const routeSessionActivatedRef = useRef(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [routeIntent, setRouteIntent] = useState(() => parseRouteIntent(window.location.search));
   const [isNewWindowOpen, setIsNewWindowOpen] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
@@ -69,6 +68,8 @@ export default function App(): JSX.Element {
     showNotice,
     setTabAgentRunId
   });
+  const isCopilotOpen = copilot.isCopilotOpen;
+  const setIsCopilotOpen = copilot.setIsCopilotOpen;
 
   const { showScrollBottomFab, mobileShortcutsExpanded, setMobileShortcutsExpanded } = useMobileScroll({
     isMobile,
@@ -113,6 +114,26 @@ export default function App(): JSX.Element {
     terminalHandleMapRef.current.set(localId, handle);
   }, []);
 
+  const applyRoutePatch = useCallback((patch: RouteIntentPatch, mode: "replace" | "push" = "replace") => {
+    const currentSearch = window.location.search;
+    const nextSearch = buildRouteSearch(currentSearch, patch);
+    if (nextSearch !== currentSearch) {
+      writeRouteSearch(patch, mode);
+    }
+    setRouteIntent(parseRouteIntent(nextSearch));
+    return nextSearch;
+  }, []);
+
+  const openNewWindowFromUi = useCallback(() => {
+    applyRoutePatch({ openNewSession: true });
+    setIsNewWindowOpen(true);
+  }, [applyRoutePatch]);
+
+  const closeNewWindow = useCallback(() => {
+    applyRoutePatch({ openNewSession: null, openNonce: null });
+    setIsNewWindowOpen(false);
+  }, [applyRoutePatch]);
+
   const listSessionsQuery = useQuery({
     queryKey: ["sessions", authQuery.data?.authenticated, appMode],
     queryFn: () => apiClient.listSessions(),
@@ -147,30 +168,45 @@ export default function App(): JSX.Element {
   }, [listSessionsQuery.data, setTabs]);
 
   useEffect(() => {
-    const { openNewSession, openNonce } = routeIntentRef.current;
-    if (!openNewSession || !openNonce) {
-      return;
-    }
-    if (consumeOpenNewSessionNonce(window.sessionStorage, openNonce)) {
-      setIsNewWindowOpen(true);
-    }
+    const onPopState = () => {
+      setRouteIntent(parseRouteIntent(window.location.search));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
   }, []);
 
   useEffect(() => {
-    if (routeSessionActivatedRef.current) {
+    if (!routeIntent.sessionId) {
       return;
     }
-    const targetSessionId = routeIntentRef.current.sessionId;
-    if (!targetSessionId) {
-      return;
-    }
-    const matchedTab = tabs.find((tab) => tab.sessionId === targetSessionId);
+    const matchedTab = tabs.find((tab) => tab.sessionId === routeIntent.sessionId);
     if (!matchedTab) {
       return;
     }
-    routeSessionActivatedRef.current = true;
+    if (matchedTab.localId === activeTabId) {
+      return;
+    }
     setActiveTab(matchedTab.localId);
-  }, [setActiveTab, tabs]);
+  }, [activeTabId, routeIntent.sessionId, setActiveTab, tabs]);
+
+  useEffect(() => {
+    setIsNewWindowOpen(routeIntent.openNewSession);
+  }, [routeIntent.openNewSession]);
+
+  useEffect(() => {
+    if (!activeTab?.sessionId) {
+      return;
+    }
+    if (routeIntent.sessionId && !tabs.some((tab) => tab.sessionId === routeIntent.sessionId)) {
+      return;
+    }
+    if (activeTab.sessionId === routeIntent.sessionId) {
+      return;
+    }
+    applyRoutePatch({ sessionId: activeTab.sessionId });
+  }, [activeTab?.sessionId, applyRoutePatch, routeIntent.sessionId, tabs]);
 
   useEffect(() => {
     const onResize = () => {
@@ -227,18 +263,18 @@ export default function App(): JSX.Element {
         return;
       }
       if (isNewWindowOpen) {
-        setIsNewWindowOpen(false);
+        closeNewWindow();
         return;
       }
-      if (isMobile && copilot.isCopilotOpen) {
-        copilot.setIsCopilotOpen(false);
+      if (isMobile && isCopilotOpen) {
+        setIsCopilotOpen(false);
       }
     };
     window.addEventListener("keydown", onEscape);
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [copilot.isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, tabContextMenu]);
+  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
 
   async function copyText(value: string, successNotice: string): Promise<void> {
     if (!value.trim()) {
@@ -405,9 +441,7 @@ export default function App(): JSX.Element {
             onCloseTab={(tabId) => {
               requestCloseTab(tabId);
             }}
-            onOpenNewWindow={() => {
-              setIsNewWindowOpen(true);
-            }}
+            onOpenNewWindow={openNewWindowFromUi}
             onOpenContextMenu={(payload: TabContextPayload) => {
               setTabContextMenu(payload);
             }}
@@ -420,7 +454,7 @@ export default function App(): JSX.Element {
               aria-label="Copilot"
               title="Copilot"
               onClick={() => {
-                copilot.setIsCopilotOpen((prev) => !prev);
+                setIsCopilotOpen((prev) => !prev);
               }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -548,20 +582,20 @@ export default function App(): JSX.Element {
               void copilot.abortAgentRun();
             }}
             onSendQuickCommand={copilot.sendQuickCommand}
-            onClose={() => copilot.setIsCopilotOpen(false)}
+            onClose={() => setIsCopilotOpen(false)}
           />
         </div>
       </div>
 
-      {isMobile && copilot.isCopilotOpen && (
-        <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => copilot.setIsCopilotOpen(false)} />
+      {isMobile && isCopilotOpen && (
+        <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => setIsCopilotOpen(false)} />
       )}
 
       {notice && <div className={`notice ${notice.type}`}>{notice.message}</div>}
 
       <NewWindowModal
         open={isNewWindowOpen}
-        onClose={() => setIsNewWindowOpen(false)}
+        onClose={closeNewWindow}
         onCreated={(payload: NewSessionCreatedPayload) => {
           addTab({
             sessionId: payload.sessionId,
@@ -574,6 +608,12 @@ export default function App(): JSX.Element {
             sshCredentialId: payload.sshCredentialId,
             createRequest: payload.createRequest
           });
+          applyRoutePatch({
+            sessionId: payload.sessionId,
+            openNewSession: null,
+            openNonce: null
+          });
+          setIsNewWindowOpen(false);
         }}
       />
 

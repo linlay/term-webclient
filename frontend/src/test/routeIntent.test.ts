@@ -1,17 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consumeOpenNewSessionNonce, parseRouteIntent } from '../react/shared/routing/routeIntent';
-
-function createMemoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
-  const data = new Map<string, string>();
-  return {
-    getItem(key: string) {
-      return data.has(key) ? String(data.get(key)) : null;
-    },
-    setItem(key: string, value: string) {
-      data.set(key, String(value));
-    }
-  };
-}
+import { buildRouteSearch, parseRouteIntent } from '../react/shared/routing/routeIntent';
 
 describe('routeIntent', () => {
   it('parses session selection and open-new-session intent', () => {
@@ -23,23 +11,36 @@ describe('routeIntent', () => {
   });
 
   it('treats missing query fields as empty/false values', () => {
+    expect(parseRouteIntent('?sessionId=s-2&openNewSession=1')).toEqual({
+      sessionId: 's-2',
+      openNewSession: true,
+      openNonce: ''
+    });
+  });
+
+  it('buildRouteSearch removes open intent fields while preserving sessionId', () => {
+    expect(
+      buildRouteSearch('?sessionId=s-1&openNewSession=1&openNonce=abc&foo=bar', {
+        openNewSession: null,
+        openNonce: null
+      })
+    ).toBe('?sessionId=s-1&foo=bar');
+  });
+
+  it('buildRouteSearch updates sessionId and keeps unrelated query fields', () => {
+    expect(
+      buildRouteSearch('?foo=bar&openNewSession=1', {
+        sessionId: 's-9',
+        openNewSession: false
+      })
+    ).toBe('?foo=bar&sessionId=s-9');
+  });
+
+  it('treats explicit disabled openNewSession as false', () => {
     expect(parseRouteIntent('?openNewSession=0')).toEqual({
       sessionId: '',
       openNewSession: false,
       openNonce: ''
     });
-  });
-
-  it('consumes each openNonce once per sessionStorage scope', () => {
-    const storage = createMemoryStorage();
-
-    expect(consumeOpenNewSessionNonce(storage, 'abc')).toBe(true);
-    expect(consumeOpenNewSessionNonce(storage, 'abc')).toBe(false);
-    expect(consumeOpenNewSessionNonce(storage, 'def')).toBe(true);
-  });
-
-  it('ignores empty nonce values', () => {
-    const storage = createMemoryStorage();
-    expect(consumeOpenNewSessionNonce(storage, '')).toBe(false);
   });
 });

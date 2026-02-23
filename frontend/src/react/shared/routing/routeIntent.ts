@@ -4,7 +4,11 @@ export interface RouteIntent {
   openNonce: string;
 }
 
-const OPEN_NEW_SESSION_NONCE_PREFIX = 'appterm.open-new-session.';
+export interface RouteIntentPatch {
+  sessionId?: string | null;
+  openNewSession?: boolean | null;
+  openNonce?: string | null;
+}
 
 function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -21,24 +25,59 @@ export function parseRouteIntent(search: string): RouteIntent {
   };
 }
 
-export function consumeOpenNewSessionNonce(
-  storage: Pick<Storage, 'getItem' | 'setItem'>,
-  openNonce: string
-): boolean {
-  const normalizedNonce = normalizeString(openNonce);
-  if (!normalizedNonce) {
-    return false;
+function setStringParam(params: URLSearchParams, key: string, value: string | null | undefined): void {
+  if (value === undefined) {
+    return;
   }
+  const normalized = value === null ? '' : normalizeString(value);
+  if (!normalized) {
+    params.delete(key);
+    return;
+  }
+  params.set(key, normalized);
+}
 
-  const storageKey = `${OPEN_NEW_SESSION_NONCE_PREFIX}${normalizedNonce}`;
+export function buildRouteSearch(currentSearch: string, patch: RouteIntentPatch): string {
+  const params = new URLSearchParams(String(currentSearch || '').replace(/^\?/, ''));
 
-  try {
-    if (storage.getItem(storageKey) === '1') {
-      return false;
+  setStringParam(params, 'sessionId', patch.sessionId);
+  setStringParam(params, 'openNonce', patch.openNonce);
+
+  if (patch.openNewSession !== undefined) {
+    if (patch.openNewSession) {
+      params.set('openNewSession', '1');
+    } else {
+      params.delete('openNewSession');
     }
-    storage.setItem(storageKey, '1');
-    return true;
-  } catch {
-    return true;
   }
+
+  const next = params.toString();
+  return next ? `?${next}` : '';
+}
+
+export function writeRouteSearch(
+  patch: RouteIntentPatch,
+  mode: 'replace' | 'push' = 'replace'
+): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const nextSearch = buildRouteSearch(window.location.search, patch);
+  if (nextSearch === window.location.search) {
+    return nextSearch;
+  }
+
+  const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+  try {
+    if (mode === 'push') {
+      window.history.pushState(null, '', nextUrl);
+    } else {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  } catch {
+    // Keep UI local state usable even when browser history API is unavailable.
+  }
+
+  return nextSearch;
 }

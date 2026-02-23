@@ -194,11 +194,13 @@ app.use((req, res, next) => {
     return;
   }
   if (req.path === "/term") {
-    res.redirect(302, "/term/");
+    const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    res.redirect(302, `/term/${query}`);
     return;
   }
   if (req.path === "/appterm") {
-    res.redirect(302, "/appterm/");
+    const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    res.redirect(302, `/appterm/${query}`);
     return;
   }
   const isSpaEntryPath = req.path === "/term/" || req.path === "/appterm/";

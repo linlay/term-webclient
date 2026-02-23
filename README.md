@@ -143,6 +143,29 @@ app-auth:
 
 ## 功能说明
 
+### URL 参数控制会话
+
+`/term/` 与 `/appterm/` 都支持通过 URL 参数控制会话：
+
+- `sessionId=<uuid>`：切换到对应 session 的 tab（若该 session 已存在）。
+- `openNewSession=1` 或 `openNewSession=true`：打开「新建会话」弹窗（用户手动 create/cancel）。
+- `openNonce=<any>`：兼容保留字段，可选，不再作为触发前置条件。
+
+示例：
+
+```text
+/term/?sessionId=<uuid>
+/appterm/?openNewSession=1
+/term/?sessionId=<uuid>&openNewSession=1
+```
+
+行为规则：
+
+- `sessionId` 与 `openNewSession` 可以同时存在，并且同时生效。
+- 用户切换 tab 时，URL 中 `sessionId` 会同步为当前激活会话。
+- 新建弹窗关闭（create 或 cancel）后，`openNewSession` 与 `openNonce` 会自动清理。
+- 若通过 `/term` 或 `/appterm`（无尾斜杠）访问，服务端会在补全为 `/term/`、`/appterm/` 时保留原 query 参数。
+
 ### 断线恢复
 
 - 浏览器刷新/断网不会销毁后端会话
