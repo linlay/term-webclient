@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
 import { isAppMode } from "./shared/config/env";
-import { buildRouteSearch, parseRouteIntent, writeRouteSearch, type RouteIntentPatch } from "./shared/routing/routeIntent";
+import {
+  buildRouteSearch,
+  parseRouteIntent,
+  shouldSyncRouteSessionFromActive,
+  writeRouteSearch,
+  type RouteIntentPatch
+} from "./shared/routing/routeIntent";
 import { generateId } from "./shared/utils/id";
 import { useViewportHeight } from "./shared/hooks/useViewportHeight";
 import { useNotice } from "./shared/hooks/useNotice";
@@ -124,6 +130,15 @@ export default function App(): JSX.Element {
     return nextSearch;
   }, []);
 
+  const selectTabAndSyncRoute = useCallback((localId: string) => {
+    const selectedTab = tabs.find((tab) => tab.localId === localId);
+    if (!selectedTab) {
+      return;
+    }
+    setActiveTab(localId);
+    applyRoutePatch({ sessionId: selectedTab.sessionId }, "replace");
+  }, [applyRoutePatch, setActiveTab, tabs]);
+
   const openNewWindowFromUi = useCallback(() => {
     applyRoutePatch({ openNewSession: true });
     setIsNewWindowOpen(true);
@@ -196,16 +211,14 @@ export default function App(): JSX.Element {
   }, [routeIntent.openNewSession]);
 
   useEffect(() => {
-    if (!activeTab?.sessionId) {
+    const activeSessionId = activeTab?.sessionId;
+    if (!activeSessionId) {
       return;
     }
-    if (routeIntent.sessionId && !tabs.some((tab) => tab.sessionId === routeIntent.sessionId)) {
+    if (!shouldSyncRouteSessionFromActive(activeSessionId, routeIntent.sessionId, tabs.map((tab) => tab.sessionId))) {
       return;
     }
-    if (activeTab.sessionId === routeIntent.sessionId) {
-      return;
-    }
-    applyRoutePatch({ sessionId: activeTab.sessionId });
+    applyRoutePatch({ sessionId: activeSessionId }, "replace");
   }, [activeTab?.sessionId, applyRoutePatch, routeIntent.sessionId, tabs]);
 
   useEffect(() => {
@@ -437,7 +450,7 @@ export default function App(): JSX.Element {
           <TabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            onSelectTab={setActiveTab}
+            onSelectTab={selectTabAndSyncRoute}
             onCloseTab={(tabId) => {
               requestCloseTab(tabId);
             }}
@@ -627,7 +640,7 @@ export default function App(): JSX.Element {
             return;
           }
           setTabContextMenu(null);
-          setActiveTab(contextTab.localId);
+          selectTabAndSyncRoute(contextTab.localId);
           void rebuildTab(contextTab.localId);
         }}
         onCloseTab={() => {

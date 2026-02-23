@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildRouteSearch, parseRouteIntent } from '../react/shared/routing/routeIntent';
+import {
+  buildRouteSearch,
+  parseRouteIntent,
+  shouldSyncRouteSessionFromActive
+} from '../react/shared/routing/routeIntent';
 
 describe('routeIntent', () => {
   it('parses session selection and open-new-session intent', () => {
@@ -42,5 +46,38 @@ describe('routeIntent', () => {
       openNewSession: false,
       openNonce: ''
     });
+  });
+
+  it('scenario A: does not override URL when route session still exists', () => {
+    expect(
+      shouldSyncRouteSessionFromActive(
+        'session-active',
+        'session-route',
+        ['session-route', 'session-active']
+      )
+    ).toBe(false);
+  });
+
+  it('scenario B: repairs URL when route session no longer exists', () => {
+    expect(
+      shouldSyncRouteSessionFromActive(
+        'session-active',
+        'session-missing',
+        ['session-active', 'session-other']
+      )
+    ).toBe(true);
+  });
+
+  it('scenario C: user tab selection updates sessionId and reaches stable state', () => {
+    expect(
+      buildRouteSearch('?sessionId=session-old&foo=bar', { sessionId: 'session-new' })
+    ).toBe('?sessionId=session-new&foo=bar');
+    expect(
+      shouldSyncRouteSessionFromActive(
+        'session-new',
+        'session-new',
+        ['session-new', 'session-other']
+      )
+    ).toBe(false);
   });
 });

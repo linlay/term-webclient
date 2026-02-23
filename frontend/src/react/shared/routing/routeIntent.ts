@@ -55,6 +55,31 @@ export function buildRouteSearch(currentSearch: string, patch: RouteIntentPatch)
   return next ? `?${next}` : '';
 }
 
+export function shouldSyncRouteSessionFromActive(
+  activeSessionId: string | null | undefined,
+  routeSessionId: string | null | undefined,
+  availableSessionIds: readonly string[]
+): boolean {
+  const active = normalizeString(activeSessionId);
+  if (!active) {
+    return false;
+  }
+
+  const route = normalizeString(routeSessionId);
+  if (route === active) {
+    return false;
+  }
+
+  if (route) {
+    const routeStillExists = availableSessionIds.some((candidate) => normalizeString(candidate) === route);
+    if (routeStillExists) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function writeRouteSearch(
   patch: RouteIntentPatch,
   mode: 'replace' | 'push' = 'replace'
