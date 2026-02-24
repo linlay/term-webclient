@@ -94,6 +94,7 @@ class SessionControllerTest {
                 "codex",
                 SessionType.LOCAL_PTY,
                 ".",
+                ".",
                 Instant.parse("2026-02-12T00:00:00Z"),
                 "connected"
             )

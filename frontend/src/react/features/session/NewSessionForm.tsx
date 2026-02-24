@@ -20,6 +20,7 @@ export interface NewSessionCreatedPayload {
   sessionType: SessionType;
   toolId: string;
   workdir: string;
+  fileRootPath: string;
   sshCredentialId: string | null;
   createRequest: CreateSessionRequest;
 }
@@ -384,6 +385,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         sessionType,
         toolId: payload.toolId || (sessionType === "SSH_SHELL" ? "ssh" : "terminal"),
         workdir: payload.workdir || ".",
+        fileRootPath: payload.workdir || ".",
         sshCredentialId: payload.ssh?.credentialId || null,
         createRequest: payload
       });

@@ -21,6 +21,7 @@ public class TerminalSession {
     private final String title;
     private final String toolId;
     private final String workdir;
+    private final FileSessionBinding fileSessionBinding;
     private final TerminalRuntime runtime;
     private final ExecutorService ioExecutor;
     private final TerminalOutputRingBuffer ringBuffer;
@@ -41,6 +42,7 @@ public class TerminalSession {
                            String title,
                            String toolId,
                            String workdir,
+                           FileSessionBinding fileSessionBinding,
                            TerminalRuntime runtime,
                            ExecutorService ioExecutor,
                            TerminalOutputRingBuffer ringBuffer,
@@ -52,6 +54,7 @@ public class TerminalSession {
         this.title = title;
         this.toolId = toolId;
         this.workdir = workdir;
+        this.fileSessionBinding = fileSessionBinding;
         this.runtime = runtime;
         this.ioExecutor = ioExecutor;
         this.ringBuffer = ringBuffer;
@@ -79,6 +82,10 @@ public class TerminalSession {
 
     public String getWorkdir() {
         return workdir;
+    }
+
+    public FileSessionBinding getFileSessionBinding() {
+        return fileSessionBinding;
     }
 
     public TerminalRuntime getRuntime() {

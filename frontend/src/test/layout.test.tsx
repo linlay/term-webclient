@@ -18,6 +18,7 @@ function makeTab(partial: Partial<TerminalTab> = {}): TerminalTab {
     sessionType: "LOCAL_PTY",
     toolId: "terminal",
     workdir: ".",
+    fileRootPath: ".",
     sshCredentialId: null,
     createRequest: null,
     agentRunId: null,

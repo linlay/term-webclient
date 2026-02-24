@@ -9,6 +9,7 @@ public record SessionTabViewResponse(
     String toolId,
     SessionType sessionType,
     String workdir,
+    String fileRootPath,
     Instant startedAt,
     String connectionState
 ) {

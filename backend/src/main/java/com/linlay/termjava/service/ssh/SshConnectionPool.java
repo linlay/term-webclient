@@ -31,6 +31,8 @@ import org.apache.sshd.common.NamedResource;
 import org.apache.sshd.common.channel.PtyChannelConfiguration;
 import org.apache.sshd.common.config.keys.FilePasswordProvider;
 import org.apache.sshd.common.util.security.SecurityUtils;
+import org.apache.sshd.sftp.client.SftpClient;
+import org.apache.sshd.sftp.client.SftpClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -352,6 +354,10 @@ public class SshConnectionPool {
             return connection.openExecChannel(command, properties.getSsh().getConnectTimeoutMillis());
         }
 
+        public SftpClient openSftpClient() throws IOException {
+            return connection.openSftpClient();
+        }
+
         @Override
         public synchronized void close() {
             if (closed) {
@@ -435,6 +441,16 @@ public class SshConnectionPool {
                     throw ioException;
                 }
                 throw new IOException("Failed to open SSH exec channel", e);
+            }
+        }
+
+        private SftpClient openSftpClient() throws IOException {
+            try {
+                return SftpClientFactory.instance().createSftpClient(session);
+            } catch (IOException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw new IOException("Failed to open SSH SFTP client", e);
             }
         }
 

@@ -7,6 +7,8 @@ server:
   port: ${BACKEND_PORT:11946}
 
 terminal:
+  files:
+    enabled: false
   cli-clients:
     - id: codex
       label: Codex

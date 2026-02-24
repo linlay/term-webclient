@@ -61,6 +61,15 @@ terminal:
     credentials-file: data/ssh-credentials.json
     known-hosts-file: ${user.home}/.term-web/known-hosts.json
     master-key-env: TERMINAL_SSH_MASTER_KEY
+  files:
+    enabled: true
+    max-upload-file-bytes: 209715200
+    max-upload-request-bytes: 524288000
+    max-download-archive-bytes: 1073741824
+    default-root-scope: SESSION_WORKDIR
+    allow-outside-root: false
+    allowed-roots: []
+    download-ticket-ttl-seconds: 60
 
 auth:
   enabled: true

@@ -3,6 +3,8 @@ package com.linlay.termjava.controller;
 import com.linlay.termjava.model.WorkdirBrowseResponse;
 import com.linlay.termjava.service.InvalidWorkdirBrowseRequestException;
 import com.linlay.termjava.service.WorkdirBrowseService;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,8 +25,11 @@ public class WorkdirController {
     }
 
     @GetMapping
-    public WorkdirBrowseResponse browseWorkdirs(@RequestParam(required = false) String path) {
-        return workdirBrowseService.browse(path);
+    public ResponseEntity<WorkdirBrowseResponse> browseWorkdirs(@RequestParam(required = false) String path) {
+        return ResponseEntity.ok()
+            .header("Deprecation", "true")
+            .header("Sunset", DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now().plusMonths(3)))
+            .body(workdirBrowseService.browse(path));
     }
 
     @ExceptionHandler(InvalidWorkdirBrowseRequestException.class)

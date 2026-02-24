@@ -31,6 +31,10 @@ public class WebApiAuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        if (isTicketDownloadRequest(request)) {
+            return true;
+        }
+
         if (authService.isRequestAuthenticated(request)) {
             return true;
         }
@@ -40,5 +44,23 @@ public class WebApiAuthInterceptor implements HandlerInterceptor {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write("{\"error\":\"unauthorized\"}");
         return false;
+    }
+
+    private boolean isTicketDownloadRequest(HttpServletRequest request) {
+        if (request == null) {
+            return false;
+        }
+        if (!(HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod()))) {
+            return false;
+        }
+        String ticket = request.getParameter("ticket");
+        if (ticket == null || ticket.isBlank()) {
+            return false;
+        }
+        String uri = request.getRequestURI();
+        if (uri == null) {
+            return false;
+        }
+        return uri.endsWith("/files/download") || uri.endsWith("/files/download-archive");
     }
 }

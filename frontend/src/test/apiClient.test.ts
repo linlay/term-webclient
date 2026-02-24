@@ -13,6 +13,7 @@ function mockJsonResponse(payload: unknown, status = 200): Response {
 describe("apiClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("parses JSON response", async () => {
@@ -104,5 +105,102 @@ describe("apiClient", () => {
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/agent/runs");
     expect(fetchSpy.mock.calls[1]?.[0]).toBe("/term/api/sessions/s1/agent/runs/r1/approve");
     expect(fetchSpy.mock.calls[2]?.[0]).toBe("/term/api/sessions/s1/agent/runs/r1/abort");
+  });
+
+  it("requests session file tree with encoded path", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockJsonResponse({
+        currentPath: "/tmp",
+        parentPath: "/",
+        entries: []
+      })
+    );
+
+    await apiClient.getSessionFileTree("s1", "/tmp/my folder");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/files/tree?path=%2Ftmp%2Fmy+folder");
+  });
+
+  it("creates download ticket via session files api", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockJsonResponse({
+        ticket: "t1",
+        downloadUrl: "/term/api/sessions/s1/files/download?ticket=t1",
+        expiresAt: "2026-02-24T00:00:00Z"
+      }, 201)
+    );
+
+    await apiClient.createSessionDownloadTicket("s1", { mode: "single", path: "/tmp/a.txt" });
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/files/download-ticket");
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+
+  it("resolves relative download url to api base path", () => {
+    expect(apiClient.resolveDownloadUrl("/term/api/sessions/s1/files/download?ticket=t1"))
+      .toBe("/term/api/sessions/s1/files/download?ticket=t1");
+  });
+
+  it("uploads file with xhr progress events", async () => {
+    type HeadersMap = Record<string, string>;
+    class MockXHR {
+      static created: MockXHR[] = [];
+      method = "";
+      url = "";
+      async = true;
+      withCredentials = false;
+      status = 200;
+      responseText = JSON.stringify({
+        results: [
+          { fileName: "a.txt", status: "SUCCESS", savedPath: "/tmp/a.txt", size: 1, error: null }
+        ]
+      });
+      headers: HeadersMap = {};
+      body: FormData | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      upload: { onprogress: ((event: ProgressEvent<EventTarget>) => void) | null } = { onprogress: null };
+
+      constructor() {
+        MockXHR.created.push(this);
+      }
+
+      open(method: string, url: string, async = true): void {
+        this.method = method;
+        this.url = url;
+        this.async = async;
+      }
+
+      setRequestHeader(name: string, value: string): void {
+        this.headers[name.toLowerCase()] = value;
+      }
+
+      send(body: Document | XMLHttpRequestBodyInit | null): void {
+        this.body = body instanceof FormData ? body : null;
+        if (this.upload.onprogress) {
+          this.upload.onprogress({
+            lengthComputable: true,
+            loaded: 1,
+            total: 2
+          } as ProgressEvent<EventTarget>);
+        }
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal("XMLHttpRequest", MockXHR);
+    const onProgress = vi.fn();
+    const file = new File(["a"], "a.txt", { type: "text/plain" });
+
+    const response = await apiClient.uploadSessionFile("s1", {
+      file,
+      targetPath: "/tmp",
+      conflictPolicy: "rename",
+      onProgress
+    });
+
+    expect(response.results[0]?.status).toBe("SUCCESS");
+    expect(onProgress).toHaveBeenCalled();
+    expect(MockXHR.created[0]?.method).toBe("POST");
+    expect(MockXHR.created[0]?.url).toBe("/term/api/sessions/s1/files/upload");
+    expect(MockXHR.created[0]?.withCredentials).toBe(true);
   });
 });

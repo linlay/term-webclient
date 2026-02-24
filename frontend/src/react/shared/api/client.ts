@@ -9,6 +9,13 @@ import type {
   CreateAgentRunRequest,
   CreateSessionRequest,
   CreateSessionResponse,
+  FileDownloadTicketRequest,
+  FileDownloadTicketResponse,
+  FileMkdirRequest,
+  FileMkdirResponse,
+  FileTreeResponse,
+  FileUploadResponse,
+  UploadConflictPolicy,
   CreateSshCredentialRequest,
   LoginRequest,
   ScreenTextResponse,
@@ -28,6 +35,19 @@ export class ApiError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
+export interface UploadSessionFileRequest {
+  targetPath?: string;
+  conflictPolicy?: UploadConflictPolicy;
+  file: File;
+  onProgress?: (progress: UploadProgress) => void;
 }
 
 let tokenRefreshPromise: Promise<string | null> | null = null;
@@ -59,6 +79,34 @@ async function refreshTokenLocked(reason: "missing" | "unauthorized"): Promise<s
     tokenRefreshPromise = null;
   });
   return tokenRefreshPromise;
+}
+
+async function resolveAppAuthorizationHeader(): Promise<string | null> {
+  if (!isAppMode()) {
+    return null;
+  }
+  let accessToken = getAppAccessToken();
+  if (!accessToken) {
+    accessToken = await refreshTokenLocked("missing");
+  }
+  if (!accessToken) {
+    return null;
+  }
+  return `Bearer ${accessToken}`;
+}
+
+function toAbsoluteDownloadUrl(downloadUrl: string): string {
+  const raw = (downloadUrl || "").trim();
+  if (!raw) {
+    return raw;
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+  if (raw.startsWith("/")) {
+    return apiUrl(raw);
+  }
+  return apiUrl(`/${raw}`);
 }
 
 async function request<T>(path: string, init: RequestInit = {}, allowReplay = true): Promise<T> {
@@ -183,6 +231,94 @@ export const apiClient = {
 
   getSessionScreenText(sessionId: string): Promise<ScreenTextResponse> {
     return request<ScreenTextResponse>(`/sessions/${sessionId}/screen-text`);
+  },
+
+  getSessionFileTree(sessionId: string, path?: string): Promise<FileTreeResponse> {
+    if (path && path.trim()) {
+      const query = new URLSearchParams({ path: path.trim() });
+      return request<FileTreeResponse>(`/sessions/${sessionId}/files/tree?${query.toString()}`);
+    }
+    return request<FileTreeResponse>(`/sessions/${sessionId}/files/tree`);
+  },
+
+  createSessionFileMkdir(sessionId: string, payload: FileMkdirRequest): Promise<FileMkdirResponse> {
+    return request<FileMkdirResponse>(`/sessions/${sessionId}/files/mkdir`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  createSessionDownloadTicket(sessionId: string, payload: FileDownloadTicketRequest): Promise<FileDownloadTicketResponse> {
+    return request<FileDownloadTicketResponse>(`/sessions/${sessionId}/files/download-ticket`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  resolveDownloadUrl(downloadUrl: string): string {
+    return toAbsoluteDownloadUrl(downloadUrl);
+  },
+
+  async uploadSessionFile(sessionId: string, payload: UploadSessionFileRequest): Promise<FileUploadResponse> {
+    if (!payload || !payload.file) {
+      throw new ApiError(400, "file is required");
+    }
+
+    const formData = new FormData();
+    formData.append("targetPath", (payload.targetPath || "").trim());
+    formData.append("conflictPolicy", payload.conflictPolicy || "rename");
+    formData.append("files", payload.file, payload.file.name);
+
+    const authHeader = await resolveAppAuthorizationHeader();
+    const requestUrl = apiUrl(`/sessions/${sessionId}/files/upload`);
+
+    return new Promise<FileUploadResponse>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", requestUrl, true);
+      xhr.withCredentials = !isAppMode();
+      if (authHeader) {
+        xhr.setRequestHeader("authorization", authHeader);
+      }
+
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!payload.onProgress) {
+          return;
+        }
+        const total = event.lengthComputable ? event.total : payload.file.size;
+        const loaded = event.loaded;
+        const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+        payload.onProgress({ loaded, total, percent });
+      };
+
+      xhr.onerror = () => {
+        reject(new ApiError(0, "network error"));
+      };
+
+      xhr.onload = () => {
+        const status = xhr.status;
+        const bodyText = xhr.responseText || "";
+        if (status >= 200 && status < 300) {
+          try {
+            const parsed = JSON.parse(bodyText) as FileUploadResponse;
+            resolve(parsed);
+          } catch {
+            reject(new ApiError(status, "invalid upload response"));
+          }
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(bodyText) as { error?: string };
+          reject(new ApiError(status, parsed.error || `${status} upload failed`));
+        } catch {
+          reject(new ApiError(status, `${status} upload failed`));
+        }
+      };
+
+      xhr.send(formData);
+    });
   },
 
   createAgentRun(sessionId: string, payload: CreateAgentRunRequest): Promise<AgentRunResponse> {

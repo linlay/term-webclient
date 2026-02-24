@@ -13,6 +13,7 @@ describe("useTabsStore", () => {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       workdir: ".",
+      fileRootPath: ".",
       sshCredentialId: null,
       createRequest: null
     });
@@ -25,6 +26,7 @@ describe("useTabsStore", () => {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       workdir: ".",
+      fileRootPath: ".",
       sshCredentialId: null,
       createRequest: null
     });
@@ -50,6 +52,7 @@ describe("useTabsStore", () => {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       workdir: ".",
+      fileRootPath: ".",
       sshCredentialId: null,
       createRequest: null
     });

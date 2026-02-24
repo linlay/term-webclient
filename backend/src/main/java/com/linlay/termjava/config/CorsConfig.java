@@ -27,11 +27,11 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/webapi/**")
             .allowedOriginPatterns(terminalProperties.getAllowedOrigins().toArray(String[]::new))
-            .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+            .allowedMethods("GET", "HEAD", "POST", "DELETE", "OPTIONS")
             .allowedHeaders("*");
         registry.addMapping("/appapi/**")
             .allowedOriginPatterns(terminalProperties.getAllowedOrigins().toArray(String[]::new))
-            .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+            .allowedMethods("GET", "HEAD", "POST", "DELETE", "OPTIONS")
             .allowedHeaders("*");
     }
 

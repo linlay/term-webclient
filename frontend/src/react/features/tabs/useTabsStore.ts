@@ -15,6 +15,7 @@ export interface TerminalTab {
   sessionType: SessionType;
   toolId: string;
   workdir: string;
+  fileRootPath: string;
   sshCredentialId: string | null;
   createRequest: CreateSessionRequest | null;
   agentRunId: string | null;

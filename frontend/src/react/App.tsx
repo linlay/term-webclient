@@ -24,6 +24,8 @@ import { NewWindowModal } from "./features/layout/NewWindowModal";
 import { TabBar, canRebuildTab, type TabContextPayload } from "./features/layout/TabBar";
 import { TabContextMenu, type TabContextMenuState } from "./features/layout/TabContextMenu";
 import { CloseTabConfirmModal } from "./features/layout/CloseTabConfirmModal";
+import { FileSidebar } from "./features/files/FileSidebar";
+import { MobileFileSheet } from "./features/files/MobileFileSheet";
 import type { NewSessionCreatedPayload } from "./features/session/NewSessionForm";
 import type { TerminalTab } from "./features/tabs/useTabsStore";
 
@@ -58,6 +60,7 @@ export default function App(): JSX.Element {
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
 
   const { notice, showNotice } = useNotice();
 
@@ -172,6 +175,7 @@ export default function App(): JSX.Element {
       sessionType: item.sessionType,
       toolId: item.toolId,
       workdir: item.workdir,
+      fileRootPath: item.fileRootPath || item.workdir,
       sshCredentialId: null,
       createRequest: null,
       agentRunId: null,
@@ -232,6 +236,12 @@ export default function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!activeTab && mobileFilesOpen) {
+      setMobileFilesOpen(false);
+    }
+  }, [activeTab, mobileFilesOpen]);
+
+  useEffect(() => {
     if (!tabContextMenu) {
       return;
     }
@@ -279,6 +289,10 @@ export default function App(): JSX.Element {
         closeNewWindow();
         return;
       }
+      if (mobileFilesOpen) {
+        setMobileFilesOpen(false);
+        return;
+      }
       if (isMobile && isCopilotOpen) {
         setIsCopilotOpen(false);
       }
@@ -287,7 +301,7 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
+  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, mobileFilesOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
 
   async function copyText(value: string, successNotice: string): Promise<void> {
     if (!value.trim()) {
@@ -551,9 +565,30 @@ export default function App(): JSX.Element {
                 >
                   到底部
                 </button>
+                <button
+                  type="button"
+                  className="mobile-files-fab"
+                  onClick={() => {
+                    if (!activeTab) {
+                      showNotice("No active tab", "warn");
+                      return;
+                    }
+                    setMobileFilesOpen(true);
+                  }}
+                >
+                  Files
+                </button>
               </>
             )}
           </main>
+
+          {!isMobile && activeTab && (
+            <FileSidebar
+              sessionId={activeTab.sessionId}
+              fileRootPath={activeTab.fileRootPath || activeTab.workdir}
+              onNotice={showNotice}
+            />
+          )}
 
           <CopilotSidebar
             open={copilot.isCopilotOpen}
@@ -604,6 +639,16 @@ export default function App(): JSX.Element {
         <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => setIsCopilotOpen(false)} />
       )}
 
+      {isMobile && activeTab && (
+        <MobileFileSheet
+          open={mobileFilesOpen}
+          sessionId={activeTab.sessionId}
+          fileRootPath={activeTab.fileRootPath || activeTab.workdir}
+          onClose={() => setMobileFilesOpen(false)}
+          onNotice={showNotice}
+        />
+      )}
+
       {notice && <div className={`notice ${notice.type}`}>{notice.message}</div>}
 
       <NewWindowModal
@@ -618,6 +663,7 @@ export default function App(): JSX.Element {
             sessionType: payload.sessionType,
             toolId: payload.toolId,
             workdir: payload.workdir,
+            fileRootPath: payload.fileRootPath || payload.workdir,
             sshCredentialId: payload.sshCredentialId,
             createRequest: payload.createRequest
           });

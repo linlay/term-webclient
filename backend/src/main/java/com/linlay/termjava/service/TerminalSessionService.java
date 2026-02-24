@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.termjava.config.TerminalProperties;
 import com.linlay.termjava.model.CreateSessionRequest;
 import com.linlay.termjava.model.CreateSessionResponse;
+import com.linlay.termjava.model.FileSessionBinding;
 import com.linlay.termjava.model.ScreenTextResponse;
 import com.linlay.termjava.model.SessionContextResponse;
 import com.linlay.termjava.model.SessionSnapshotResponse;
@@ -24,6 +25,7 @@ import com.pty4j.PtyProcess;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -84,7 +86,8 @@ public class TerminalSessionService {
 
         try {
             SessionCreateParams params = normalize(request, sessionType);
-            TerminalRuntime runtime = createRuntimeWithRetry(request, params, sessionType, sessionId);
+            ResolvedSshCredential resolvedSshCredential = resolveSshCredential(request, sessionType);
+            TerminalRuntime runtime = createRuntimeWithRetry(request, params, sessionType, sessionId, resolvedSshCredential);
             ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "terminal-read-" + sessionId);
                 t.setDaemon(true);
@@ -105,6 +108,7 @@ public class TerminalSessionService {
                 params.title(),
                 params.toolId(),
                 params.workdir(),
+                buildFileSessionBinding(sessionType, params, resolvedSshCredential),
                 runtime,
                 ioExecutor,
                 new TerminalOutputRingBuffer(properties.getRingBufferMaxBytes(), properties.getRingBufferMaxChunks()),
@@ -124,16 +128,17 @@ public class TerminalSessionService {
     private TerminalRuntime createRuntimeWithRetry(CreateSessionRequest request,
                                                    SessionCreateParams params,
                                                    SessionType sessionType,
-                                                   String sessionId) throws IOException {
+                                                   String sessionId,
+                                                   ResolvedSshCredential resolvedSshCredential) throws IOException {
         if (sessionType != SessionType.LOCAL_PTY) {
-            return createRuntime(request, params, sessionType);
+            return createRuntime(request, params, sessionType, resolvedSshCredential);
         }
 
         IOException lastIoException = null;
         RuntimeException lastRuntimeException = null;
         for (int attempt = 1; attempt <= LOCAL_PTY_CREATE_MAX_ATTEMPTS; attempt++) {
             try {
-                return createRuntime(request, params, sessionType);
+                return createRuntime(request, params, sessionType, resolvedSshCredential);
             } catch (IOException ex) {
                 lastIoException = ex;
                 if (attempt >= LOCAL_PTY_CREATE_MAX_ATTEMPTS) {
@@ -354,21 +359,13 @@ public class TerminalSessionService {
 
     private TerminalRuntime createRuntime(CreateSessionRequest request,
                                           SessionCreateParams params,
-                                          SessionType sessionType) throws IOException {
+                                          SessionType sessionType,
+                                          ResolvedSshCredential resolvedSshCredential) throws IOException {
         if (sessionType == SessionType.SSH_SHELL) {
-            SshSessionRequest sshRequest = request == null ? null : request.getSsh();
-            if (sshRequest == null) {
+            if (resolvedSshCredential == null) {
                 throw new InvalidSessionRequestException("ssh config is required for SSH_SHELL session");
             }
-
-            ResolvedSshCredential credential = sshCredentialStore.resolveCredential(
-                sshRequest.getCredentialId(),
-                sshRequest.getHost(),
-                sshRequest.getPort(),
-                sshRequest.getUsername(),
-                sshRequest.getTerm()
-            );
-            return SshShellRuntime.open(sshConnectionPool, credential, params.cols(), params.rows());
+            return SshShellRuntime.open(sshConnectionPool, resolvedSshCredential, params.cols(), params.rows());
         }
 
         PtyProcess process = processLauncher.start(params.command(), params.env(), params.workdir(), params.cols(), params.rows());
@@ -561,6 +558,10 @@ public class TerminalSessionService {
         return session;
     }
 
+    public TerminalSession getRequiredSession(String sessionId) {
+        return getRequired(sessionId);
+    }
+
     private SessionTabViewResponse toSessionTabView(TerminalSession session) {
         String state = session.getContextTracker().snapshot(1, 1).meta().connectionState();
         return new SessionTabViewResponse(
@@ -570,6 +571,7 @@ public class TerminalSessionService {
             session.getToolId(),
             session.getSessionType(),
             session.getWorkdir(),
+            session.getFileSessionBinding() == null ? session.getWorkdir() : session.getFileSessionBinding().rootPath(),
             session.getStartedAt(),
             state
         );
@@ -585,7 +587,8 @@ public class TerminalSessionService {
         if (sessionType == SessionType.SSH_SHELL) {
             String title = StringUtils.hasText(effective.getTabTitle()) ? effective.getTabTitle().trim() : "ssh";
             String toolId = StringUtils.hasText(effective.getToolId()) ? effective.getToolId().trim() : "ssh";
-            return new SessionCreateParams(List.of(), Map.of(), ".", cols, rows, title, toolId);
+            String workdir = StringUtils.hasText(effective.getWorkdir()) ? effective.getWorkdir().trim() : ".";
+            return new SessionCreateParams(List.of(), Map.of(), workdir, cols, rows, title, toolId);
         }
 
         if (StringUtils.hasText(effective.getClientId())) {
@@ -704,6 +707,59 @@ public class TerminalSessionService {
         if (cols > properties.getMaxCols() || rows > properties.getMaxRows()) {
             throw new InvalidSessionRequestException("cols/rows exceed server limits");
         }
+    }
+
+    private ResolvedSshCredential resolveSshCredential(CreateSessionRequest request, SessionType sessionType) {
+        if (sessionType != SessionType.SSH_SHELL) {
+            return null;
+        }
+        SshSessionRequest sshRequest = request == null ? null : request.getSsh();
+        if (sshRequest == null) {
+            throw new InvalidSessionRequestException("ssh config is required for SSH_SHELL session");
+        }
+        return sshCredentialStore.resolveCredential(
+            sshRequest.getCredentialId(),
+            sshRequest.getHost(),
+            sshRequest.getPort(),
+            sshRequest.getUsername(),
+            sshRequest.getTerm()
+        );
+    }
+
+    private FileSessionBinding buildFileSessionBinding(SessionType sessionType,
+                                                       SessionCreateParams params,
+                                                       ResolvedSshCredential resolvedSshCredential) {
+        if (sessionType == SessionType.SSH_SHELL) {
+            if (resolvedSshCredential == null) {
+                throw new InvalidSessionRequestException("ssh config is required for SSH_SHELL session");
+            }
+            String initialCwd = StringUtils.hasText(params.workdir()) ? params.workdir().trim() : ".";
+            String rootPath = initialCwd;
+            return FileSessionBinding.ssh(
+                rootPath,
+                initialCwd,
+                resolvedSshCredential.credentialId(),
+                resolvedSshCredential.host(),
+                resolvedSshCredential.port(),
+                resolvedSshCredential.username(),
+                initialCwd
+            );
+        }
+
+        Path rootPath = resolveLocalFileRoot(params.workdir());
+        return FileSessionBinding.local(rootPath.toString(), params.workdir());
+    }
+
+    private Path resolveLocalFileRoot(String workdir) {
+        Path sessionWorkdir = Path.of(workdir).toAbsolutePath().normalize();
+        String scope = properties.getFiles() == null ? "SESSION_WORKDIR" : properties.getFiles().getDefaultRootScope();
+        if (!StringUtils.hasText(scope) || "SESSION_WORKDIR".equalsIgnoreCase(scope.trim())) {
+            return sessionWorkdir;
+        }
+        if ("USER_HOME".equalsIgnoreCase(scope.trim())) {
+            return Path.of(System.getProperty("user.home", ".")).toAbsolutePath().normalize();
+        }
+        return sessionWorkdir;
     }
 
     private record SessionCreateParams(List<String> command,

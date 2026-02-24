@@ -42,9 +42,70 @@ export interface SessionTabViewResponse {
   sessionType: SessionType;
   toolId: string;
   workdir: string;
+  fileRootPath: string;
   startedAt: string;
   wsUrl: string;
   connectionState: string;
+}
+
+export type FileEntryType = "FILE" | "DIRECTORY";
+
+export interface FileTreeEntryResponse {
+  name: string;
+  path: string;
+  type: FileEntryType;
+  size: number;
+  mtime: number;
+  readable: boolean;
+  writable: boolean;
+}
+
+export interface FileTreeResponse {
+  currentPath: string;
+  parentPath: string | null;
+  entries: FileTreeEntryResponse[];
+}
+
+export type UploadConflictPolicy = "overwrite" | "rename" | "reject";
+
+export interface FileUploadItemResponse {
+  fileName: string;
+  status: string;
+  savedPath: string | null;
+  size: number;
+  error: string | null;
+}
+
+export interface FileUploadResponse {
+  results: FileUploadItemResponse[];
+}
+
+export interface FileMkdirRequest {
+  parentPath: string;
+  name: string;
+}
+
+export interface FileMkdirResponse {
+  createdPath: string;
+  created: boolean;
+}
+
+export interface FileDownloadArchiveRequest {
+  paths: string[];
+  archiveName?: string;
+}
+
+export interface FileDownloadTicketRequest {
+  mode: "single" | "archive";
+  path?: string;
+  paths?: string[];
+  archiveName?: string;
+}
+
+export interface FileDownloadTicketResponse {
+  ticket: string;
+  downloadUrl: string;
+  expiresAt: string;
 }
 
 export interface TerminalClientResponse {
