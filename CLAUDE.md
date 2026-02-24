@@ -17,7 +17,7 @@
 ```
 term-webclient/
 ├── backend/
-│   ├── src/main/java/com/linlay/ptyjava/
+│   ├── src/main/java/com/linlay/termjava/
 │   │   ├── TerminalApplication.java          # Spring Boot 入口
 │   │   ├── auth/                             # 认证（Web Session + JWT）
 │   │   ├── config/                           # Spring 配置类

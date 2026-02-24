@@ -4,7 +4,7 @@ server:
 
 spring:
   application:
-    name: pty-web-backend
+    name: term-web-backend
   config:
     import:
       - optional:file:backend/application.yml
@@ -59,7 +59,7 @@ terminal:
     exec-default-timeout-seconds: 120
     exec-max-output-bytes: 1048576
     credentials-file: data/ssh-credentials.json
-    known-hosts-file: ${user.home}/.pty-web/known-hosts.json
+    known-hosts-file: ${user.home}/.term-web/known-hosts.json
     master-key-env: TERMINAL_SSH_MASTER_KEY
 
 auth:

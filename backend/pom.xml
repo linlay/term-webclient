@@ -10,9 +10,9 @@
     </parent>
 
     <groupId>com.linlay</groupId>
-    <artifactId>pty-web-backend</artifactId>
+    <artifactId>term-web-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>pty-web-backend</name>
+    <name>term-web-backend</name>
     <description>Spring Boot PTY backend service</description>
 
     <properties>

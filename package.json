@@ -1,5 +1,5 @@
 {
-  "name": "pty-webclient",
+  "name": "term-webclient",
   "private": true,
   "version": "0.1.0",
   "scripts": {

@@ -1,4 +1,4 @@
-# pty-webclient
+# term-webclient
 
 浏览器多标签终端系统，支持本地 PTY 和 SSH Shell，断线自动恢复。
 
@@ -253,10 +253,10 @@ terminal:
 ./package.sh
 
 # 自定义输出目录
-./package.sh /tmp/pty-release
+./package.sh /tmp/term-release
 
 # 指定环境
-APP_ENV=development ./package.sh /tmp/pty-release-dev
+APP_ENV=development ./package.sh /tmp/term-release-dev
 ```
 
 打包产物结构：
@@ -283,7 +283,7 @@ release/
 ```bash
 ./start.sh
 # 或指定目录和环境
-APP_ENV=production ./start.sh /tmp/pty-release
+APP_ENV=production ./start.sh /tmp/term-release
 ```
 
 ### 停止
@@ -291,7 +291,7 @@ APP_ENV=production ./start.sh /tmp/pty-release
 ```bash
 ./stop.sh
 # 或指定目录
-./stop.sh /tmp/pty-release
+./stop.sh /tmp/term-release
 ```
 
 ### Nginx 反向代理
