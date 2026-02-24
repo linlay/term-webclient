@@ -33,6 +33,26 @@ function isMobileViewport(): boolean {
   return window.innerWidth <= 900;
 }
 
+function canUseFilesForTab(tab: TerminalTab | null): boolean {
+  if (!tab) {
+    return false;
+  }
+  const normalizedToolId = (tab.toolId || "").trim().toLowerCase();
+  if (
+    normalizedToolId === "codex" ||
+    normalizedToolId === "claude" ||
+    normalizedToolId === "claude code" ||
+    normalizedToolId === "claude-code" ||
+    normalizedToolId === "claude_code"
+  ) {
+    return false;
+  }
+  if (tab.sessionType === "SSH_SHELL") {
+    return true;
+  }
+  return normalizedToolId === "ssh" || normalizedToolId === "terminal";
+}
+
 export default function App(): JSX.Element {
   const appMode = isAppMode();
   const authQuery = useAuthStatus();
@@ -61,6 +81,7 @@ export default function App(): JSX.Element {
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
+  const [desktopFilesOpen, setDesktopFilesOpen] = useState(true);
 
   const { notice, showNotice } = useNotice();
 
@@ -70,6 +91,7 @@ export default function App(): JSX.Element {
     () => tabs.find((tab) => tab.localId === activeTabId) ?? null,
     [activeTabId, tabs]
   );
+  const canUseFiles = useMemo(() => canUseFilesForTab(activeTab), [activeTab]);
 
   const copilot = useCopilotState({
     activeTab,
@@ -239,7 +261,16 @@ export default function App(): JSX.Element {
     if (!activeTab && mobileFilesOpen) {
       setMobileFilesOpen(false);
     }
-  }, [activeTab, mobileFilesOpen]);
+    if (!activeTab || canUseFiles) {
+      return;
+    }
+    if (mobileFilesOpen) {
+      setMobileFilesOpen(false);
+    }
+    if (desktopFilesOpen) {
+      setDesktopFilesOpen(false);
+    }
+  }, [activeTab, canUseFiles, desktopFilesOpen, mobileFilesOpen]);
 
   useEffect(() => {
     if (!tabContextMenu) {
@@ -477,6 +508,24 @@ export default function App(): JSX.Element {
           <div className="top-actions">
             <button
               type="button"
+              className={`ghost-btn top-icon-btn files-toggle-btn ${desktopFilesOpen && !isMobile ? "active" : ""}`}
+              aria-label="Files"
+              title="Files"
+              onClick={() => {
+                if (isMobile) {
+                  setMobileFilesOpen(true);
+                  return;
+                }
+                setDesktopFilesOpen((prev) => !prev);
+              }}
+              disabled={!activeTab || !canUseFiles}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+            </button>
+            <button
+              type="button"
               className="ghost-btn top-icon-btn copilot-toggle-btn"
               aria-label="Copilot"
               title="Copilot"
@@ -565,24 +614,11 @@ export default function App(): JSX.Element {
                 >
                   到底部
                 </button>
-                <button
-                  type="button"
-                  className="mobile-files-fab"
-                  onClick={() => {
-                    if (!activeTab) {
-                      showNotice("No active tab", "warn");
-                      return;
-                    }
-                    setMobileFilesOpen(true);
-                  }}
-                >
-                  Files
-                </button>
               </>
             )}
           </main>
 
-          {!isMobile && activeTab && (
+          {!isMobile && activeTab && canUseFiles && desktopFilesOpen && (
             <FileSidebar
               sessionId={activeTab.sessionId}
               fileRootPath={activeTab.fileRootPath || activeTab.workdir}
@@ -639,7 +675,7 @@ export default function App(): JSX.Element {
         <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => setIsCopilotOpen(false)} />
       )}
 
-      {isMobile && activeTab && (
+      {isMobile && activeTab && canUseFiles && (
         <MobileFileSheet
           open={mobileFilesOpen}
           sessionId={activeTab.sessionId}

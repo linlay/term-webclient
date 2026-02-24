@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.termjava.config.TerminalProperties;
@@ -21,10 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
 class SshCredentialStoreTest {
 
     @Test
-    void createCredentialUsesMasterKeyPropertyEvenWithoutEnv(@TempDir Path tempDir) {
+    void createCredentialUsesMasterKeyProperty(@TempDir Path tempDir) {
         TerminalProperties props = baseProps(tempDir);
         props.getSsh().setMasterKey("local-master-key");
-        props.getSsh().setMasterKeyEnv("__missing_env__");
         SshCredentialStore store = new SshCredentialStore(props, objectMapper());
 
         String credentialId = store.createCredential(passwordRequest()).credentialId();
@@ -34,25 +32,9 @@ class SshCredentialStoreTest {
     }
 
     @Test
-    void createCredentialFallsBackToEnvMasterKey(@TempDir Path tempDir) {
-        TerminalProperties props = baseProps(tempDir);
-        props.getSsh().setMasterKey(null);
-
-        String envName = firstNonEmptyEnvName();
-        assumeTrue(envName != null, "No non-empty environment variable available for test");
-        props.getSsh().setMasterKeyEnv(envName);
-
-        SshCredentialStore store = new SshCredentialStore(props, objectMapper());
-        String credentialId = store.createCredential(passwordRequest()).credentialId();
-
-        assertNotNull(credentialId);
-    }
-
-    @Test
     void createCredentialFailsWhenMasterKeyMissing(@TempDir Path tempDir) {
         TerminalProperties props = baseProps(tempDir);
         props.getSsh().setMasterKey("");
-        props.getSsh().setMasterKeyEnv("__missing_env__");
         SshCredentialStore store = new SshCredentialStore(props, objectMapper());
 
         assertThrows(SshSecurityException.class, () -> store.createCredential(passwordRequest()));
@@ -112,15 +94,6 @@ class SshCredentialStoreTest {
         request.setUsername("ubuntu");
         request.setPassword("secret-pass");
         return request;
-    }
-
-    private static String firstNonEmptyEnvName() {
-        for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
-            if (entry.getValue() != null && !entry.getValue().isBlank()) {
-                return entry.getKey();
-            }
-        }
-        return null;
     }
 
     private static ObjectMapper objectMapper() {

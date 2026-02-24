@@ -398,7 +398,7 @@ terminal:
   ssh:
     enabled: true
     credentials-file: data/ssh-credentials.json  # 加密凭据文件
-    master-key-env: TERMINAL_SSH_MASTER_KEY       # 主密钥环境变量
+    master-key: ${TERMINAL_SSH_MASTER_KEY:}       # 主密钥（推荐通过环境变量注入）
   agent:
     enabled: true
 auth:

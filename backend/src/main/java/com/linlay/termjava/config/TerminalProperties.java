@@ -243,7 +243,6 @@ public class TerminalProperties {
         private String credentialsFile = "data/ssh-credentials.json";
         private String knownHostsFile = System.getProperty("user.home", ".") + "/.term-web/known-hosts.json";
         private String masterKey;
-        private String masterKeyEnv = "TERMINAL_SSH_MASTER_KEY";
 
         public boolean isEnabled() {
             return enabled;
@@ -323,14 +322,6 @@ public class TerminalProperties {
 
         public void setMasterKey(String masterKey) {
             this.masterKey = masterKey;
-        }
-
-        public String getMasterKeyEnv() {
-            return masterKeyEnv;
-        }
-
-        public void setMasterKeyEnv(String masterKeyEnv) {
-            this.masterKeyEnv = masterKeyEnv;
         }
     }
 

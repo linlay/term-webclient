@@ -8,7 +8,7 @@ server:
 
 terminal:
   files:
-    enabled: false
+    enabled: ${TERMINAL_FILES_ENABLED:false}
   cli-clients:
     - id: codex
       label: Codex
@@ -32,9 +32,7 @@ terminal:
       shell: /bin/zsh
   ssh:
     credentials-file: ${TERMINAL_SSH_CREDENTIALS_FILE:data/ssh-credentials.json}
-    master-key-env: ${TERMINAL_SSH_MASTER_KEY_ENV:TERMINAL_SSH_MASTER_KEY}
-    # Set via environment variable TERMINAL_SSH_MASTER_KEY (recommended) or here:
-    # master-key:
+    master-key: ${TERMINAL_SSH_MASTER_KEY:}
 
 auth:
   enabled: ${AUTH_ENABLED:true}

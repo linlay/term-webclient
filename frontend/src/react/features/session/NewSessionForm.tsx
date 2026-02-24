@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type WheelEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../shared/api/client";
 import { generateId } from "../../shared/utils/id";
@@ -315,6 +315,14 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     if (!entry.hasChildren) {
       return;
     }
+    const expanded = Boolean(workdirExpandedMap[entry.path]);
+    if (expanded) {
+      setWorkdirExpandedMap((prev) => ({
+        ...prev,
+        [entry.path]: false
+      }));
+      return;
+    }
     setWorkdirExpandedMap((prev) => ({
       ...prev,
       [entry.path]: true
@@ -322,6 +330,15 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     if (!workdirChildrenMap[entry.path]) {
       await browseWorkdir(entry.path);
     }
+  }
+
+  function onWorkdirTreeWheel(event: WheelEvent<HTMLDivElement>): void {
+    const container = event.currentTarget;
+    if (container.scrollHeight <= container.clientHeight) {
+      return;
+    }
+    container.scrollTop += event.deltaY;
+    event.preventDefault();
   }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -505,7 +522,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
           <section className="advanced-section">
             <label className="field-label" htmlFor="new-session-workdir-tree">Workdir</label>
 
-            <div id="new-session-workdir-tree" className="workdir-tree" role="tree">
+            <div id="new-session-workdir-tree" className="workdir-tree" role="tree" onWheel={onWorkdirTreeWheel}>
               {!workdirTree && workdirLoading && <div className="tree-status">Loading workdir...</div>}
               {!workdirTree && !workdirLoading && !workdirError && <div className="tree-status">No directory data</div>}
               {workdirError && <div className="tree-status error">{workdirError}</div>}

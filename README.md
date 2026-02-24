@@ -68,7 +68,7 @@ npm run dev
 | `auth.username` | `admin` | 登录用户名 |
 | `auth.password-hash-bcrypt` | 空 | bcrypt 密码哈希 |
 | `terminal.ssh.enabled` | `true` | 是否启用 SSH 功能 |
-| `terminal.ssh.master-key-env` | `TERMINAL_SSH_MASTER_KEY` | SSH 凭据加密主密钥的环境变量名 |
+| `terminal.ssh.master-key` | `${TERMINAL_SSH_MASTER_KEY:}` | SSH 凭据加密主密钥（推荐通过环境变量注入） |
 
 ### 前端环境变量
 

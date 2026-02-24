@@ -160,20 +160,20 @@ export function MobileFileSheet({ open, sessionId, fileRootPath, onClose, onNoti
     }
   }
 
-  async function uploadFiles(files: FileList | File[]): Promise<void> {
-    const fileArray = Array.isArray(files) ? files : Array.from(files);
-    for (const file of fileArray) {
-      // eslint-disable-next-line no-await-in-loop
-      await uploadSingleFile(file);
-    }
-  }
-
   async function onRetryUpload(item: UploadQueueItem): Promise<void> {
     if (!item.file) {
       onNotice("Retry unavailable", "warn");
       return;
     }
     await uploadSingleFile(item.file);
+  }
+
+  async function uploadFiles(files: FileList | File[]): Promise<void> {
+    const fileArray = Array.isArray(files) ? files : Array.from(files);
+    for (const file of fileArray) {
+      // eslint-disable-next-line no-await-in-loop
+      await uploadSingleFile(file);
+    }
   }
 
   async function downloadSelected(): Promise<void> {

@@ -2,7 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_DIR="${1:-$ROOT_DIR/release}"
+DEFAULT_OUTPUT_DIR="$ROOT_DIR/release"
+if [[ $# -ge 1 ]]; then
+  if [[ "$1" = /* ]]; then
+    OUTPUT_DIR="$1"
+  else
+    OUTPUT_DIR="$ROOT_DIR/$1"
+  fi
+else
+  OUTPUT_DIR="$DEFAULT_OUTPUT_DIR"
+fi
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 APP_ENV="${APP_ENV:-production}"
@@ -47,7 +56,7 @@ echo "[package] building frontend dist"
 
 echo "[package] preparing release directory"
 rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/logs" "$OUTPUT_DIR/run" "$OUTPUT_DIR/data"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend"
 
 cp "$backend_jar" "$OUTPUT_DIR/backend/app.jar"
 if [[ -f "$BACKEND_DIR/application.yml" ]]; then

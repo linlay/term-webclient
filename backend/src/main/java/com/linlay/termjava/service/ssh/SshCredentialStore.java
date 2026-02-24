@@ -279,11 +279,7 @@ public class SshCredentialStore {
     private SecretKeySpec masterKey() {
         String rawKey = properties.getSsh().getMasterKey();
         if (!StringUtils.hasText(rawKey)) {
-            String envVar = properties.getSsh().getMasterKeyEnv();
-            rawKey = envVar == null ? null : System.getenv(envVar);
-            if (!StringUtils.hasText(rawKey)) {
-                throw new SshSecurityException("Missing SSH credential master key in terminal.ssh.master-key or env: " + envVar);
-            }
+            throw new SshSecurityException("Missing SSH credential master key in terminal.ssh.master-key");
         }
 
         try {

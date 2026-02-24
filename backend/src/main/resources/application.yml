@@ -60,7 +60,7 @@ terminal:
     exec-max-output-bytes: 1048576
     credentials-file: data/ssh-credentials.json
     known-hosts-file: ${user.home}/.term-web/known-hosts.json
-    master-key-env: TERMINAL_SSH_MASTER_KEY
+    master-key: ${TERMINAL_SSH_MASTER_KEY:}
   files:
     enabled: true
     max-upload-file-bytes: 209715200
