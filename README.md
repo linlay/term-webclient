@@ -85,8 +85,8 @@ npm run dev
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `APP_ENV` | `production` | 环境（`development` / `production`） |
-| `BACKEND_HOST` | 从 `application.yml` 读取 | 后端监听地址 |
-| `BACKEND_PORT` | 从 `application.yml` 读取 | 后端监听端口 |
+| `BACKEND_HOST` | 优先从 `release/.env` 读取，回退 `application.yml` | 后端监听地址 |
+| `BACKEND_PORT` | 优先从 `release/.env` 读取，回退 `application.yml` | 后端监听端口 |
 | `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
 | `FRONTEND_PORT` | `11947` | 前端监听端口 |
 | `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
@@ -94,7 +94,7 @@ npm run dev
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
 | `TERMINAL_SSH_MASTER_KEY` | - | SSH 凭据加密主密钥 |
 
-`start.sh` 会自动加载发布目录下的 `.env.$APP_ENV` 文件（若存在），显式环境变量优先。
+`start.sh` 会优先加载发布目录下的 `.env`，若不存在再回退 `.env.$APP_ENV` 与 legacy 文件；显式环境变量优先。
 
 ## 认证
 
@@ -112,13 +112,10 @@ htpasswd -nbBC 10 '' 'your-password' | cut -d: -f2
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(10)).decode())"
 ```
 
-将生成的哈希写入 `backend/application.yml`：
+将生成的哈希写入 `release/.env` 的 `AUTH_PASSWORD_HASH_BCRYPT`：
 
-```yaml
-auth:
-  enabled: true
-  username: admin
-  password-hash-bcrypt: "$2b$10$..."
+```bash
+AUTH_PASSWORD_HASH_BCRYPT='<your-bcrypt-hash>'
 ```
 当前的默认密码是 password
 
@@ -259,13 +256,15 @@ terminal:
 APP_ENV=development ./package.sh /tmp/term-release-dev
 ```
 
+> `package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env`/`application.yml`。
+> 运行时配置由安装流程（setup）或运维在 release 目录提供。
+
 打包产物结构：
 
 ```
 release/
 ├── backend/
-│   ├── app.jar
-│   └── application.yml
+│   └── app.jar
 ├── frontend/
 │   ├── dist/
 │   ├── server.js

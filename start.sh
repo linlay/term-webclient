@@ -17,7 +17,8 @@ fi
 RUN_DIR="$RELEASE_DIR/run"
 LOG_DIR="$RELEASE_DIR/logs"
 BACKEND_CONFIG_FILE="$RELEASE_DIR/backend/application.yml"
-FRONTEND_ENV_FILE="$RELEASE_DIR/.env.$APP_ENV"
+BASE_ENV_FILE="$RELEASE_DIR/.env"
+APP_ENV_ENV_FILE="$RELEASE_DIR/.env.$APP_ENV"
 LEGACY_FRONTEND_ENV_FILE="$RELEASE_DIR/frontend/.env.server.$APP_ENV"
 
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
@@ -33,6 +34,7 @@ BACKEND_ORIGIN_OVERRIDE="${BACKEND_ORIGIN:-}"
 BACKEND_JAVA_OPTS="${BACKEND_JAVA_OPTS:--Xms256m -Xmx512m}"
 BACKEND_ARGS="${BACKEND_ARGS:-}"
 NODE_OPTIONS_VALUE="${NODE_OPTIONS:-}"
+REQUIRED_JAVA_MAJOR=21
 
 read_server_config() {
   local file="$1"
@@ -104,20 +106,75 @@ resolve_placeholder_value() {
   echo "$value"
 }
 
+resolve_release_env_file() {
+  if [[ -f "$BASE_ENV_FILE" ]]; then
+    printf '%s\n' "$BASE_ENV_FILE"
+    return 0
+  fi
+
+  if [[ -f "$APP_ENV_ENV_FILE" ]]; then
+    printf '%s\n' "$APP_ENV_ENV_FILE"
+    return 0
+  fi
+
+  if [[ -f "$LEGACY_FRONTEND_ENV_FILE" ]]; then
+    printf '%s\n' "$LEGACY_FRONTEND_ENV_FILE"
+    return 0
+  fi
+
+  return 1
+}
+
 is_running() {
   local pid="$1"
   kill -0 "$pid" >/dev/null 2>&1
 }
 
-require_file() {
+require_release_artifact() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
-    echo "[start] missing required file: $path"
+    echo "[start] missing required release artifact: $path"
+    echo "[start] release directory is incomplete: $RELEASE_DIR"
+    echo "[start] please run: cd $ROOT_DIR && ./package.sh"
+    exit 1
+  fi
+}
+
+get_java_major_version() {
+  local version_line raw_version major
+  version_line="$(java -version 2>&1 | awk 'NR==1 { print; exit }')"
+  raw_version="$(printf '%s' "$version_line" | sed -E 's/.*version "([^"]+)".*/\1/')"
+  if [[ "$raw_version" == "$version_line" ]]; then
+    return 1
+  fi
+  major="${raw_version%%.*}"
+  if [[ "$major" == "1" ]]; then
+    major="$(printf '%s' "$raw_version" | awk -F. '{ print $2 }')"
+  fi
+  if [[ ! "$major" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  printf '%s\n' "$major"
+}
+
+require_java_version() {
+  local detected_major version_line
+  detected_major="$(get_java_major_version || true)"
+  version_line="$(java -version 2>&1 | awk 'NR==1 { print; exit }')"
+  if [[ -z "$detected_major" ]]; then
+    echo "[start] unable to parse Java version from: $version_line"
+    echo "[start] this project requires JDK $REQUIRED_JAVA_MAJOR+"
+    exit 1
+  fi
+  if (( detected_major < REQUIRED_JAVA_MAJOR )); then
+    echo "[start] Java runtime too old: $version_line"
+    echo "[start] this release requires JDK $REQUIRED_JAVA_MAJOR+ (class file version 65)"
     exit 1
   fi
 }
 
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$RELEASE_DIR/data"
+require_java_version
 
 default_backend_host="127.0.0.1"
 default_backend_port="11946"
@@ -134,14 +191,22 @@ if [[ -f "$BACKEND_CONFIG_FILE" ]]; then
   fi
 fi
 
-if [[ ! -f "$FRONTEND_ENV_FILE" ]] && [[ -f "$LEGACY_FRONTEND_ENV_FILE" ]]; then
-  FRONTEND_ENV_FILE="$LEGACY_FRONTEND_ENV_FILE"
-fi
+SELECTED_ENV_FILE=""
+if SELECTED_ENV_FILE="$(resolve_release_env_file)"; then
+  [[ -n "$BACKEND_HOST_OVERRIDE" ]] || env_backend_host="$(read_env_config "$SELECTED_ENV_FILE" "BACKEND_HOST" || true)"
+  [[ -n "$BACKEND_PORT_OVERRIDE" ]] || env_backend_port="$(read_env_config "$SELECTED_ENV_FILE" "BACKEND_PORT" || true)"
+  [[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$SELECTED_ENV_FILE" "FRONTEND_HOST" || true)"
+  [[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$SELECTED_ENV_FILE" "FRONTEND_PORT" || true)"
+  [[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$SELECTED_ENV_FILE" "HOST" || true)"
+  [[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$SELECTED_ENV_FILE" "PORT" || true)"
+  [[ -n "$BACKEND_ORIGIN_OVERRIDE" ]] || BACKEND_ORIGIN_OVERRIDE="$(read_env_config "$SELECTED_ENV_FILE" "BACKEND_ORIGIN" || true)"
 
-if [[ -f "$FRONTEND_ENV_FILE" ]]; then
-  [[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$FRONTEND_ENV_FILE" "HOST" || true)"
-  [[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$FRONTEND_ENV_FILE" "PORT" || true)"
-  [[ -n "$BACKEND_ORIGIN_OVERRIDE" ]] || BACKEND_ORIGIN_OVERRIDE="$(read_env_config "$FRONTEND_ENV_FILE" "BACKEND_ORIGIN" || true)"
+  if [[ -n "${env_backend_host:-}" ]]; then
+    default_backend_host="$env_backend_host"
+  fi
+  if [[ -n "${env_backend_port:-}" ]]; then
+    default_backend_port="$env_backend_port"
+  fi
 fi
 
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
@@ -159,10 +224,10 @@ if [[ -n "$BACKEND_PORT_OVERRIDE" ]]; then
   backend_overrides="$backend_overrides --server.port=$BACKEND_PORT_OVERRIDE"
 fi
 
-require_file "$RELEASE_DIR/backend/app.jar"
-require_file "$RELEASE_DIR/frontend/server.js"
-require_file "$RELEASE_DIR/frontend/package.json"
-require_file "$RELEASE_DIR/frontend/dist/index.html"
+require_release_artifact "$RELEASE_DIR/backend/app.jar"
+require_release_artifact "$RELEASE_DIR/frontend/server.js"
+require_release_artifact "$RELEASE_DIR/frontend/package.json"
+require_release_artifact "$RELEASE_DIR/frontend/dist/index.html"
 
 if [[ -f "$BACKEND_PID_FILE" ]]; then
   backend_pid="$(cat "$BACKEND_PID_FILE" 2>/dev/null || true)"
@@ -220,7 +285,7 @@ fi
 echo "[start] backend  pid=$backend_pid  http://$effective_backend_host:$effective_backend_port"
 echo "[start] frontend pid=$frontend_pid http://$FRONTEND_HOST:$FRONTEND_PORT"
 echo "[start] app env=$APP_ENV"
-if [[ -f "$FRONTEND_ENV_FILE" ]]; then
-  echo "[start] loaded frontend env defaults from $FRONTEND_ENV_FILE"
+if [[ -n "$SELECTED_ENV_FILE" ]]; then
+  echo "[start] loaded env defaults from $SELECTED_ENV_FILE"
 fi
 echo "[start] logs: $BACKEND_LOG_FILE , $FRONTEND_LOG_FILE"

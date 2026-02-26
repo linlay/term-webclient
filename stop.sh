@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ENV="${APP_ENV:-production}"
+BASE_ENV_FILE_NAME=".env"
 
 read_server_config() {
   local file="$1"
@@ -195,10 +196,35 @@ stop_by_port() {
   done <<< "$pids"
 }
 
+resolve_release_env_file() {
+  local release_dir="$1"
+  local base_env_file="$release_dir/$BASE_ENV_FILE_NAME"
+  local app_env_file="$release_dir/.env.$APP_ENV"
+  local legacy_env_file="$release_dir/frontend/.env.server.$APP_ENV"
+
+  if [[ -f "$base_env_file" ]]; then
+    printf '%s\n' "$base_env_file"
+    return 0
+  fi
+
+  if [[ -f "$app_env_file" ]]; then
+    printf '%s\n' "$app_env_file"
+    return 0
+  fi
+
+  if [[ -f "$legacy_env_file" ]]; then
+    printf '%s\n' "$legacy_env_file"
+    return 0
+  fi
+
+  return 1
+}
+
 resolve_backend_port() {
   local release_dir="$1"
   local backend_port="11946"
   local backend_config="$release_dir/backend/application.yml"
+
   if [[ -f "$backend_config" ]]; then
     local config_backend_port_raw
     local config_backend_port
@@ -208,24 +234,35 @@ resolve_backend_port() {
       backend_port="$config_backend_port"
     fi
   fi
+
+  local env_file=""
+  if env_file="$(resolve_release_env_file "$release_dir")"; then
+    local env_backend_port
+    env_backend_port="$(read_env_config "$env_file" "BACKEND_PORT" || true)"
+    if [[ -n "$env_backend_port" ]]; then
+      backend_port="$env_backend_port"
+    fi
+  fi
+
   echo "$backend_port"
 }
 
 resolve_frontend_port() {
   local release_dir="$1"
   local frontend_port="11947"
-  local frontend_env_file="$release_dir/.env.$APP_ENV"
-  local legacy_frontend_env_file="$release_dir/frontend/.env.server.$APP_ENV"
-  if [[ ! -f "$frontend_env_file" ]] && [[ -f "$legacy_frontend_env_file" ]]; then
-    frontend_env_file="$legacy_frontend_env_file"
-  fi
-  if [[ -f "$frontend_env_file" ]]; then
+  local env_file=""
+
+  if env_file="$(resolve_release_env_file "$release_dir")"; then
     local config_frontend_port
-    config_frontend_port="$(read_env_config "$frontend_env_file" "PORT" || true)"
+    config_frontend_port="$(read_env_config "$env_file" "FRONTEND_PORT" || true)"
+    if [[ -z "$config_frontend_port" ]]; then
+      config_frontend_port="$(read_env_config "$env_file" "PORT" || true)"
+    fi
     if [[ -n "$config_frontend_port" ]]; then
       frontend_port="$config_frontend_port"
     fi
   fi
+
   echo "$frontend_port"
 }
 
