@@ -13,7 +13,7 @@ frontend/node_modules/
 # backend
 backend/target/
 backend/data/
-backend/application-local.yml
+backend/application.yml
 
 # frontend
 frontend/dist/
@@ -22,3 +22,4 @@ frontend/coverage/
 # packaged runtime
 release/
 data/
+logs/

@@ -1,6 +1,9 @@
-# External deployment overrides for backend.
-# This file is imported by src/main/resources/application.yml with higher precedence.
-# Values can be overridden by environment variables (or release root .env).
+# Complex runtime configuration template.
+# Copy to one of:
+# 1) backend/application.yml   (local development, gitignored)
+# 2) release/application.yml   (release runtime)
+#
+# Simple runtime values (ports, frontend host, auth toggles, etc.) stay in .env.
 
 server:
   address: ${BACKEND_HOST:127.0.0.1}
@@ -16,9 +19,7 @@ terminal:
       args: []
       workdir: .
       env: {}
-      pre-commands:
-        - export https_proxy="http://127.0.0.1:8001"
-        - export HTTPS_PROXY="http://127.0.0.1:8001"
+      pre-commands: []
       shell: /bin/zsh
     - id: claude
       label: Claude Code
@@ -26,9 +27,7 @@ terminal:
       args: []
       workdir: .
       env: {}
-      pre-commands:
-        - export https_proxy="http://127.0.0.1:8001"
-        - export HTTPS_PROXY="http://127.0.0.1:8001"
+      pre-commands: []
       shell: /bin/zsh
   ssh:
     credentials-file: ${TERMINAL_SSH_CREDENTIALS_FILE:data/ssh-credentials.json}

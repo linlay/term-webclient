@@ -16,6 +16,12 @@
 
 ### 本地开发
 
+先准备本地后端覆盖配置（本地私有，不提交）：
+
+```bash
+cp application.example.yml backend/application.yml
+```
+
 后端和前端分别启动：
 
 ```bash
@@ -50,12 +56,31 @@ npm run dev
 
 ## 配置
 
+### 配置模板
+
+- 根目录仅保留模板文件：`.env.example`、`application.example.yml`
+- 根目录 `.env` 不是必需文件
+- `backend/application.yml` 用于本地开发（已 gitignore）
+- `release/.env` + `release/application.yml` 用于发布运行
+
+常用复制命令：
+
+```bash
+# 本地开发后端复杂配置
+cp application.example.yml backend/application.yml
+
+# release 运行配置
+cp .env.example release/.env
+cp application.example.yml release/application.yml
+```
+
 ### 后端配置
 
 配置文件加载顺序（后者覆盖前者）：
 
 1. `backend/src/main/resources/application.yml`（内置默认）
-2. `backend/application.yml`（外部覆盖，通过 `spring.config.import` 导入）
+2. 运行目录 `application.yml`（例如 `backend/application.yml`、`release/application.yml`）
+3. 运行目录 `.env`（通过 `spring.config.import` 导入）
 
 关键配置项：
 
@@ -68,7 +93,7 @@ npm run dev
 | `terminal.ring-buffer-max-bytes` | `4194304` | 输出缓冲大小（4MB） |
 | `auth.enabled` | `true` | 是否启用密码认证 |
 | `auth.username` | `admin` | 登录用户名 |
-| `auth.password-hash-bcrypt` | 空 | bcrypt 密码哈希 |
+| `auth.password-hash-bcrypt` | 内置 demo hash（默认密码 `password`） | bcrypt 密码哈希 |
 | `terminal.ssh.enabled` | `true` | 是否启用 SSH 功能 |
 | `terminal.ssh.master-key` | `${TERMINAL_SSH_MASTER_KEY:}` | SSH 凭据加密主密钥（推荐通过环境变量注入） |
 
@@ -86,9 +111,8 @@ npm run dev
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `APP_ENV` | `production` | 环境（`development` / `production`） |
-| `BACKEND_HOST` | 优先从 `release/.env` 读取，回退 `application.yml` | 后端监听地址 |
-| `BACKEND_PORT` | 优先从 `release/.env` 读取，回退 `application.yml` | 后端监听端口 |
+| `BACKEND_HOST` | 优先从 `release/.env` 读取，回退脚本默认值 `127.0.0.1` | 后端监听地址 |
+| `BACKEND_PORT` | 优先从 `release/.env` 读取，回退脚本默认值 `11946` | 后端监听端口 |
 | `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
 | `FRONTEND_PORT` | `11947` | 前端监听端口 |
 | `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
@@ -96,7 +120,7 @@ npm run dev
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
 | `TERMINAL_SSH_MASTER_KEY` | - | SSH 凭据加密主密钥 |
 
-`release-scripts/mac/start.sh` 会优先加载发布目录下的 `.env`，若不存在再回退 `.env.$APP_ENV` 与 legacy 文件；显式环境变量优先。
+`release-scripts/mac/start.sh` 仅识别发布目录下的 `.env`，并强制要求同时存在 `application.yml`。任一缺失会立即失败并提示修复。
 
 ## 认证
 
@@ -180,7 +204,7 @@ app-auth:
 export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
 ```
 
-本地开发可在 `backend/application.yml` 中配置 `terminal.ssh.master-key`。
+本地开发建议在 `backend/application.yml` 中覆盖 `terminal.ssh.master-key`（`backend/application.yml` 已 gitignore）。
 
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
@@ -219,7 +243,7 @@ curl -X POST http://127.0.0.1:11947/term/api/ssh/exec \
 
 ### CLI 客户端配置
 
-在 `backend/application.yml` 中注册多个终端工具：
+可在 `backend/application.yml`（开发）或 `release/application.yml`（发布）中注册多个终端工具：
 
 ```yaml
 terminal:
@@ -258,7 +282,7 @@ terminal:
 APP_ENV=development ./release-scripts/mac/package.sh /tmp/term-release-dev
 ```
 
-> `release-scripts/mac/package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env`/`application.yml`。
+> `release-scripts/mac/package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env` / `application.yml`。
 > 运行时配置由安装流程（setup）或运维在 release 目录提供。
 
 打包产物结构：
@@ -288,8 +312,15 @@ release/
 
 ```bash
 ./release-scripts/mac/start.sh
-# 或指定目录和环境
-APP_ENV=production ./release-scripts/mac/start.sh /tmp/term-release
+# 或指定目录
+./release-scripts/mac/start.sh /tmp/term-release
+```
+
+启动前必须准备：
+
+```bash
+cp .env.example /tmp/term-release/.env
+cp application.example.yml /tmp/term-release/application.yml
 ```
 
 ### 停止

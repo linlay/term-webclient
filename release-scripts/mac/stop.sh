@@ -3,29 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-APP_ENV="${APP_ENV:-production}"
 BASE_ENV_FILE_NAME=".env"
-
-read_server_config() {
-  local file="$1"
-  local key="$2"
-  awk -v key="$key" '
-    /^[[:space:]]*#/ { next }
-    /^server:[[:space:]]*$/ { in_server=1; next }
-    in_server && /^[^[:space:]]/ { in_server=0 }
-    in_server {
-      line=$0
-      sub(/^[[:space:]]+/, "", line)
-      if (line ~ "^" key ":[[:space:]]*") {
-        sub("^" key ":[[:space:]]*", "", line)
-        sub(/[[:space:]]+#.*$/, "", line)
-        gsub(/^["'\'']|["'\'']$/, "", line)
-        print line
-        exit
-      }
-    }
-  ' "$file"
-}
 
 read_env_config() {
   local file="$1"
@@ -53,27 +31,6 @@ read_env_config() {
       exit
     }
   ' "$file"
-}
-
-resolve_placeholder_value() {
-  local value="$1"
-  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-|:)([^}]*)\}$ ]]; then
-    local var_name="${BASH_REMATCH[1]}"
-    local default_value="${BASH_REMATCH[3]}"
-    local env_value="${!var_name:-}"
-    if [[ -n "$env_value" ]]; then
-      echo "$env_value"
-    else
-      echo "$default_value"
-    fi
-    return
-  fi
-  if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
-    local var_name="${BASH_REMATCH[1]}"
-    echo "${!var_name:-}"
-    return
-  fi
-  echo "$value"
 }
 
 is_running() {
@@ -200,21 +157,9 @@ stop_by_port() {
 resolve_release_env_file() {
   local release_dir="$1"
   local base_env_file="$release_dir/$BASE_ENV_FILE_NAME"
-  local app_env_file="$release_dir/.env.$APP_ENV"
-  local legacy_env_file="$release_dir/frontend/.env.server.$APP_ENV"
 
   if [[ -f "$base_env_file" ]]; then
     printf '%s\n' "$base_env_file"
-    return 0
-  fi
-
-  if [[ -f "$app_env_file" ]]; then
-    printf '%s\n' "$app_env_file"
-    return 0
-  fi
-
-  if [[ -f "$legacy_env_file" ]]; then
-    printf '%s\n' "$legacy_env_file"
     return 0
   fi
 
@@ -224,17 +169,6 @@ resolve_release_env_file() {
 resolve_backend_port() {
   local release_dir="$1"
   local backend_port="11946"
-  local backend_config="$release_dir/backend/application.yml"
-
-  if [[ -f "$backend_config" ]]; then
-    local config_backend_port_raw
-    local config_backend_port
-    config_backend_port_raw="$(read_server_config "$backend_config" "port" || true)"
-    config_backend_port="$(resolve_placeholder_value "$config_backend_port_raw")"
-    if [[ -n "$config_backend_port" ]]; then
-      backend_port="$config_backend_port"
-    fi
-  fi
 
   local env_file=""
   if env_file="$(resolve_release_env_file "$release_dir")"; then
@@ -282,7 +216,11 @@ add_release_dir() {
 
 RELEASE_DIRS=()
 if [[ $# -ge 1 ]]; then
-  add_release_dir "$1"
+  if [[ "$1" = /* ]]; then
+    add_release_dir "$1"
+  else
+    add_release_dir "$ROOT_DIR/$1"
+  fi
 else
   if [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js" ]]; then
     add_release_dir "$ROOT_DIR"

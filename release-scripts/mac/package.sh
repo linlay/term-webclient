@@ -56,8 +56,9 @@ echo "[package] building frontend dist"
 )
 
 echo "[package] preparing release directory"
-rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend"
+mkdir -p "$OUTPUT_DIR"
+rm -rf "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/release-scripts"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/release-scripts/mac" "$OUTPUT_DIR/release-scripts/windows"
 
 cp "$backend_jar" "$OUTPUT_DIR/backend/app.jar"
 
@@ -72,7 +73,6 @@ echo "[package] installing frontend runtime dependencies"
   npm ci --omit=dev
 )
 
-mkdir -p "$OUTPUT_DIR/release-scripts/mac" "$OUTPUT_DIR/release-scripts/windows"
 cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/release-scripts/mac/start.sh"
 cp "$SCRIPT_DIR/stop.sh" "$OUTPUT_DIR/release-scripts/mac/stop.sh"
 chmod +x "$OUTPUT_DIR/release-scripts/mac/start.sh" "$OUTPUT_DIR/release-scripts/mac/stop.sh"
@@ -86,3 +86,6 @@ fi
 echo "[package] done"
 echo "[package] start: $OUTPUT_DIR/release-scripts/mac/start.sh"
 echo "[package] stop : $OUTPUT_DIR/release-scripts/mac/stop.sh"
+echo "[package] runtime config is not generated automatically"
+echo "[package] required: $OUTPUT_DIR/.env (copy from $ROOT_DIR/.env.example)"
+echo "[package] required: $OUTPUT_DIR/application.yml (copy from $ROOT_DIR/application.example.yml)"
