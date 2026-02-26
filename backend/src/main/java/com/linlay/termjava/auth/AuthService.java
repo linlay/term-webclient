@@ -117,7 +117,7 @@ public class AuthService {
         if (!StringUtils.hasText(authProperties.getUsername())) {
             throw new IllegalStateException("auth.username is required when auth is enabled");
         }
-        String bcryptHash = safe(authProperties.getPasswordHashBcrypt());
+        String bcryptHash = normalizeBcryptHash(authProperties.getPasswordHashBcrypt());
         if (!StringUtils.hasText(bcryptHash)) {
             throw new IllegalStateException(
                 "auth.password-hash-bcrypt must be configured when auth is enabled");
@@ -131,12 +131,25 @@ public class AuthService {
         return value == null ? "" : value.trim();
     }
 
+    private String normalizeBcryptHash(String value) {
+        String normalized = safe(value);
+        if (normalized.length() < 2) {
+            return normalized;
+        }
+        char first = normalized.charAt(0);
+        char last = normalized.charAt(normalized.length() - 1);
+        if ((first == '\'' && last == '\'') || (first == '"' && last == '"')) {
+            return normalized.substring(1, normalized.length() - 1).trim();
+        }
+        return normalized;
+    }
+
     private boolean matchesPassword(String rawPassword) {
         if (!StringUtils.hasText(rawPassword)) {
             return false;
         }
 
-        String bcryptHash = safe(authProperties.getPasswordHashBcrypt());
+        String bcryptHash = normalizeBcryptHash(authProperties.getPasswordHashBcrypt());
         try {
             return BCRYPT_ENCODER.matches(rawPassword, bcryptHash);
         } catch (IllegalArgumentException ignored) {

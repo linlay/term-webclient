@@ -1,12 +1,13 @@
 server:
-  address: ${BACKEND_HOST:127.0.0.1}
-  port: ${BACKEND_PORT:11946}
+  address: 127.0.0.1
+  port: 8080
 
 spring:
   application:
     name: term-web-backend
   config:
     import:
+      - optional:file:application.yml
       - optional:file:.env[.properties]
 
 terminal:
