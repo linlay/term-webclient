@@ -35,14 +35,16 @@ npm run dev
 
 ```bash
 # 构建
-./package.sh
+./release-scripts/mac/package.sh
 
 # 启动
-./start.sh
+./release-scripts/mac/start.sh
 
 # 停止
-./stop.sh
+./release-scripts/mac/stop.sh
 ```
+
+脚本目录约定：`release-scripts/mac` 放 `.sh`，`release-scripts/windows` 放 `.ps1` / `.bat`。
 
 默认端口：后端 `127.0.0.1:11946`，前端 `0.0.0.0:11947`。
 
@@ -94,7 +96,7 @@ npm run dev
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
 | `TERMINAL_SSH_MASTER_KEY` | - | SSH 凭据加密主密钥 |
 
-`start.sh` 会优先加载发布目录下的 `.env`，若不存在再回退 `.env.$APP_ENV` 与 legacy 文件；显式环境变量优先。
+`release-scripts/mac/start.sh` 会优先加载发布目录下的 `.env`，若不存在再回退 `.env.$APP_ENV` 与 legacy 文件；显式环境变量优先。
 
 ## 认证
 
@@ -247,16 +249,16 @@ terminal:
 
 ```bash
 # 默认输出到 release/
-./package.sh
+./release-scripts/mac/package.sh
 
 # 自定义输出目录
-./package.sh /tmp/term-release
+./release-scripts/mac/package.sh /tmp/term-release
 
 # 指定环境
-APP_ENV=development ./package.sh /tmp/term-release-dev
+APP_ENV=development ./release-scripts/mac/package.sh /tmp/term-release-dev
 ```
 
-> `package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env`/`application.yml`。
+> `release-scripts/mac/package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env`/`application.yml`。
 > 运行时配置由安装流程（setup）或运维在 release 目录提供。
 
 打包产物结构：
@@ -273,24 +275,29 @@ release/
 │   └── package-lock.json
 ├── logs/
 ├── run/
-├── start.sh
-└── stop.sh
+└── release-scripts/
+    ├── mac/
+    │   ├── start.sh
+    │   └── stop.sh
+    └── windows/
+        ├── *.ps1（可选）
+        └── *.bat（可选）
 ```
 
 ### 启动
 
 ```bash
-./start.sh
+./release-scripts/mac/start.sh
 # 或指定目录和环境
-APP_ENV=production ./start.sh /tmp/term-release
+APP_ENV=production ./release-scripts/mac/start.sh /tmp/term-release
 ```
 
 ### 停止
 
 ```bash
-./stop.sh
+./release-scripts/mac/stop.sh
 # 或指定目录
-./stop.sh /tmp/term-release
+./release-scripts/mac/stop.sh /tmp/term-release
 ```
 
 ### Nginx 反向代理

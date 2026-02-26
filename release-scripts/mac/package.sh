@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEFAULT_OUTPUT_DIR="$ROOT_DIR/release"
 if [[ $# -ge 1 ]]; then
   if [[ "$1" = /* ]]; then
@@ -71,10 +72,17 @@ echo "[package] installing frontend runtime dependencies"
   npm ci --omit=dev
 )
 
-cp "$ROOT_DIR/start.sh" "$OUTPUT_DIR/start.sh"
-cp "$ROOT_DIR/stop.sh" "$OUTPUT_DIR/stop.sh"
-chmod +x "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
+mkdir -p "$OUTPUT_DIR/release-scripts/mac" "$OUTPUT_DIR/release-scripts/windows"
+cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/release-scripts/mac/start.sh"
+cp "$SCRIPT_DIR/stop.sh" "$OUTPUT_DIR/release-scripts/mac/stop.sh"
+chmod +x "$OUTPUT_DIR/release-scripts/mac/start.sh" "$OUTPUT_DIR/release-scripts/mac/stop.sh"
+
+if [[ -d "$ROOT_DIR/release-scripts/windows" ]]; then
+  while IFS= read -r script_path; do
+    cp "$script_path" "$OUTPUT_DIR/release-scripts/windows/"
+  done < <(find "$ROOT_DIR/release-scripts/windows" -maxdepth 1 -type f \( -name '*.ps1' -o -name '*.bat' \) | sort)
+fi
 
 echo "[package] done"
-echo "[package] start: $OUTPUT_DIR/start.sh"
-echo "[package] stop : $OUTPUT_DIR/stop.sh"
+echo "[package] start: $OUTPUT_DIR/release-scripts/mac/start.sh"
+echo "[package] stop : $OUTPUT_DIR/release-scripts/mac/stop.sh"

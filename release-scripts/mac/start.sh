@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [[ $# -ge 1 ]]; then
   RELEASE_DIR="$1"
 elif [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js" ]]; then
@@ -35,6 +36,7 @@ BACKEND_JAVA_OPTS="${BACKEND_JAVA_OPTS:--Xms256m -Xmx512m}"
 BACKEND_ARGS="${BACKEND_ARGS:-}"
 NODE_OPTIONS_VALUE="${NODE_OPTIONS:-}"
 REQUIRED_JAVA_MAJOR=21
+JAVA_CMD=""
 
 read_server_config() {
   local file="$1"
@@ -135,14 +137,31 @@ require_release_artifact() {
   if [[ ! -f "$path" ]]; then
     echo "[start] missing required release artifact: $path"
     echo "[start] release directory is incomplete: $RELEASE_DIR"
-    echo "[start] please run: cd $ROOT_DIR && ./package.sh"
+    echo "[start] please run: cd $ROOT_DIR && ./release-scripts/mac/package.sh"
+    exit 1
+  fi
+}
+
+resolve_java_cmd() {
+  if [[ -n "${JAVA:-}" ]]; then
+    JAVA_CMD="$JAVA"
+  elif [[ -n "${JAVA_HOME:-}" ]] && [[ -x "${JAVA_HOME%/}/bin/java" ]]; then
+    JAVA_CMD="${JAVA_HOME%/}/bin/java"
+  else
+    JAVA_CMD="$(command -v java || true)"
+  fi
+
+  if [[ -z "$JAVA_CMD" ]]; then
+    echo "[start] unable to locate Java runtime"
+    echo "[start] set JAVA_HOME or JAVA to a JDK $REQUIRED_JAVA_MAJOR+ runtime"
     exit 1
   fi
 }
 
 get_java_major_version() {
+  local java_cmd="$1"
   local version_line raw_version major
-  version_line="$(java -version 2>&1 | awk 'NR==1 { print; exit }')"
+  version_line="$("$java_cmd" -version 2>&1 | awk 'NR==1 { print; exit }')"
   raw_version="$(printf '%s' "$version_line" | sed -E 's/.*version "([^"]+)".*/\1/')"
   if [[ "$raw_version" == "$version_line" ]]; then
     return 1
@@ -159,8 +178,8 @@ get_java_major_version() {
 
 require_java_version() {
   local detected_major version_line
-  detected_major="$(get_java_major_version || true)"
-  version_line="$(java -version 2>&1 | awk 'NR==1 { print; exit }')"
+  detected_major="$(get_java_major_version "$JAVA_CMD" || true)"
+  version_line="$("$JAVA_CMD" -version 2>&1 | awk 'NR==1 { print; exit }')"
   if [[ -z "$detected_major" ]]; then
     echo "[start] unable to parse Java version from: $version_line"
     echo "[start] this project requires JDK $REQUIRED_JAVA_MAJOR+"
@@ -174,6 +193,7 @@ require_java_version() {
 }
 
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$RELEASE_DIR/data"
+resolve_java_cmd
 require_java_version
 
 default_backend_host="127.0.0.1"
@@ -216,12 +236,12 @@ effective_backend_host="${BACKEND_HOST_OVERRIDE:-$default_backend_host}"
 effective_backend_port="${BACKEND_PORT_OVERRIDE:-$default_backend_port}"
 BACKEND_ORIGIN="${BACKEND_ORIGIN_OVERRIDE:-http://$effective_backend_host:$effective_backend_port}"
 
-backend_overrides=""
+backend_override_args=()
 if [[ -n "$BACKEND_HOST_OVERRIDE" ]]; then
-  backend_overrides="$backend_overrides --server.address=$BACKEND_HOST_OVERRIDE"
+  backend_override_args+=("--server.address=$BACKEND_HOST_OVERRIDE")
 fi
 if [[ -n "$BACKEND_PORT_OVERRIDE" ]]; then
-  backend_overrides="$backend_overrides --server.port=$BACKEND_PORT_OVERRIDE"
+  backend_override_args+=("--server.port=$BACKEND_PORT_OVERRIDE")
 fi
 
 require_release_artifact "$RELEASE_DIR/backend/app.jar"
@@ -250,7 +270,20 @@ fi
 (
   cd "$RELEASE_DIR"
   set +u
-  nohup bash -lc "exec java $BACKEND_JAVA_OPTS -jar backend/app.jar$backend_overrides $BACKEND_ARGS" \
+  backend_java_opts_args=()
+  backend_app_args=()
+  if [[ -n "${BACKEND_JAVA_OPTS//[[:space:]]/}" ]]; then
+    # Intentionally split by shell words to keep compatibility with existing BACKEND_JAVA_OPTS usage.
+    # shellcheck disable=SC2206
+    backend_java_opts_args=($BACKEND_JAVA_OPTS)
+  fi
+  if [[ -n "${BACKEND_ARGS//[[:space:]]/}" ]]; then
+    # shellcheck disable=SC2206
+    backend_app_args=($BACKEND_ARGS)
+  fi
+
+  nohup "$JAVA_CMD" "${backend_java_opts_args[@]}" -jar backend/app.jar \
+    "${backend_override_args[@]}" "${backend_app_args[@]}" \
     >"$BACKEND_LOG_FILE" 2>&1 &
   echo $! >"$BACKEND_PID_FILE"
 )
@@ -283,6 +316,7 @@ if ! is_running "$frontend_pid"; then
 fi
 
 echo "[start] backend  pid=$backend_pid  http://$effective_backend_host:$effective_backend_port"
+echo "[start] java cmd=$JAVA_CMD ($("$JAVA_CMD" -version 2>&1 | awk 'NR==1 { print; exit }'))"
 echo "[start] frontend pid=$frontend_pid http://$FRONTEND_HOST:$FRONTEND_PORT"
 echo "[start] app env=$APP_ENV"
 if [[ -n "$SELECTED_ENV_FILE" ]]; then

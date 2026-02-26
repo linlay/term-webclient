@@ -1,20 +1,24 @@
-# macOS
+# system
 .DS_Store
-node_modules
-.husky/_
+
+# local workspace
 AGENTS.md
 .env
+.husky/_
+
+# dependencies
+node_modules/
+frontend/node_modules/
 
 # backend
-backend/target
-backend/data
+backend/target/
+backend/data/
 backend/application-local.yml
 
 # frontend
-frontend/node_modules
-frontend/dist
-frontend/coverage
+frontend/dist/
+frontend/coverage/
 
 # packaged runtime
-release
-data
+release/
+data/

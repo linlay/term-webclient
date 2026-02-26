@@ -49,9 +49,13 @@ term-webclient/
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── .env                                  # Vite 环境变量
-├── package.sh                                # 构建脚本
-├── start.sh                                  # 启动脚本
-└── stop.sh                                   # 停止脚本
+├── release-scripts/
+│   ├── mac/
+│   │   ├── package.sh                        # macOS/Linux 构建脚本
+│   │   ├── start.sh                          # macOS/Linux 启动脚本
+│   │   └── stop.sh                           # macOS/Linux 停止脚本
+│   └── windows/                              # Windows 脚本（.ps1/.bat）
+└── README.md
 ```
 
 ## 后端架构
@@ -425,7 +429,7 @@ cd frontend && npx tsc --noEmit            # 类型检查
 cd frontend && npm run build               # 生产构建
 
 # 打包与部署
-./package.sh                               # 构建发布目录
-./start.sh                                 # 启动服务
-./stop.sh                                  # 停止服务
+./release-scripts/mac/package.sh           # 构建发布目录
+./release-scripts/mac/start.sh             # 启动服务
+./release-scripts/mac/stop.sh              # 停止服务
 ```
