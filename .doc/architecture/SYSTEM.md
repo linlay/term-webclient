@@ -1,46 +1,27 @@
 # 系统架构
 
 ## 架构模式
-- 前后端分离 + 后端模块单体（Spring Boot 单进程）
-- 前端 SPA（React）+ Node/Express 反向代理
-- 终端实时通道使用 WebSocket
+- 形态：`<architecture-style>`（示例：modular monolith）
+- 通信：`<communication-pattern>`（示例：sync REST + async event）
 
-## 组件关系图
+## 架构图（Mermaid）
 ```mermaid
 flowchart LR
-  U[Browser or App WebView] --> FE[React + Vite SPA]
-  FE -->|/term/api| PX[Express Proxy]
-  FE -->|/appterm/api| PX
-  FE -->|/term/ws or /appterm/ws| PX
-
-  PX -->|/webapi/*| BE[Spring Boot Backend]
-  PX -->|/appapi/*| BE
-  PX -->|/ws/{sessionId}| BE
-
-  BE --> PTY[Local PTY Runtime]
-  BE --> SSH[SSH Runtime and Pool]
-  BE --> FS[Local FS or SFTP Gateway]
-  BE --> ST[(Local JSON and Memory State)]
+  A[Client] --> B[API Layer]
+  B --> C[Service Layer]
+  C --> D[Repository Layer]
+  D --> E[(Storage)]
 ```
 
-## 后端分层与依赖
-- 分层：`controller/auth/ws -> service -> runtime/gateway`
-- 约束：
-- `controller` 仅做协议与参数边界，不承载业务编排
-- `service` 持有核心业务逻辑与状态机
-- `runtime/gateway` 负责外部 IO（PTY、SSH、文件系统、SFTP）
-- 禁止跨层反向依赖（例如 `service` 依赖 `controller`）
+## 分层规则
+- `Controller -> Service -> Repository`
+- 禁止反向依赖。
+- 跨模块访问必须经服务层接口。
 
-## 核心运行约束
-- 会话输出统一通过 `seq` 编号进入 ring buffer。
-- WS 实时推送失败不阻塞会话运行，客户端可通过 snapshot 追平。
-- 所有文件下载票据必须一次性消费，并携带会话与 actor 绑定。
-- 认证通道分离：`/webapi` 使用 HttpSession，`/appapi` 使用 JWT Bearer。
+## 关键约束
+- 外部 IO 仅允许出现在 `Repository/Gateway` 层。
+- 业务状态机必须落在 `Service` 层。
+- 协议层不持有业务持久状态。
 
-## 模块边界（高层）
-- Session Runtime: 会话生命周期、读循环、补发
-- Auth: Web/App 认证与 WS 握手鉴权
-- SSH: 凭据、连接池、exec/shell、TOFU
-- File Transfer: local/sftp 文件树与上传下载
-- Agent: 规划、审批、步骤执行
-- Workspace Context: 选中文件与 git diff 打包
+## [DOC-GAP]
+- `[DOC-GAP]` 若实际架构存在多种通信模式并存，需补充边界图和调用白名单。

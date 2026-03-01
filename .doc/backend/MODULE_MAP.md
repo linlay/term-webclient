@@ -1,42 +1,23 @@
-# 后端模块映射与边界
+# 后端模块地图
 
-## 目录映射
-| 目录 | 职责 |
+## 包级职责
+| 包 | 职责 |
 |---|---|
-| `auth/` | Web/App/WS 认证与鉴权拦截 |
-| `config/` | 配置装配、CORS、WS 注册、过滤器 |
-| `controller/` | REST API 协议层 |
-| `controller/agent` | Agent 相关 API |
-| `controller/workspace` | context-pack API |
-| `model/` | DTO、状态枚举、响应模型 |
-| `service/` | 业务逻辑核心（session/runtime/context/screen） |
-| `service/ssh/` | SSH 凭据、连接池、exec、preflight、TOFU |
-| `service/file/` | 文件树、上传下载、ticket、local/sftp gateway |
-| `service/agent/` | 规划、工具执行、run 生命周期 |
-| `service/workspace/` | 工作区上下文打包 |
-| `ws/` | WebSocket 消息入口与会话附着 |
+| `controller` | 协议入口、参数解析、响应封装 |
+| `service` | 业务编排、流程控制 |
+| `domain` | 领域模型与规则 |
+| `repository` | 数据访问与持久化 |
+| `config` | 配置与装配 |
 
 ## 依赖方向
-- 允许：`controller/auth/ws -> service -> runtime/gateway`
-- 禁止：
-- `service` 依赖 `controller`
-- 跨模块直接访问内部细节（应通过公开 service 接口）
+- `controller -> service -> repository`
+- `domain` 不依赖 `controller`。
+- 允许通过接口进行跨模块协作，不允许跨层直接访问内部状态。
 
-## 关键边界
-1. 会话生命周期只由 `TerminalSessionService` 管理。
-2. WS 连接附着/分离只通过 `attachWebSocket`/`detachWebSocket`。
-3. SSH 凭据秘密只在 `SshCredentialStore` 加解密。
-4. 文件传输路径校验由 `LocalFileGateway`/`SftpFileGateway` 执行。
-5. Agent run 并发约束由 `AgentRunService` 负责（每 session 单 active run）。
+## 禁止跨层行为
+- Controller 不写业务状态机。
+- Repository 不承载协议层逻辑。
+- Service 不直接依赖传输层对象（如 HTTP request/response）。
 
-## Controller 到 Service 映射
-| Controller | Service |
-|---|---|
-| `SessionController` | `TerminalSessionService` |
-| `FileTransferController` | `FileTransferService` |
-| `SshController` | `SshCredentialStore` / `SshPreflightService` / `SshExecService` |
-| `AgentController` | `AgentRunService` |
-| `WorkspaceContextController` | `WorkspaceContextService` |
-| `TerminalClientController` | `TerminalProperties`（配置映射） |
-| `WorkdirController` | `WorkdirBrowseService` |
-| `SystemController` | `BuildProperties + env` |
+## [DOC-GAP]
+- `[DOC-GAP]` 若存在额外层（如 application/usecase/gateway），需补全层级与依赖矩阵。

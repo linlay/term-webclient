@@ -1,4 +1,4 @@
-# 后端模块模板
+# <module-name> 模块设计
 
 ## 模块职责
 - 负责：`<owned-scope>`
@@ -14,8 +14,14 @@
 输入 -> 处理 -> 输出
 ```
 
+## 状态与约束
+- 状态：`<state-rule>`
+- 校验：`<validation-rule>`
+- 安全边界：`<security-rule>`
+
 ## 测试关注点
-- `<test-focus>`
+- `<test-focus-1>`
+- `<test-focus-2>`
 
 ## [DOC-GAP]
 - `<gap-item>`

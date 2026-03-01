@@ -1,52 +1,38 @@
-# 模块 API 文档模板
+# API 模块文档模板
 
-## 模块名
-- 名称：
-- 负责人：
-- 最近更新：
+## 模块
+- 名称：`<module-name>`
+- base path：`<base-path>`
+- owner：`<owner>`
 
-## 1. 覆盖接口
-- `METHOD /path`
+## 接口列表
+- `<METHOD> <base-path>/<resource>`
 
-## 2. 请求定义
-- Query 参数：
-- Path 参数：
-- Body：
+## 请求
+| 字段 | 类型 | 必填 | 约束 |
+|---|---|---|---|
+| `<field>` | `<type>` | `<required>` | `<rule>` |
 
-示例：
+## 响应（标准壳）
 ```json
-{}
+{
+  "code": 0,
+  "msg": "success",
+  "data": {}
+}
 ```
 
-## 3. 响应定义
-- 成功响应：
-- 失败响应：
+## 失败场景
+| 场景 | HTTP | code | msg |
+|---|---|---|---|
+| `<case>` | `<http-status>` | `<biz-code>` | `<message>` |
 
-示例：
-```json
-{}
-```
+## 幂等与副作用
+- `<idempotency-rule>`
+- `<side-effect-rule>`
 
-## 4. 状态码与错误语义
-| HTTP | 场景 | error |
-|---|---|---|
+## legacy 兼容
+- `<legacy-rule>`
 
-## 5. 业务规则/伪代码
-1. 
-2. 
-3. 
-
-## 6. 安全与边界
-- 鉴权：
-- 权限：
-- 输入边界：
-
-## 7. 兼容性
-- 向后兼容要求：
-- [DOC-GAP]：
-
-## 8. 测试清单
-- [ ] 成功路径
-- [ ] 参数异常
-- [ ] 鉴权失败
-- [ ] 边界值
+## [DOC-GAP]
+- `<gap-item>`

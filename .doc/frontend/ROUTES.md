@@ -1,31 +1,13 @@
-# 前端路由与入口
+# 路由表
 
-## 双入口
-| UI 入口 | 模式 | API 前缀 | WS 前缀 | 认证 |
+| 路径 | 页面组件 | 需要登录 | 角色要求 | 对应后端模块 |
 |---|---|---|---|---|
-| `/term` / `/term/` | web-mode | `/term/api` | `/term/ws` | HttpSession |
-| `/appterm` / `/appterm/` | app-mode | `/appterm/api` | `/appterm/ws` | Bearer JWT |
+| `<route-path>` | `<page-component>` | `<auth-required>` | `<role>` | `<module-name>` |
 
-## Express 入口行为（`frontend/server.js`）
-- `GET /term` -> `302 /term/`（保留 query）
-- `GET /appterm` -> `302 /appterm/`
-- `GET /term/` 与 `GET /appterm/` 返回 SPA `index.html`
-- `/term/api/*` 与 `/appterm/api/*` 转发后端
-- `/term/ws/*` 与 `/appterm/ws/*` 升级为后端 WS
+## 路由约束
+- 路由守卫规则：`<route-guard-rule>`
+- 重定向规则：`<redirect-rule>`
+- 动态参数规则：`<route-param-rule>`
 
-## 前端路由机制
-- 当前未使用 react-router；由 `window.location.pathname + search` 驱动。
-- `env.ts` 根据路径判断 app/web 模式并生成 API/WS 前缀。
-
-## Route Intent（查询参数）
-| 参数 | 含义 |
-|---|---|
-| `sessionId` | 指定激活会话 |
-| `openNewSession` | 是否打开新建会话弹窗（`1/true`） |
-| `openNonce` | 用于触发一次性打开动作 |
-
-`routeIntent.ts` 负责 parse/build/同步逻辑。
-
-## 鉴权页面流
-- web-mode：`/auth/me` 返回未认证时展示 `LoginForm`
-- app-mode：未取到 token 时展示 `Waiting for app access token...`
+## [DOC-GAP]
+- `[DOC-GAP]` 若前端缺失路由系统，需在本文件保留占位并记录升级步骤。

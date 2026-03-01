@@ -1,39 +1,28 @@
 # 部署架构与环境
 
-## 运行形态
-- 后端：`backend/app.jar`（Spring Boot）
-- 前端：`frontend/dist` + `frontend/server.js`（Express 代理）
-- 发布目录由 `release-scripts/mac/package.sh` 生成
+## 启动方式
+- 本地：`<local-start-command>`
+- 容器：`<container-start-command>`
 
-## 开发环境（典型）
-1. 后端：`cd backend && mvn spring-boot:run`
-2. 前端：`cd frontend && npm run dev`
-3. Vite dev proxy：
-- `/term/api -> /webapi`
-- `/appterm/api -> /appapi`
-- `/term/ws -> /ws`
-- `/appterm/ws -> /ws`
+## 核心环境变量
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `<env-key>` | `<default>` | `<description>` |
 
-## 生产环境（release）
-- 执行：`./release-scripts/mac/package.sh`
-- 输出：默认 `release/`
-- 运行：`./release-scripts/mac/start.sh`
-- 停止：`./release-scripts/mac/stop.sh`
+## 配置覆盖规则
+- 基础配置：`<base-config-file>`
+- 环境覆盖：`<env-config-file>`
+- 覆盖优先级：`<override-order>`
 
-## 关键约束
-- `start.sh` 强依赖以下文件：
-- `release/.env`
-- `release/application.yml`
-- 这两个文件不会自动生成，需从示例拷贝：
-- `.env.example`
-- `application.example.yml`
+## 运行目录约定
+- logs: `<logs-path>`
+- pids: `<pid-path>`
+- data: `<data-path>`
 
-## 端口与代理
-- 默认后端：`127.0.0.1:11946`
-- 默认前端代理：`0.0.0.0:11947`
-- 前端代理负责 API/WS 前缀重写与 SPA 路由入口分发
+## 部署验收清单
+- 健康检查：`<healthcheck-endpoint>`
+- 核心 API 烟测：`<smoke-endpoint>`
+- 回滚入口：`<rollback-command>`
 
-## 运行目录
-- PID: `release/run/*.pid`
-- 日志: `release/logs/backend.out`, `release/logs/frontend.out`
-- 数据: `release/data/`（如 SSH 凭据文件）
+## [DOC-GAP]
+- `[DOC-GAP]` 若部署形态多样（VM/K8s/Serverless）需分环境单独落盘。
