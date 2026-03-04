@@ -88,21 +88,32 @@ function render(onCreated = vi.fn()): ReturnType<typeof vi.fn> {
 }
 
 describe("NewSessionForm recent + ssh title", () => {
-  it("creates session directly when clicking a recent entry", async () => {
+  it("renders tool, recent and title in expected order", async () => {
+    render();
+    await flush();
+    await flush();
+
+    const ids = Array.from(
+      container?.querySelectorAll("#new-session-tool, #new-session-recent, #new-session-title") || []
+    ).map((item) => item.id);
+    expect(ids).toEqual(["new-session-tool", "new-session-recent", "new-session-title"]);
+  });
+
+  it("applies recent terminal session and only creates after submit", async () => {
     const request: CreateSessionRequest = {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       tabTitle: "dev shell",
-      command: "/bin/zsh",
-      args: ["-l"],
-      workdir: "/tmp"
+      command: "/bin/bash",
+      args: ["-l", "-i"],
+      workdir: "/tmp/project"
     };
     vi.spyOn(apiClient, "listRecentSessions").mockResolvedValue([
       {
         toolId: "terminal",
         title: "dev shell",
         sessionType: "LOCAL_PTY",
-        workdir: "/tmp",
+        workdir: "/tmp/project",
         lastUsedAt: "2026-02-14T01:00:00Z",
         request
       }
@@ -112,11 +123,28 @@ describe("NewSessionForm recent + ssh title", () => {
     await flush();
     await flush();
 
-    const recentButton = container?.querySelector(".recent-session-item") as HTMLButtonElement | null;
-    expect(recentButton).not.toBeNull();
+    const recentSelect = container?.querySelector("#new-session-recent") as HTMLSelectElement | null;
+    expect(recentSelect).not.toBeNull();
 
     act(() => {
-      recentButton?.click();
+      if (!recentSelect) {
+        return;
+      }
+      recentSelect.value = "0";
+      recentSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await flush();
+
+    expect(apiClient.createSession).toHaveBeenCalledTimes(0);
+    expect((container?.querySelector("#new-session-title") as HTMLInputElement | null)?.value).toBe("dev shell");
+    expect((container?.querySelector("#new-session-command") as HTMLInputElement | null)?.value).toBe("/bin/bash");
+    expect((container?.querySelector("#new-session-args") as HTMLInputElement | null)?.value).toBe("-l -i");
+    expect(container?.querySelector(".selected-workdir code")?.textContent).toBe("/tmp/project");
+
+    const submitButton = container?.querySelector(".primary-btn") as HTMLButtonElement | null;
+    expect(submitButton).not.toBeNull();
+    act(() => {
+      submitButton?.click();
     });
     await flush();
 
@@ -126,8 +154,61 @@ describe("NewSessionForm recent + ssh title", () => {
       sessionId: "s1",
       title: "dev shell",
       toolId: "terminal",
+      workdir: "/tmp/project"
+    });
+  });
+
+  it("uses workdir as title when title input is empty", async () => {
+    const onCreated = render();
+    await flush();
+    await flush();
+
+    const titleInput = container?.querySelector("#new-session-title") as HTMLInputElement | null;
+    expect(titleInput?.value).toBe("");
+
+    const submitButton = container?.querySelector(".primary-btn") as HTMLButtonElement | null;
+    expect(submitButton).not.toBeNull();
+    act(() => {
+      submitButton?.click();
+    });
+    await flush();
+
+    expect(apiClient.createSession).toHaveBeenCalledWith({
+      sessionType: "LOCAL_PTY",
+      toolId: "terminal",
+      tabTitle: "/tmp",
+      command: "/bin/zsh",
+      args: ["-l"],
       workdir: "/tmp"
     });
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(onCreated.mock.calls[0]?.[0]).toMatchObject({
+      title: "/tmp",
+      workdir: "/tmp",
+      toolId: "terminal"
+    });
+  });
+
+  it("uses workdir as option label when recent title is empty", async () => {
+    vi.spyOn(apiClient, "listRecentSessions").mockResolvedValue([
+      {
+        toolId: "terminal",
+        title: "",
+        sessionType: "LOCAL_PTY",
+        workdir: "/srv/app",
+        lastUsedAt: "2026-02-14T01:00:00Z",
+        request: {}
+      }
+    ]);
+
+    render();
+    await flush();
+    await flush();
+
+    const recentSelect = container?.querySelector("#new-session-recent") as HTMLSelectElement | null;
+    expect(recentSelect).not.toBeNull();
+    const optionLabels = Array.from(recentSelect?.querySelectorAll("option") || []).map((item) => item.textContent || "");
+    expect(optionLabels).toContain("/srv/app");
   });
 
   it("shows ssh title first and falls back to connection info", async () => {

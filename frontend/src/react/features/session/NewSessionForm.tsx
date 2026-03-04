@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type WheelEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type WheelEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../shared/api/client";
 import { generateId } from "../../shared/utils/id";
@@ -111,6 +111,18 @@ function cloneCreateSessionRequest(payload: CreateSessionRequest): CreateSession
   };
 }
 
+function formatRecentSessionLabel(item: RecentSessionItemResponse): string {
+  const title = (item.title || "").trim();
+  if (title) {
+    return title;
+  }
+  const workdir = (item.workdir || "").trim();
+  if (workdir) {
+    return workdir;
+  }
+  return (item.toolId || "session").trim() || "session";
+}
+
 const ROOT_WORKDIR_LOADING_KEY = "__root__";
 
 interface VisibleWorkdirEntry {
@@ -132,6 +144,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [recentSessions, setRecentSessions] = useState<RecentSessionItemResponse[]>([]);
   const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
   const [recentSessionsError, setRecentSessionsError] = useState("");
+  const [selectedRecentSessionIndex, setSelectedRecentSessionIndex] = useState("");
 
   const [workdirTree, setWorkdirTree] = useState<WorkdirBrowseResponse | null>(null);
   const [workdirChildrenMap, setWorkdirChildrenMap] = useState<Record<string, WorkdirEntry[]>>({});
@@ -226,14 +239,18 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
 
   useEffect(() => {
     if (toolId === "terminal") {
-      setCommand("/bin/zsh");
-      setArgs("-l");
+      if (!command.trim()) {
+        setCommand("/bin/zsh");
+      }
+      if (!args.trim()) {
+        setArgs("-l");
+      }
       return;
     }
     if (selectedClient && !workdir.trim()) {
       setWorkdir(selectedClient.defaultWorkdir || workdirTree?.currentPath || ".");
     }
-  }, [selectedClient, toolId, workdir, workdirTree]);
+  }, [args, command, selectedClient, toolId, workdir, workdirTree]);
 
   useEffect(() => {
     void refreshCredentials();
@@ -244,6 +261,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   }, []);
 
   useEffect(() => {
+    setSelectedRecentSessionIndex("");
     void refreshRecentSessions(toolId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolId]);
@@ -396,7 +414,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     const resolvedToolId = (normalizedPayload.toolId || fallbackToolId).trim() || fallbackToolId;
     const fallbackTitle = sessionTypeValue === "SSH_SHELL"
       ? "ssh"
-      : (selectedClient?.label || resolvedToolId || "terminal");
+      : ((normalizedPayload.workdir || "").trim() || ".");
     const resolvedTitle = (normalizedPayload.tabTitle || "").trim() || fallbackTitle;
 
     onCreated({
@@ -413,22 +431,55 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     });
   }
 
-  async function onCreateFromRecent(item: RecentSessionItemResponse): Promise<void> {
+  function applyRecentToForm(item: RecentSessionItemResponse): void {
     setError("");
     setNotice("");
     const sourceRequest: CreateSessionRequest = item.request ? cloneCreateSessionRequest(item.request) : {};
-    const payload: CreateSessionRequest = {
-      ...sourceRequest,
-      sessionType: sourceRequest.sessionType || item.sessionType,
-      toolId: sourceRequest.toolId || item.toolId,
-      tabTitle: sourceRequest.tabTitle || item.title,
-      workdir: sourceRequest.workdir || item.workdir
-    };
-    try {
-      await createSessionWithPayload(payload);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create session");
+    const resolvedTitle = (sourceRequest.tabTitle || item.title || "").trim();
+    setTitle(resolvedTitle);
+
+    const resolvedType: SessionType = (sourceRequest.sessionType || item.sessionType) === "SSH_SHELL"
+      ? "SSH_SHELL"
+      : "LOCAL_PTY";
+
+    if (resolvedType === "SSH_SHELL") {
+      if (sourceRequest.ssh?.credentialId) {
+        setSshCredentialId(sourceRequest.ssh.credentialId);
+      }
+      if (sourceRequest.ssh?.term && sourceRequest.ssh.term.trim()) {
+        setSshTerm(sourceRequest.ssh.term.trim());
+      }
+      return;
     }
+
+    const resolvedWorkdir = (sourceRequest.workdir || item.workdir || "").trim();
+    if (resolvedWorkdir) {
+      setWorkdir(resolvedWorkdir);
+    }
+
+    const resolvedToolId = (sourceRequest.toolId || item.toolId || "").trim();
+    if (resolvedToolId === "terminal") {
+      if (sourceRequest.command && sourceRequest.command.trim()) {
+        setCommand(sourceRequest.command.trim());
+      }
+      if (sourceRequest.args) {
+        setArgs(sourceRequest.args.join(" "));
+      }
+    }
+  }
+
+  function onSelectRecentSession(event: ChangeEvent<HTMLSelectElement>): void {
+    const nextIndexValue = event.target.value;
+    setSelectedRecentSessionIndex(nextIndexValue);
+    if (!nextIndexValue) {
+      return;
+    }
+
+    const item = recentSessions[Number.parseInt(nextIndexValue, 10)];
+    if (!item) {
+      return;
+    }
+    applyRecentToForm(item);
   }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -460,7 +511,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         sessionType: "LOCAL_PTY",
         clientId: selectedClient.id,
         toolId: selectedClient.id,
-        tabTitle: titleText || (selectedClient.label || selectedClient.id),
+        tabTitle: titleText || resolvedWorkdir,
         workdir: resolvedWorkdir
       };
     } else {
@@ -474,7 +525,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       payload = {
         sessionType: "LOCAL_PTY",
         toolId: "terminal",
-        tabTitle: titleText || "terminal",
+        tabTitle: titleText || (workdir.trim() || workdirTree?.currentPath || "."),
         command: command.trim() || "/bin/zsh",
         args: parsedArgs,
         workdir: workdir.trim() || workdirTree?.currentPath || "."
@@ -588,17 +639,9 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       </div>
       {terminalClientsError && <div className="tree-status error">{terminalClientsError}</div>}
 
-      <label className="field-label" htmlFor="new-session-title">Title (optional)</label>
-      <input
-        id="new-session-title"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        placeholder={toolId === "ssh" ? "ssh" : toolId}
-      />
-
       <section className="recent-sessions-section">
         <div className="recent-sessions-head">
-          <span className="field-label">Recent {toolId}</span>
+          <label className="field-label" htmlFor="new-session-recent">Recent {toolId}</label>
           <button
             type="button"
             className="ghost-btn recent-refresh-btn"
@@ -609,28 +652,31 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
           </button>
         </div>
         {recentSessionsError && <div className="tree-status error">{recentSessionsError}</div>}
-        {!recentSessionsError && recentSessions.length === 0 && !recentSessionsLoading && (
-          <div className="tree-status">No recent sessions</div>
-        )}
-        <div className="recent-sessions-list">
-          {recentSessions.map((item, index) => (
-            <button
-              key={`${item.toolId}-${item.lastUsedAt}-${index}`}
-              type="button"
-              className="recent-session-item"
-              disabled={createSessionMutation.isPending}
-              onClick={() => {
-                void onCreateFromRecent(item);
-              }}
-            >
-              <span className="recent-session-title">{item.title || item.toolId}</span>
-              <span className="recent-session-meta">
-                {item.workdir || "."} · {new Date(item.lastUsedAt).toLocaleString()}
-              </span>
-            </button>
-          ))}
+        <div className="recent-select-row">
+          <select
+            id="new-session-recent"
+            className="recent-select"
+            value={selectedRecentSessionIndex}
+            onChange={onSelectRecentSession}
+            disabled={recentSessionsLoading || createSessionMutation.isPending}
+          >
+            <option value="">Select recent session</option>
+            {recentSessions.map((item, index) => (
+              <option key={`${item.toolId}-${item.lastUsedAt}-${index}`} value={`${index}`}>
+                {formatRecentSessionLabel(item)}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
+
+      <label className="field-label" htmlFor="new-session-title">Title (optional)</label>
+      <input
+        id="new-session-title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        placeholder={toolId === "ssh" ? "ssh" : toolId}
+      />
 
       {sessionType === "LOCAL_PTY" && (
         <>
