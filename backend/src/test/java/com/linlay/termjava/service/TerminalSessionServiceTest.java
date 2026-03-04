@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -15,7 +16,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linlay.termjava.config.TerminalProperties;
 import com.linlay.termjava.model.CreateSessionRequest;
 import com.linlay.termjava.model.CreateSessionResponse;
+import com.linlay.termjava.model.RecentSessionItemResponse;
 import com.linlay.termjava.model.SessionTabViewResponse;
+import com.linlay.termjava.model.SessionType;
+import com.linlay.termjava.service.RecentSessionStore;
+import com.linlay.termjava.model.ssh.SshAuthType;
+import com.linlay.termjava.model.ssh.SshCredentialResponse;
 import com.linlay.termjava.service.ssh.SshConnectionPool;
 import com.linlay.termjava.service.ssh.SshCredentialStore;
 import com.pty4j.PtyProcess;
@@ -24,6 +30,7 @@ import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +63,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -76,6 +84,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -105,6 +114,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -126,6 +136,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -163,6 +174,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -199,6 +211,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -223,6 +236,7 @@ class TerminalSessionServiceTest {
             launcher,
             mock(SshCredentialStore.class),
             mock(SshConnectionPool.class),
+            mock(RecentSessionStore.class),
             new ObjectMapper()
         );
         servicesToClose.add(service);
@@ -240,6 +254,54 @@ class TerminalSessionServiceTest {
         assertEquals("terminal", tab.toolId());
         assertEquals(tempDir.toString(), tab.workdir());
         assertEquals("created", tab.connectionState());
+    }
+
+    @Test
+    void listRecentSessionsForSshFiltersMissingCredentials(@TempDir Path tempDir) {
+        TerminalProperties props = baseProps(tempDir);
+        SshCredentialStore sshCredentialStore = mock(SshCredentialStore.class);
+        RecentSessionStore recentSessionStore = mock(RecentSessionStore.class);
+
+        CreateSessionRequest validRequest = new CreateSessionRequest();
+        validRequest.setSessionType(SessionType.SSH_SHELL);
+        validRequest.setToolId("ssh");
+        validRequest.setTabTitle("ssh-valid");
+        com.linlay.termjava.model.SshSessionRequest validSsh = new com.linlay.termjava.model.SshSessionRequest();
+        validSsh.setCredentialId("cred-1");
+        validSsh.setTerm("xterm-256color");
+        validRequest.setSsh(validSsh);
+
+        CreateSessionRequest invalidRequest = new CreateSessionRequest();
+        invalidRequest.setSessionType(SessionType.SSH_SHELL);
+        invalidRequest.setToolId("ssh");
+        invalidRequest.setTabTitle("ssh-missing");
+        com.linlay.termjava.model.SshSessionRequest invalidSsh = new com.linlay.termjava.model.SshSessionRequest();
+        invalidSsh.setCredentialId("missing");
+        invalidSsh.setTerm("xterm-256color");
+        invalidRequest.setSsh(invalidSsh);
+
+        when(recentSessionStore.listByTool("ssh")).thenReturn(List.of(
+            new RecentSessionStore.RecentSessionRecord("fp1", "ssh", "ssh-valid", SessionType.SSH_SHELL, ".", Instant.now(), validRequest),
+            new RecentSessionStore.RecentSessionRecord("fp2", "ssh", "ssh-missing", SessionType.SSH_SHELL, ".", Instant.now(), invalidRequest)
+        ));
+        when(sshCredentialStore.listCredentials()).thenReturn(List.of(
+            new SshCredentialResponse("cred-1", "prod", "10.0.0.2", 22, "ubuntu", SshAuthType.PASSWORD, Instant.now())
+        ));
+
+        TerminalSessionService service = new TerminalSessionService(
+            props,
+            mock(PtyProcessLauncher.class),
+            sshCredentialStore,
+            mock(SshConnectionPool.class),
+            recentSessionStore,
+            new ObjectMapper()
+        );
+        servicesToClose.add(service);
+
+        List<RecentSessionItemResponse> items = service.listRecentSessions("ssh");
+        assertEquals(1, items.size());
+        assertEquals("cred-1", items.get(0).request().getSsh().getCredentialId());
+        verify(recentSessionStore).replaceToolRecords(eq("ssh"), anyList());
     }
 
     private TerminalProperties baseProps(Path tempDir) {

@@ -18,6 +18,7 @@ export interface CreateSessionRequest {
   toolId?: string;
   command?: string;
   args?: string[];
+  env?: Record<string, string>;
   workdir?: string;
   cols?: number;
   rows?: number;
@@ -46,6 +47,15 @@ export interface SessionTabViewResponse {
   startedAt: string;
   wsUrl: string;
   connectionState: string;
+}
+
+export interface RecentSessionItemResponse {
+  toolId: string;
+  title: string;
+  sessionType: SessionType;
+  workdir: string;
+  lastUsedAt: string;
+  request: CreateSessionRequest;
 }
 
 export type FileEntryType = "FILE" | "DIRECTORY";
@@ -116,12 +126,13 @@ export interface TerminalClientResponse {
 
 export interface SshCredentialSummaryResponse {
   credentialId: string;
+  title?: string | null;
   host: string;
   port: number;
   username: string;
   authType: "PASSWORD" | "PRIVATE_KEY";
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export interface SshPreflightResponse {
@@ -132,6 +143,7 @@ export interface SshPreflightResponse {
 }
 
 export interface CreateSshCredentialRequest {
+  title?: string;
   host: string;
   port?: number;
   username: string;

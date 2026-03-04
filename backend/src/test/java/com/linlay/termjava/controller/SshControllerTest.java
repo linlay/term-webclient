@@ -51,6 +51,7 @@ class SshControllerTest {
         when(sshCredentialStore.listCredentials()).thenReturn(List.of(
             new SshCredentialResponse(
                 "cred-1",
+                "prod box",
                 "10.0.0.2",
                 22,
                 "ubuntu",
@@ -63,6 +64,7 @@ class SshControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
             .andExpect(jsonPath("$[0].credentialId").value("cred-1"))
+            .andExpect(jsonPath("$[0].title").value("prod box"))
             .andExpect(jsonPath("$[0].host").value("10.0.0.2"));
     }
 
@@ -70,6 +72,7 @@ class SshControllerTest {
     void createCredentialReturns201() throws Exception {
         when(sshCredentialStore.createCredential(any())).thenReturn(new SshCredentialResponse(
             "cred-1",
+            "prod box",
             "10.0.0.2",
             22,
             "ubuntu",
@@ -81,13 +84,15 @@ class SshControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
+                      "title":"prod box",
                       "host":"10.0.0.2",
                       "username":"ubuntu",
                       "password":"secret"
                     }
                     """))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.credentialId").value("cred-1"));
+            .andExpect(jsonPath("$.credentialId").value("cred-1"))
+            .andExpect(jsonPath("$.title").value("prod box"));
     }
 
     @Test

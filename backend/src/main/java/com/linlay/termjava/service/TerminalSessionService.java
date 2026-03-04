@@ -6,6 +6,7 @@ import com.linlay.termjava.config.TerminalProperties;
 import com.linlay.termjava.model.CreateSessionRequest;
 import com.linlay.termjava.model.CreateSessionResponse;
 import com.linlay.termjava.model.FileSessionBinding;
+import com.linlay.termjava.model.RecentSessionItemResponse;
 import com.linlay.termjava.model.ScreenTextResponse;
 import com.linlay.termjava.model.SessionContextResponse;
 import com.linlay.termjava.model.SessionSnapshotResponse;
@@ -32,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -63,6 +65,7 @@ public class TerminalSessionService {
     private final PtyProcessLauncher processLauncher;
     private final SshCredentialStore sshCredentialStore;
     private final SshConnectionPool sshConnectionPool;
+    private final RecentSessionStore recentSessionStore;
     private final ObjectMapper objectMapper;
 
     private final ConcurrentMap<String, TerminalSession> sessions = new ConcurrentHashMap<>();
@@ -72,11 +75,13 @@ public class TerminalSessionService {
                                   PtyProcessLauncher processLauncher,
                                   SshCredentialStore sshCredentialStore,
                                   SshConnectionPool sshConnectionPool,
+                                  RecentSessionStore recentSessionStore,
                                   ObjectMapper objectMapper) {
         this.properties = properties;
         this.processLauncher = processLauncher;
         this.sshCredentialStore = sshCredentialStore;
         this.sshConnectionPool = sshConnectionPool;
+        this.recentSessionStore = recentSessionStore;
         this.objectMapper = objectMapper;
     }
 
@@ -119,6 +124,7 @@ public class TerminalSessionService {
 
             sessions.put(sessionId, session);
             startReadLoop(session);
+            recordRecentSession(request, sessionType, params, resolvedSshCredential);
             return new CreateSessionResponse(sessionId, "/ws/" + sessionId, session.getStartedAt());
         } catch (IOException e) {
             throw new RuntimeException("Failed to start terminal runtime", e);
@@ -329,6 +335,34 @@ public class TerminalSessionService {
             .sorted(Comparator.comparing(TerminalSession::getStartedAt))
             .map(this::toSessionTabView)
             .toList();
+    }
+
+    public List<RecentSessionItemResponse> listRecentSessions(String toolId) {
+        String normalizedToolId = normalizeToolId(toolId);
+        List<RecentSessionStore.RecentSessionRecord> records = recentSessionStore.listByTool(normalizedToolId);
+        if (!"ssh".equalsIgnoreCase(normalizedToolId) || records.isEmpty()) {
+            return records.stream().map(this::toRecentSessionItem).toList();
+        }
+
+        Set<String> credentialIds = sshCredentialStore.listCredentials().stream()
+            .map(item -> item.credentialId())
+            .filter(StringUtils::hasText)
+            .collect(java.util.stream.Collectors.toSet());
+
+        List<RecentSessionStore.RecentSessionRecord> valid = records.stream()
+            .filter(record -> {
+                CreateSessionRequest request = record.request();
+                if (request == null || request.getSsh() == null || !StringUtils.hasText(request.getSsh().getCredentialId())) {
+                    return false;
+                }
+                return credentialIds.contains(request.getSsh().getCredentialId().trim());
+            })
+            .toList();
+
+        if (valid.size() != records.size()) {
+            recentSessionStore.replaceToolRecords(normalizedToolId, valid);
+        }
+        return valid.stream().map(this::toRecentSessionItem).toList();
     }
 
     private void writeInputInternal(String sessionId, String data, String source) {
@@ -685,6 +719,96 @@ public class TerminalSessionService {
         if (!workdirFile.exists() || !workdirFile.isDirectory()) {
             throw new InvalidSessionRequestException("workdir must be an existing directory");
         }
+    }
+
+    private void recordRecentSession(CreateSessionRequest request,
+                                     SessionType sessionType,
+                                     SessionCreateParams params,
+                                     ResolvedSshCredential resolvedSshCredential) {
+        CreateSessionRequest recentRequest = buildRecentSessionRequest(request, sessionType, params, resolvedSshCredential);
+        try {
+            recentSessionStore.record(
+                recentRequest.getToolId(),
+                recentRequest.getTabTitle(),
+                sessionType,
+                recentRequest.getWorkdir(),
+                recentRequest
+            );
+        } catch (RuntimeException e) {
+            log.warn("Failed to persist recent session record for tool {}", recentRequest.getToolId(), e);
+        }
+    }
+
+    private CreateSessionRequest buildRecentSessionRequest(CreateSessionRequest request,
+                                                           SessionType sessionType,
+                                                           SessionCreateParams params,
+                                                           ResolvedSshCredential resolvedSshCredential) {
+        CreateSessionRequest effective = request == null ? new CreateSessionRequest() : request;
+        CreateSessionRequest recent = new CreateSessionRequest();
+        recent.setSessionType(sessionType);
+        recent.setToolId(StringUtils.hasText(effective.getToolId()) ? effective.getToolId().trim() : params.toolId());
+        recent.setTabTitle(StringUtils.hasText(effective.getTabTitle()) ? effective.getTabTitle().trim() : params.title());
+        recent.setWorkdir(params.workdir());
+
+        if (sessionType == SessionType.SSH_SHELL) {
+            SshSessionRequest source = effective.getSsh();
+            SshSessionRequest ssh = new SshSessionRequest();
+            if (source != null) {
+                ssh.setCredentialId(source.getCredentialId());
+                ssh.setTerm(source.getTerm());
+            }
+            if (!StringUtils.hasText(ssh.getCredentialId()) && resolvedSshCredential != null) {
+                ssh.setCredentialId(resolvedSshCredential.credentialId());
+            }
+            if (!StringUtils.hasText(ssh.getTerm()) && resolvedSshCredential != null) {
+                ssh.setTerm(resolvedSshCredential.term());
+            }
+            recent.setSsh(ssh);
+            return recent;
+        }
+
+        if (StringUtils.hasText(effective.getClientId())) {
+            recent.setClientId(effective.getClientId().trim());
+            return recent;
+        }
+
+        List<String> command = params.command();
+        if (!command.isEmpty()) {
+            recent.setCommand(command.get(0));
+            recent.setArgs(command.size() > 1 ? new ArrayList<>(command.subList(1, command.size())) : List.of());
+        }
+        return recent;
+    }
+
+    private String normalizeToolId(String toolId) {
+        if (!StringUtils.hasText(toolId)) {
+            throw new InvalidSessionRequestException("toolId is required");
+        }
+        return toolId.trim();
+    }
+
+    private RecentSessionItemResponse toRecentSessionItem(RecentSessionStore.RecentSessionRecord record) {
+        CreateSessionRequest request = record.request();
+        if (request != null && request.getSessionType() == null) {
+            request.setSessionType(record.sessionType());
+        }
+        if (request != null && !StringUtils.hasText(request.getToolId())) {
+            request.setToolId(record.toolId());
+        }
+        if (request != null && !StringUtils.hasText(request.getTabTitle())) {
+            request.setTabTitle(record.title());
+        }
+        if (request != null && !StringUtils.hasText(request.getWorkdir())) {
+            request.setWorkdir(record.workdir());
+        }
+        return new RecentSessionItemResponse(
+            record.toolId(),
+            record.title(),
+            record.sessionType(),
+            record.workdir(),
+            record.lastUsedAt(),
+            request
+        );
     }
 
     private String shellJoin(List<String> argv) {

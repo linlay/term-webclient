@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.linlay.termjava.model.CreateSessionResponse;
+import com.linlay.termjava.model.CreateSessionRequest;
+import com.linlay.termjava.model.RecentSessionItemResponse;
 import com.linlay.termjava.model.ScreenTextResponse;
 import com.linlay.termjava.model.SessionTabViewResponse;
 import com.linlay.termjava.model.SessionType;
@@ -106,6 +108,32 @@ class SessionControllerTest {
             .andExpect(jsonPath("$[0].title").value("Codex"))
             .andExpect(jsonPath("$[0].toolId").value("codex"))
             .andExpect(jsonPath("$[0].sessionType").value("LOCAL_PTY"));
+    }
+
+    @Test
+    void listRecentSessionsByTool() throws Exception {
+        CreateSessionRequest request = new CreateSessionRequest();
+        request.setSessionType(SessionType.LOCAL_PTY);
+        request.setToolId("codex");
+        request.setTabTitle("Codex");
+        request.setClientId("codex");
+        request.setWorkdir(".");
+        when(terminalSessionService.listRecentSessions("codex")).thenReturn(List.of(
+            new RecentSessionItemResponse(
+                "codex",
+                "Codex",
+                SessionType.LOCAL_PTY,
+                ".",
+                Instant.parse("2026-02-12T00:00:00Z"),
+                request
+            )
+        ));
+
+        mockMvc.perform(get("/webapi/sessions/recent").queryParam("toolId", "codex"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].toolId").value("codex"))
+            .andExpect(jsonPath("$[0].title").value("Codex"))
+            .andExpect(jsonPath("$[0].request.clientId").value("codex"));
     }
 
     @Test

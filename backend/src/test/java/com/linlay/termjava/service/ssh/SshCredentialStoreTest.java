@@ -51,6 +51,7 @@ class SshCredentialStoreTest {
 
         assertEquals(1, list.size());
         assertEquals(credentialId, list.get(0).credentialId());
+        assertEquals("prod box", list.get(0).title());
         assertEquals("10.0.0.2", list.get(0).host());
         assertEquals("ubuntu", list.get(0).username());
 
@@ -92,6 +93,7 @@ class SshCredentialStoreTest {
         request.setHost("10.0.0.2");
         request.setPort(22);
         request.setUsername("ubuntu");
+        request.setTitle("prod box");
         request.setPassword("secret-pass");
         return request;
     }

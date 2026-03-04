@@ -2,12 +2,21 @@ package com.linlay.termjava.model.ssh;
 
 public class CreateSshCredentialRequest {
 
+    private String title;
     private String host;
     private Integer port;
     private String username;
     private String password;
     private String privateKey;
     private String privateKeyPassphrase;
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
     public String getHost() {
         return host;

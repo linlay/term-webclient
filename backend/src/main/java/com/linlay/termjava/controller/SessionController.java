@@ -2,6 +2,7 @@ package com.linlay.termjava.controller;
 
 import com.linlay.termjava.model.CreateSessionRequest;
 import com.linlay.termjava.model.CreateSessionResponse;
+import com.linlay.termjava.model.RecentSessionItemResponse;
 import com.linlay.termjava.model.ScreenTextResponse;
 import com.linlay.termjava.model.SessionContextResponse;
 import com.linlay.termjava.model.SessionSnapshotResponse;
@@ -49,6 +50,11 @@ public class SessionController {
     @GetMapping
     public ResponseEntity<List<SessionTabViewResponse>> listSessions() {
         return ResponseEntity.ok(terminalSessionService.listSessions());
+    }
+
+    @GetMapping("/recent")
+    public ResponseEntity<List<RecentSessionItemResponse>> listRecentSessions(@RequestParam("toolId") String toolId) {
+        return ResponseEntity.ok(terminalSessionService.listRecentSessions(toolId));
     }
 
     @DeleteMapping("/{sessionId}")

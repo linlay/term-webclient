@@ -5,6 +5,7 @@ import { generateId } from "../../shared/utils/id";
 import type {
   CreateSessionRequest,
   CreateSshCredentialRequest,
+  RecentSessionItemResponse,
   SessionType,
   SshCredentialSummaryResponse,
   TerminalClientResponse,
@@ -94,6 +95,22 @@ function formatCredential(credential: SshCredentialSummaryResponse): string {
   return `${credential.username}@${credential.host}:${credential.port} (${credential.authType})`;
 }
 
+function formatSshCredentialOptionLabel(credential: SshCredentialSummaryResponse): string {
+  if (credential.title && credential.title.trim()) {
+    return credential.title.trim();
+  }
+  return formatCredential(credential);
+}
+
+function cloneCreateSessionRequest(payload: CreateSessionRequest): CreateSessionRequest {
+  return {
+    ...payload,
+    args: payload.args ? [...payload.args] : undefined,
+    env: payload.env ? { ...payload.env } : undefined,
+    ssh: payload.ssh ? { ...payload.ssh } : undefined
+  };
+}
+
 const ROOT_WORKDIR_LOADING_KEY = "__root__";
 
 interface VisibleWorkdirEntry {
@@ -112,6 +129,9 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [workdir, setWorkdir] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [recentSessions, setRecentSessions] = useState<RecentSessionItemResponse[]>([]);
+  const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
+  const [recentSessionsError, setRecentSessionsError] = useState("");
 
   const [workdirTree, setWorkdirTree] = useState<WorkdirBrowseResponse | null>(null);
   const [workdirChildrenMap, setWorkdirChildrenMap] = useState<Record<string, WorkdirEntry[]>>({});
@@ -124,6 +144,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [sshCredentialId, setSshCredentialId] = useState("");
   const [sshTerm, setSshTerm] = useState("xterm-256color");
   const [sshAuthType, setSshAuthType] = useState<"password" | "privateKey">("password");
+  const [sshCreateTitle, setSshCreateTitle] = useState("");
   const [sshCreateHost, setSshCreateHost] = useState("");
   const [sshCreatePort, setSshCreatePort] = useState("22");
   const [sshCreateUsername, setSshCreateUsername] = useState("");
@@ -218,8 +239,14 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     void refreshCredentials();
     void browseWorkdir();
     void refreshTerminalClients();
+    void refreshRecentSessions(toolId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    void refreshRecentSessions(toolId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolId]);
 
   async function refreshTerminalClients(): Promise<void> {
     setTerminalClientsError("");
@@ -232,6 +259,25 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       }
     } catch (e) {
       setTerminalClientsError(e instanceof Error ? e.message : "Failed to load terminal clients");
+    }
+  }
+
+  async function refreshRecentSessions(nextToolId: string): Promise<void> {
+    const normalizedToolId = (nextToolId || "").trim();
+    if (!normalizedToolId) {
+      setRecentSessions([]);
+      return;
+    }
+    setRecentSessionsLoading(true);
+    setRecentSessionsError("");
+    try {
+      const recent = await apiClient.listRecentSessions(normalizedToolId);
+      setRecentSessions(recent);
+    } catch (e) {
+      setRecentSessions([]);
+      setRecentSessionsError(e instanceof Error ? e.message : "Failed to load recent sessions");
+    } finally {
+      setRecentSessionsLoading(false);
     }
   }
 
@@ -341,12 +387,55 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     event.preventDefault();
   }
 
+  async function createSessionWithPayload(payload: CreateSessionRequest): Promise<void> {
+    const normalizedPayload = cloneCreateSessionRequest(payload);
+    const sessionTypeValue: SessionType = normalizedPayload.sessionType === "SSH_SHELL" ? "SSH_SHELL" : "LOCAL_PTY";
+    const wsClientId = generateId();
+    const response = await createSessionMutation.mutateAsync(normalizedPayload);
+    const fallbackToolId = sessionTypeValue === "SSH_SHELL" ? "ssh" : "terminal";
+    const resolvedToolId = (normalizedPayload.toolId || fallbackToolId).trim() || fallbackToolId;
+    const fallbackTitle = sessionTypeValue === "SSH_SHELL"
+      ? "ssh"
+      : (selectedClient?.label || resolvedToolId || "terminal");
+    const resolvedTitle = (normalizedPayload.tabTitle || "").trim() || fallbackTitle;
+
+    onCreated({
+      sessionId: response.sessionId,
+      wsUrl: response.wsUrl,
+      title: resolvedTitle,
+      clientId: wsClientId,
+      sessionType: sessionTypeValue,
+      toolId: resolvedToolId,
+      workdir: normalizedPayload.workdir || ".",
+      fileRootPath: normalizedPayload.workdir || ".",
+      sshCredentialId: normalizedPayload.ssh?.credentialId || null,
+      createRequest: normalizedPayload
+    });
+  }
+
+  async function onCreateFromRecent(item: RecentSessionItemResponse): Promise<void> {
+    setError("");
+    setNotice("");
+    const sourceRequest: CreateSessionRequest = item.request ? cloneCreateSessionRequest(item.request) : {};
+    const payload: CreateSessionRequest = {
+      ...sourceRequest,
+      sessionType: sourceRequest.sessionType || item.sessionType,
+      toolId: sourceRequest.toolId || item.toolId,
+      tabTitle: sourceRequest.tabTitle || item.title,
+      workdir: sourceRequest.workdir || item.workdir
+    };
+    try {
+      await createSessionWithPayload(payload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create session");
+    }
+  }
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setNotice("");
 
-    const wsClientId = generateId();
     const titleText = title.trim();
 
     let payload: CreateSessionRequest;
@@ -393,19 +482,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     }
 
     try {
-      const response = await createSessionMutation.mutateAsync(payload);
-      onCreated({
-        sessionId: response.sessionId,
-        wsUrl: response.wsUrl,
-        title: payload.tabTitle || (sessionType === "SSH_SHELL" ? "ssh" : "terminal"),
-        clientId: wsClientId,
-        sessionType,
-        toolId: payload.toolId || (sessionType === "SSH_SHELL" ? "ssh" : "terminal"),
-        workdir: payload.workdir || ".",
-        fileRootPath: payload.workdir || ".",
-        sshCredentialId: payload.ssh?.credentialId || null,
-        createRequest: payload
-      });
+      await createSessionWithPayload(payload);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create session");
     }
@@ -425,6 +502,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     }
 
     const payload: CreateSshCredentialRequest = {
+      title: sshCreateTitle.trim() || undefined,
       host,
       username,
       port
@@ -449,6 +527,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       const created = await createSshCredentialMutation.mutateAsync(payload);
       await refreshCredentials();
       setSshCredentialId(created.credentialId);
+      setSshCreateTitle("");
       setSshCreatePassword("");
       setSshCreatePrivateKey("");
       setSshCreatePrivateKeyPassphrase("");
@@ -516,6 +595,42 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         onChange={(event) => setTitle(event.target.value)}
         placeholder={toolId === "ssh" ? "ssh" : toolId}
       />
+
+      <section className="recent-sessions-section">
+        <div className="recent-sessions-head">
+          <span className="field-label">Recent {toolId}</span>
+          <button
+            type="button"
+            className="ghost-btn recent-refresh-btn"
+            onClick={() => void refreshRecentSessions(toolId)}
+            disabled={recentSessionsLoading}
+          >
+            {recentSessionsLoading ? "Loading" : "Refresh"}
+          </button>
+        </div>
+        {recentSessionsError && <div className="tree-status error">{recentSessionsError}</div>}
+        {!recentSessionsError && recentSessions.length === 0 && !recentSessionsLoading && (
+          <div className="tree-status">No recent sessions</div>
+        )}
+        <div className="recent-sessions-list">
+          {recentSessions.map((item, index) => (
+            <button
+              key={`${item.toolId}-${item.lastUsedAt}-${index}`}
+              type="button"
+              className="recent-session-item"
+              disabled={createSessionMutation.isPending}
+              onClick={() => {
+                void onCreateFromRecent(item);
+              }}
+            >
+              <span className="recent-session-title">{item.title || item.toolId}</span>
+              <span className="recent-session-meta">
+                {item.workdir || "."} · {new Date(item.lastUsedAt).toLocaleString()}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {sessionType === "LOCAL_PTY" && (
         <>
@@ -612,7 +727,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
             {sshCredentials.length === 0 && <option value="">No credentials</option>}
             {sshCredentials.map((credential) => (
               <option key={credential.credentialId} value={credential.credentialId}>
-                {formatCredential(credential)}
+                {formatSshCredentialOptionLabel(credential)}
               </option>
             ))}
           </select>
@@ -648,6 +763,14 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
           </div>
 
           <h3 className="modal-title">Create SSH Config</h3>
+
+          <label className="field-label" htmlFor="new-ssh-title">Title (optional)</label>
+          <input
+            id="new-ssh-title"
+            value={sshCreateTitle}
+            onChange={(event) => setSshCreateTitle(event.target.value)}
+            placeholder="prod api machine"
+          />
 
           <label className="field-label" htmlFor="new-ssh-host">Host</label>
           <input

@@ -10,6 +10,8 @@ server:
   port: ${BACKEND_PORT:11946}
 
 terminal:
+  recent-sessions-file: ${TERMINAL_RECENT_SESSIONS_FILE:data/recent-sessions.json}
+  recent-sessions-per-tool: ${TERMINAL_RECENT_SESSIONS_PER_TOOL:5}
   files:
     enabled: ${TERMINAL_FILES_ENABLED:false}
   cli-clients:

@@ -45,6 +45,8 @@ terminal:
   session-event-max-entries: 2048
   command-frame-max-entries: 256
   transcript-max-chars: 200000
+  recent-sessions-file: ${TERMINAL_RECENT_SESSIONS_FILE:data/recent-sessions.json}
+  recent-sessions-per-tool: ${TERMINAL_RECENT_SESSIONS_PER_TOOL:5}
   agent:
     enabled: true
     step-timeout-seconds: 15

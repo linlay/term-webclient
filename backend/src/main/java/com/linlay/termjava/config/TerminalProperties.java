@@ -24,6 +24,8 @@ public class TerminalProperties {
     private int sessionEventMaxEntries = 2048;
     private int commandFrameMaxEntries = 256;
     private int transcriptMaxChars = 200_000;
+    private String recentSessionsFile = "data/recent-sessions.json";
+    private int recentSessionsPerTool = 5;
     private AgentProperties agent = new AgentProperties();
     private SshProperties ssh = new SshProperties();
     private FilesProperties files = new FilesProperties();
@@ -155,6 +157,22 @@ public class TerminalProperties {
 
     public void setTranscriptMaxChars(int transcriptMaxChars) {
         this.transcriptMaxChars = transcriptMaxChars;
+    }
+
+    public String getRecentSessionsFile() {
+        return recentSessionsFile;
+    }
+
+    public void setRecentSessionsFile(String recentSessionsFile) {
+        this.recentSessionsFile = recentSessionsFile;
+    }
+
+    public int getRecentSessionsPerTool() {
+        return recentSessionsPerTool;
+    }
+
+    public void setRecentSessionsPerTool(int recentSessionsPerTool) {
+        this.recentSessionsPerTool = recentSessionsPerTool;
     }
 
     public AgentProperties getAgent() {

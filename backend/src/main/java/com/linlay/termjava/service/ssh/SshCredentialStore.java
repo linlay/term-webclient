@@ -60,6 +60,7 @@ public class SshCredentialStore {
 
         StoredCredential stored = new StoredCredential();
         stored.credentialId = credentialId;
+        stored.title = StringUtils.hasText(request.getTitle()) ? request.getTitle().trim() : null;
         stored.host = request.getHost().trim();
         stored.port = port;
         stored.username = request.getUsername().trim();
@@ -78,6 +79,7 @@ public class SshCredentialStore {
 
         return new SshCredentialResponse(
             credentialId,
+            stored.title,
             stored.host,
             stored.port,
             stored.username,
@@ -136,6 +138,7 @@ public class SshCredentialStore {
             return file.credentials.stream()
                 .map(item -> new SshCredentialResponse(
                     item.credentialId,
+                    item.title,
                     item.host,
                     item.port,
                     item.username,
@@ -304,6 +307,7 @@ public class SshCredentialStore {
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class StoredCredential {
         public String credentialId;
+        public String title;
         public String host;
         public int port;
         public String username;

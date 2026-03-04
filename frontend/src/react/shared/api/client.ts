@@ -6,6 +6,7 @@ import type {
   ApproveAgentRunRequest,
   AppVersionResponse,
   AuthStatusResponse,
+  RecentSessionItemResponse,
   CreateAgentRunRequest,
   CreateSessionRequest,
   CreateSessionResponse,
@@ -176,6 +177,11 @@ export const apiClient = {
 
   listSessions(): Promise<SessionTabViewResponse[]> {
     return request<SessionTabViewResponse[]>("/sessions");
+  },
+
+  listRecentSessions(toolId: string): Promise<RecentSessionItemResponse[]> {
+    const query = new URLSearchParams({ toolId: (toolId || "").trim() });
+    return request<RecentSessionItemResponse[]>(`/sessions/recent?${query.toString()}`);
   },
 
   closeSession(sessionId: string): Promise<void> {
