@@ -1,7 +1,8 @@
 # Complex runtime configuration template.
 # Copy to one of:
-# 1) backend/application.yml   (local development, gitignored)
-# 2) release/application.yml   (release runtime)
+# 1) application.yml           (project root runtime, local private, gitignored)
+# 2) backend/application.yml   (local development, gitignored)
+# 3) release/application.yml   (custom release runtime path)
 #
 # Simple runtime values (ports, frontend host, auth toggles, etc.) stay in .env.
 

@@ -16,26 +16,33 @@
 
 ### 本地开发
 
-先准备本地后端覆盖配置（本地私有，不提交）：
+推荐先准备根目录运行配置（本地私有，不提交）：
+
+```bash
+cp .env.example .env
+cp application.example.yml application.yml
+```
+
+如需仅对后端开发做额外覆盖，可再准备：
 
 ```bash
 cp application.example.yml backend/application.yml
 ```
 
-后端和前端分别启动：
+后端和前端分别启动（两者都会优先读取根目录 `.env`）：
 
 ```bash
-# 终端 1：启动后端（127.0.0.1:11946）
+# 终端 1：启动后端（端口优先取根 .env 的 BACKEND_PORT，无配置时默认 8080）
 cd backend
 mvn spring-boot:run
 
-# 终端 2：启动前端（localhost:11947，自动代理到后端）
+# 终端 2：启动前端（Vite 默认 localhost:5173，自动代理到后端）
 cd frontend
 npm install
 npm run dev
 ```
 
-访问 `http://localhost:11947/term/`（Web）或 `http://localhost:11947/appterm/`（App WebView）。
+访问 `http://localhost:5173/term/`（Web）或 `http://localhost:5173/appterm/`（App WebView）。
 
 ### 一键打包部署
 
@@ -52,26 +59,31 @@ npm run dev
 
 脚本目录约定：`release-scripts/mac` 放 `.sh`，`release-scripts/windows` 放 `.ps1` / `.bat`。
 
-默认端口：后端 `127.0.0.1:11946`，前端 `0.0.0.0:11947`。
+发布默认端口：后端 `127.0.0.1:11946`，前端 `0.0.0.0:11947`。
 
 ## 配置
 
 ### 配置模板
 
-- 根目录仅保留模板文件：`.env.example`、`application.example.yml`
-- 根目录 `.env` 不是必需文件
-- `backend/application.yml` 用于本地开发（已 gitignore）
-- `release/.env` + `release/application.yml` 用于发布运行
+- 模板文件：`.env.example`、`application.example.yml`
+- 推荐运行配置（本地私有，不提交）：根目录 `.env` + `application.yml`
+- `backend/application.yml` 用于 `mvn spring-boot:run` 本地开发（已 gitignore）
+- 需要自定义发布目录时，使用 `<release-dir>/.env` + `<release-dir>/application.yml`
+- `release-scripts/mac/start.sh` 与 `stop.sh` 无参时：优先根目录配置，根缺失时回退 `release/`
 
 常用复制命令：
 
 ```bash
+# 默认运行配置（start.sh / stop.sh 无参）
+cp .env.example .env
+cp application.example.yml application.yml
+
 # 本地开发后端复杂配置
 cp application.example.yml backend/application.yml
 
-# release 运行配置
-cp .env.example release/.env
-cp application.example.yml release/application.yml
+# 自定义发布目录运行配置
+cp .env.example /tmp/term-release/.env
+cp application.example.yml /tmp/term-release/application.yml
 ```
 
 ### 后端配置
@@ -79,8 +91,8 @@ cp application.example.yml release/application.yml
 配置文件加载顺序（后者覆盖前者）：
 
 1. `backend/src/main/resources/application.yml`（内置默认）
-2. 运行目录 `application.yml`（例如 `backend/application.yml`、`release/application.yml`）
-3. 运行目录 `.env`（通过 `spring.config.import` 导入）
+2. 父目录 `application.yml` / `.env`（例如从 `backend/` 启动时读取项目根目录）
+3. 当前目录 `application.yml` / `.env`（例如 `backend/application.yml`）
 
 关键配置项：
 
@@ -105,14 +117,14 @@ cp application.example.yml release/application.yml
 |---|---|---|
 | `VITE_API_BASE` | 空（同源） | API 基础地址，为空时使用同源路径 |
 | `VITE_COPILOT_REFRESH_MS` | `2000` | Copilot 自动刷新间隔（毫秒） |
-| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:11946` | 开发模式代理目标 |
+| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:8080` | 开发模式代理目标（二级回退；优先使用根 `.env` 的 `BACKEND_HOST/BACKEND_PORT`） |
 
 ### 启动脚本环境变量
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `BACKEND_HOST` | 优先从 `release/.env` 读取，回退脚本默认值 `127.0.0.1` | 后端监听地址 |
-| `BACKEND_PORT` | 优先从 `release/.env` 读取，回退脚本默认值 `11946` | 后端监听端口 |
+| `BACKEND_HOST` | 优先从目标运行目录 `.env` 读取，回退脚本默认值 `127.0.0.1` | 后端监听地址 |
+| `BACKEND_PORT` | 优先从目标运行目录 `.env` 读取，回退脚本默认值 `11946` | 后端监听端口 |
 | `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
 | `FRONTEND_PORT` | `11947` | 前端监听端口 |
 | `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
@@ -120,7 +132,8 @@ cp application.example.yml release/application.yml
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
 | `TERMINAL_SSH_MASTER_KEY` | - | SSH 凭据加密主密钥 |
 
-`release-scripts/mac/start.sh` 仅识别发布目录下的 `.env`，并强制要求同时存在 `application.yml`。任一缺失会立即失败并提示修复。
+`release-scripts/mac/start.sh` 与 `stop.sh` 都要求目标运行目录同时存在 `.env` 和 `application.yml`。  
+无参时目录选择规则：根目录优先，根缺失时回退 `release/`。
 
 ## 认证
 
@@ -138,7 +151,7 @@ htpasswd -nbBC 10 '' 'your-password' | cut -d: -f2
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(10)).decode())"
 ```
 
-将生成的哈希写入 `release/.env` 的 `AUTH_PASSWORD_HASH_BCRYPT`：
+将生成的哈希写入目标运行目录 `.env`（默认是根目录 `.env`）的 `AUTH_PASSWORD_HASH_BCRYPT`：
 
 ```bash
 AUTH_PASSWORD_HASH_BCRYPT='<your-bcrypt-hash>'
@@ -243,7 +256,7 @@ curl -X POST http://127.0.0.1:11947/term/api/ssh/exec \
 
 ### CLI 客户端配置
 
-可在 `backend/application.yml`（开发）或 `release/application.yml`（发布）中注册多个终端工具：
+可在 `backend/application.yml`（开发）或运行目录 `application.yml`（如根目录 `application.yml`、`release/application.yml`）中注册多个终端工具：
 
 ```yaml
 terminal:
@@ -283,7 +296,7 @@ APP_ENV=development ./release-scripts/mac/package.sh /tmp/term-release-dev
 ```
 
 > `release-scripts/mac/package.sh` 仅负责构建与 release 产物准备，不负责写入运行时 `.env` / `application.yml`。
-> 运行时配置由安装流程（setup）或运维在 release 目录提供。
+> 运行时配置由安装流程（setup）或运维在目标运行目录提供（默认根目录，或显式指定的 release 目录）。
 
 打包产物结构：
 
@@ -311,6 +324,7 @@ release/
 ### 启动
 
 ```bash
+# 默认：读取根目录 .env + application.yml（根缺失时回退 release/）
 ./release-scripts/mac/start.sh
 # 或指定目录
 ./release-scripts/mac/start.sh /tmp/term-release
@@ -319,6 +333,11 @@ release/
 启动前必须准备：
 
 ```bash
+# 默认无参启动所需
+cp .env.example .env
+cp application.example.yml application.yml
+
+# 指定目录启动所需
 cp .env.example /tmp/term-release/.env
 cp application.example.yml /tmp/term-release/application.yml
 ```
@@ -326,6 +345,7 @@ cp application.example.yml /tmp/term-release/application.yml
 ### 停止
 
 ```bash
+# 默认：按与 start.sh 相同规则选择目标目录（根优先，缺失回退 release/）
 ./release-scripts/mac/stop.sh
 # 或指定目录
 ./release-scripts/mac/stop.sh /tmp/term-release

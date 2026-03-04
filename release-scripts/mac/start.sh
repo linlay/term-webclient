@@ -3,27 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-if [[ $# -ge 1 ]]; then
-  if [[ "$1" = /* ]]; then
-    RELEASE_DIR="$1"
-  else
-    RELEASE_DIR="$ROOT_DIR/$1"
-  fi
-elif [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js" ]]; then
-  RELEASE_DIR="$ROOT_DIR"
-else
-  RELEASE_DIR="$ROOT_DIR/release"
-fi
-
-RUN_DIR="$RELEASE_DIR/run"
-LOG_DIR="$RELEASE_DIR/logs"
-BASE_ENV_FILE="$RELEASE_DIR/.env"
-BACKEND_CONFIG_FILE="$RELEASE_DIR/application.yml"
-
-BACKEND_PID_FILE="$RUN_DIR/backend.pid"
-FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
-BACKEND_LOG_FILE="$LOG_DIR/backend.out"
-FRONTEND_LOG_FILE="$LOG_DIR/frontend.out"
+BASE_ENV_FILE_NAME=".env"
+BACKEND_CONFIG_FILE_NAME="application.yml"
 
 BACKEND_HOST_OVERRIDE="${BACKEND_HOST:-}"
 BACKEND_PORT_OVERRIDE="${BACKEND_PORT:-}"
@@ -41,6 +22,52 @@ die() {
   echo "[start] $*"
   exit 1
 }
+
+has_runtime_config() {
+  local dir="$1"
+  [[ -f "$dir/$BASE_ENV_FILE_NAME" ]] && [[ -f "$dir/$BACKEND_CONFIG_FILE_NAME" ]]
+}
+
+resolve_release_dir() {
+  if [[ $# -ge 1 ]]; then
+    if [[ "$1" = /* ]]; then
+      printf '%s\n' "$1"
+      return 0
+    fi
+    printf '%s\n' "$ROOT_DIR/$1"
+    return 0
+  fi
+
+  if has_runtime_config "$ROOT_DIR"; then
+    printf '%s\n' "$ROOT_DIR"
+    return 0
+  fi
+
+  local release_fallback="$ROOT_DIR/release"
+  if has_runtime_config "$release_fallback"; then
+    printf '%s\n' "$release_fallback"
+    return 0
+  fi
+
+  # Keep error messages actionable: default to root when neither location is prepared.
+  printf '%s\n' "$ROOT_DIR"
+}
+
+if [[ $# -ge 1 ]]; then
+  RELEASE_DIR="$(resolve_release_dir "$1")"
+else
+  RELEASE_DIR="$(resolve_release_dir)"
+fi
+
+RUN_DIR="$RELEASE_DIR/run"
+LOG_DIR="$RELEASE_DIR/logs"
+BASE_ENV_FILE="$RELEASE_DIR/$BASE_ENV_FILE_NAME"
+BACKEND_CONFIG_FILE="$RELEASE_DIR/$BACKEND_CONFIG_FILE_NAME"
+
+BACKEND_PID_FILE="$RUN_DIR/backend.pid"
+FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+BACKEND_LOG_FILE="$LOG_DIR/backend.out"
+FRONTEND_LOG_FILE="$LOG_DIR/frontend.out"
 
 require_config_file() {
   local path="$1"
@@ -169,8 +196,6 @@ default_backend_port="11946"
 [[ -n "$BACKEND_PORT_OVERRIDE" ]] || env_backend_port="$(read_env_config "$BASE_ENV_FILE" "BACKEND_PORT" || true)"
 [[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$BASE_ENV_FILE" "FRONTEND_HOST" || true)"
 [[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$BASE_ENV_FILE" "FRONTEND_PORT" || true)"
-[[ -n "$FRONTEND_HOST" ]] || FRONTEND_HOST="$(read_env_config "$BASE_ENV_FILE" "HOST" || true)"
-[[ -n "$FRONTEND_PORT" ]] || FRONTEND_PORT="$(read_env_config "$BASE_ENV_FILE" "PORT" || true)"
 [[ -n "$BACKEND_ORIGIN_OVERRIDE" ]] || BACKEND_ORIGIN_OVERRIDE="$(read_env_config "$BASE_ENV_FILE" "BACKEND_ORIGIN" || true)"
 
 if [[ -n "${env_backend_host:-}" ]]; then

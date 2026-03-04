@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BASE_ENV_FILE_NAME=".env"
+BACKEND_CONFIG_FILE_NAME="application.yml"
 
 read_env_config() {
   local file="$1"
@@ -31,6 +32,48 @@ read_env_config() {
       exit
     }
   ' "$file"
+}
+
+die() {
+  echo "[stop] $*"
+  exit 1
+}
+
+require_config_file() {
+  local path="$1"
+  local hint="$2"
+  if [[ ! -f "$path" ]]; then
+    die "missing required config: $path ($hint)"
+  fi
+}
+
+has_runtime_config() {
+  local dir="$1"
+  [[ -f "$dir/$BASE_ENV_FILE_NAME" ]] && [[ -f "$dir/$BACKEND_CONFIG_FILE_NAME" ]]
+}
+
+resolve_release_dir() {
+  if [[ $# -ge 1 ]]; then
+    if [[ "$1" = /* ]]; then
+      printf '%s\n' "$1"
+      return 0
+    fi
+    printf '%s\n' "$ROOT_DIR/$1"
+    return 0
+  fi
+
+  if has_runtime_config "$ROOT_DIR"; then
+    printf '%s\n' "$ROOT_DIR"
+    return 0
+  fi
+
+  local release_fallback="$ROOT_DIR/release"
+  if has_runtime_config "$release_fallback"; then
+    printf '%s\n' "$release_fallback"
+    return 0
+  fi
+
+  printf '%s\n' "$ROOT_DIR"
 }
 
 is_running() {
@@ -154,95 +197,47 @@ stop_by_port() {
   done <<< "$pids"
 }
 
-resolve_release_env_file() {
-  local release_dir="$1"
-  local base_env_file="$release_dir/$BASE_ENV_FILE_NAME"
-
-  if [[ -f "$base_env_file" ]]; then
-    printf '%s\n' "$base_env_file"
-    return 0
-  fi
-
-  return 1
-}
-
 resolve_backend_port() {
-  local release_dir="$1"
+  local env_file="$1"
   local backend_port="11946"
-
-  local env_file=""
-  if env_file="$(resolve_release_env_file "$release_dir")"; then
-    local env_backend_port
-    env_backend_port="$(read_env_config "$env_file" "BACKEND_PORT" || true)"
-    if [[ -n "$env_backend_port" ]]; then
-      backend_port="$env_backend_port"
-    fi
+  local env_backend_port
+  env_backend_port="$(read_env_config "$env_file" "BACKEND_PORT" || true)"
+  if [[ -n "$env_backend_port" ]]; then
+    backend_port="$env_backend_port"
   fi
 
   echo "$backend_port"
 }
 
 resolve_frontend_port() {
-  local release_dir="$1"
+  local env_file="$1"
   local frontend_port="11947"
-  local env_file=""
-
-  if env_file="$(resolve_release_env_file "$release_dir")"; then
-    local config_frontend_port
-    config_frontend_port="$(read_env_config "$env_file" "FRONTEND_PORT" || true)"
-    if [[ -z "$config_frontend_port" ]]; then
-      config_frontend_port="$(read_env_config "$env_file" "PORT" || true)"
-    fi
-    if [[ -n "$config_frontend_port" ]]; then
-      frontend_port="$config_frontend_port"
-    fi
+  local config_frontend_port
+  config_frontend_port="$(read_env_config "$env_file" "FRONTEND_PORT" || true)"
+  if [[ -n "$config_frontend_port" ]]; then
+    frontend_port="$config_frontend_port"
   fi
 
   echo "$frontend_port"
 }
 
-add_release_dir() {
-  local dir="$1"
-  [[ -z "$dir" ]] && return
-  if [[ "${#RELEASE_DIRS[@]}" -gt 0 ]]; then
-    for existing in "${RELEASE_DIRS[@]}"; do
-      if [[ "$existing" == "$dir" ]]; then
-        return
-      fi
-    done
-  fi
-  RELEASE_DIRS+=("$dir")
-}
-
-RELEASE_DIRS=()
 if [[ $# -ge 1 ]]; then
-  if [[ "$1" = /* ]]; then
-    add_release_dir "$1"
-  else
-    add_release_dir "$ROOT_DIR/$1"
-  fi
+  RELEASE_DIR="$(resolve_release_dir "$1")"
 else
-  if [[ -f "$ROOT_DIR/backend/app.jar" ]] && [[ -f "$ROOT_DIR/frontend/server.js" ]]; then
-    add_release_dir "$ROOT_DIR"
-  fi
-  if [[ -d "$ROOT_DIR/release" ]]; then
-    add_release_dir "$ROOT_DIR/release"
-  fi
-  if [[ "${#RELEASE_DIRS[@]}" -eq 0 ]]; then
-    add_release_dir "$ROOT_DIR"
-  fi
+  RELEASE_DIR="$(resolve_release_dir)"
 fi
+BASE_ENV_FILE="$RELEASE_DIR/$BASE_ENV_FILE_NAME"
+BACKEND_CONFIG_FILE="$RELEASE_DIR/$BACKEND_CONFIG_FILE_NAME"
+RUN_DIR="$RELEASE_DIR/run"
 
-for release_dir in "${RELEASE_DIRS[@]}"; do
-  run_dir="$release_dir/run"
-  echo "[stop] checking $release_dir"
-  stop_by_pid_file "frontend" "$run_dir/frontend.pid"
-  stop_by_pid_file "backend" "$run_dir/backend.pid"
-done
+require_config_file "$BASE_ENV_FILE" "copy from .env.example"
+require_config_file "$BACKEND_CONFIG_FILE" "copy from application.example.yml"
 
-for release_dir in "${RELEASE_DIRS[@]}"; do
-  backend_port="$(resolve_backend_port "$release_dir")"
-  frontend_port="$(resolve_frontend_port "$release_dir")"
-  stop_by_port "frontend" "$frontend_port"
-  stop_by_port "backend" "$backend_port"
-done
+echo "[stop] checking $RELEASE_DIR"
+stop_by_pid_file "frontend" "$RUN_DIR/frontend.pid"
+stop_by_pid_file "backend" "$RUN_DIR/backend.pid"
+
+backend_port="$(resolve_backend_port "$BASE_ENV_FILE")"
+frontend_port="$(resolve_frontend_port "$BASE_ENV_FILE")"
+stop_by_port "frontend" "$frontend_port"
+stop_by_port "backend" "$backend_port"

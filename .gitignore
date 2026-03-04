@@ -4,6 +4,7 @@
 # local workspace
 AGENTS.md
 .env
+/application.yml
 .husky/_
 
 # dependencies
