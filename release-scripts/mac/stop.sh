@@ -35,7 +35,7 @@ read_env_config() {
 }
 
 die() {
-  echo "[stop] $*"
+  echo "[stop] $*" >&2
   exit 1
 }
 
@@ -44,6 +44,18 @@ require_config_file() {
   local hint="$2"
   if [[ ! -f "$path" ]]; then
     die "missing required config: $path ($hint)"
+  fi
+}
+
+require_port_value() {
+  local value="$1"
+  local name="$2"
+  local env_file="$3"
+  if [[ -z "$value" ]]; then
+    die "missing required $name in $env_file (copy from .env.example)"
+  fi
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 1 || value > 65535 )); then
+    die "invalid $name=$value in $env_file (expected integer 1-65535)"
   fi
 }
 
@@ -199,26 +211,18 @@ stop_by_port() {
 
 resolve_backend_port() {
   local env_file="$1"
-  local backend_port="11946"
   local env_backend_port
   env_backend_port="$(read_env_config "$env_file" "BACKEND_PORT" || true)"
-  if [[ -n "$env_backend_port" ]]; then
-    backend_port="$env_backend_port"
-  fi
-
-  echo "$backend_port"
+  require_port_value "$env_backend_port" "BACKEND_PORT" "$env_file"
+  echo "$env_backend_port"
 }
 
 resolve_frontend_port() {
   local env_file="$1"
-  local frontend_port="11947"
   local config_frontend_port
   config_frontend_port="$(read_env_config "$env_file" "FRONTEND_PORT" || true)"
-  if [[ -n "$config_frontend_port" ]]; then
-    frontend_port="$config_frontend_port"
-  fi
-
-  echo "$frontend_port"
+  require_port_value "$config_frontend_port" "FRONTEND_PORT" "$env_file"
+  echo "$config_frontend_port"
 }
 
 if [[ $# -ge 1 ]]; then

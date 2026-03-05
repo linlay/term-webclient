@@ -19,7 +19,7 @@ JAVA_CMD=""
 BACKEND_JAR=""
 
 die() {
-  echo "[start] $*"
+  echo "[start] $*" >&2
   exit 1
 }
 
@@ -74,6 +74,18 @@ require_config_file() {
   local hint="$2"
   if [[ ! -f "$path" ]]; then
     die "missing required config: $path ($hint)"
+  fi
+}
+
+require_port_value() {
+  local value="$1"
+  local name="$2"
+  local hint="$3"
+  if [[ -z "$value" ]]; then
+    die "missing required $name in $BASE_ENV_FILE ($hint)"
+  fi
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 1 || value > 65535 )); then
+    die "invalid $name=$value in $BASE_ENV_FILE (expected integer 1-65535)"
   fi
 }
 
@@ -190,7 +202,6 @@ resolve_java_cmd
 require_java_version
 
 default_backend_host="127.0.0.1"
-default_backend_port="11946"
 
 [[ -n "$BACKEND_HOST_OVERRIDE" ]] || env_backend_host="$(read_env_config "$BASE_ENV_FILE" "BACKEND_HOST" || true)"
 [[ -n "$BACKEND_PORT_OVERRIDE" ]] || env_backend_port="$(read_env_config "$BASE_ENV_FILE" "BACKEND_PORT" || true)"
@@ -201,15 +212,15 @@ default_backend_port="11946"
 if [[ -n "${env_backend_host:-}" ]]; then
   default_backend_host="$env_backend_host"
 fi
-if [[ -n "${env_backend_port:-}" ]]; then
-  default_backend_port="$env_backend_port"
-fi
 
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
-FRONTEND_PORT="${FRONTEND_PORT:-11947}"
-
 effective_backend_host="${BACKEND_HOST_OVERRIDE:-$default_backend_host}"
-effective_backend_port="${BACKEND_PORT_OVERRIDE:-$default_backend_port}"
+effective_backend_port="${BACKEND_PORT_OVERRIDE:-${env_backend_port:-}}"
+FRONTEND_PORT="${FRONTEND_PORT:-}"
+
+require_port_value "$effective_backend_port" "BACKEND_PORT" "copy from .env.example"
+require_port_value "$FRONTEND_PORT" "FRONTEND_PORT" "copy from .env.example"
+
 BACKEND_ORIGIN="${BACKEND_ORIGIN_OVERRIDE:-http://$effective_backend_host:$effective_backend_port}"
 
 backend_override_args=()

@@ -2,8 +2,6 @@ import path from "node:path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-const DEFAULT_DEV_PROXY_TARGET = "http://127.0.0.1:8080";
-
 function parsePort(rawValue: string | undefined): number | null {
   if (typeof rawValue !== "string" || rawValue.trim() === "") {
     return null;
@@ -23,32 +21,49 @@ function normalizeBackendHost(rawValue: string | undefined): string {
   return host;
 }
 
+function requireEnvValue(
+  values: Record<string, string>,
+  name: string,
+  sourceHint: string
+): string {
+  const raw = values[name];
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) {
+    throw new Error(`[vite] missing ${name}; please set it in ${sourceHint}`);
+  }
+  return value;
+}
+
+function requireEnvPort(
+  values: Record<string, string>,
+  name: string,
+  sourceHint: string
+): number {
+  const raw = requireEnvValue(values, name, sourceHint);
+  const parsed = parsePort(raw);
+  if (parsed == null) {
+    throw new Error(`[vite] invalid ${name}=${raw}; expected integer in range 1-65535`);
+  }
+  return parsed;
+}
+
 export default defineConfig(({ mode }) => {
-  const frontendEnv = loadEnv(mode, process.cwd(), "");
   const rootDir = path.resolve(process.cwd(), "..");
   const rootEnv = loadEnv(mode, rootDir, "");
+  const rootSourceHint = `${rootDir}/.env`;
 
-  const rootBackendPortRaw = rootEnv.BACKEND_PORT;
-  const rootBackendPort = parsePort(rootBackendPortRaw);
-  const rootBackendHost = normalizeBackendHost(rootEnv.BACKEND_HOST);
-  const fallbackProxyTarget = typeof frontendEnv.VITE_DEV_PROXY_TARGET === "string"
-    ? frontendEnv.VITE_DEV_PROXY_TARGET.trim()
-    : "";
-
-  if (rootBackendPortRaw && rootBackendPort == null) {
-    console.warn(`[vite] invalid root BACKEND_PORT=${rootBackendPortRaw}, fallback to frontend/.env or default target`);
-  }
-
-  const devProxyTarget = rootBackendPort != null
-    ? `http://${rootBackendHost}:${rootBackendPort}`
-    : (fallbackProxyTarget || DEFAULT_DEV_PROXY_TARGET);
+  const backendPort = requireEnvPort(rootEnv, "BACKEND_PORT", rootSourceHint);
+  const frontendPort = requireEnvPort(rootEnv, "FRONTEND_PORT", rootSourceHint);
+  const frontendHost = requireEnvValue(rootEnv, "FRONTEND_HOST", rootSourceHint);
+  const backendHost = normalizeBackendHost(requireEnvValue(rootEnv, "BACKEND_HOST", rootSourceHint));
+  const devProxyTarget = `http://${backendHost}:${backendPort}`;
 
   return {
     base: "./",
     plugins: [react()],
     server: {
-      host: "0.0.0.0",
-      port: 5173,
+      host: frontendHost,
+      port: frontendPort,
       allowedHosts: true,
       proxy: {
         "/term/api": {

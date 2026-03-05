@@ -80,13 +80,20 @@ function readEnvFile(filePath) {
   return values;
 }
 
-function parsePort(rawValue, fallback, name) {
+function parsePort(rawValue, name) {
   const parsed = Number.parseInt(String(rawValue), 10);
   if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
     return parsed;
   }
-  safeWrite(process.stderr, `[server] invalid ${name}=${rawValue}, fallback to ${fallback}\n`);
-  return fallback;
+  throw new Error(`invalid ${name}=${rawValue}; expected integer in range 1-65535`);
+}
+
+function readRequiredEnv(rawValue, name) {
+  const value = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!value) {
+    throw new Error(`missing required ${name}; please set it in .env or environment variables`);
+  }
+  return value;
 }
 
 const envCandidates = [
@@ -113,19 +120,30 @@ for (const envFile of envCandidates) {
   }
 }
 
-const HOST = fileEnv.FRONTEND_HOST || fileEnv.HOST || process.env.FRONTEND_HOST || process.env.HOST || "0.0.0.0";
-const PORT = parsePort(
-  fileEnv.FRONTEND_PORT || fileEnv.PORT || process.env.FRONTEND_PORT || process.env.PORT || "11947",
-  11947,
-  "PORT"
-);
-const backendHost = fileEnv.BACKEND_HOST || process.env.BACKEND_HOST || "127.0.0.1";
-const backendPort = parsePort(fileEnv.BACKEND_PORT || process.env.BACKEND_PORT || "11946", 11946, "BACKEND_PORT");
-const hasFileBackendAddress = Boolean(fileEnv.BACKEND_HOST || fileEnv.BACKEND_PORT);
-const BACKEND_ORIGIN = fileEnv.BACKEND_ORIGIN
-  || (hasFileBackendAddress ? `http://${backendHost}:${backendPort}` : null)
-  || process.env.BACKEND_ORIGIN
-  || `http://${backendHost}:${backendPort}`;
+let HOST;
+let PORT;
+let BACKEND_ORIGIN;
+try {
+  HOST = fileEnv.FRONTEND_HOST || fileEnv.HOST || process.env.FRONTEND_HOST || process.env.HOST || "0.0.0.0";
+  PORT = parsePort(
+    readRequiredEnv(fileEnv.FRONTEND_PORT || fileEnv.PORT || process.env.FRONTEND_PORT || process.env.PORT, "PORT"),
+    "PORT"
+  );
+  const backendHost = fileEnv.BACKEND_HOST || process.env.BACKEND_HOST || "127.0.0.1";
+  const backendPort = parsePort(
+    readRequiredEnv(fileEnv.BACKEND_PORT || process.env.BACKEND_PORT, "BACKEND_PORT"),
+    "BACKEND_PORT"
+  );
+  const hasFileBackendAddress = Boolean(fileEnv.BACKEND_HOST || fileEnv.BACKEND_PORT);
+  BACKEND_ORIGIN = fileEnv.BACKEND_ORIGIN
+    || (hasFileBackendAddress ? `http://${backendHost}:${backendPort}` : null)
+    || process.env.BACKEND_ORIGIN
+    || `http://${backendHost}:${backendPort}`;
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  safeWrite(process.stderr, `[server] config error: ${message}\n`);
+  process.exit(1);
+}
 
 const distDir = path.resolve(__dirname, "dist");
 const indexHtml = path.join(distDir, "index.html");

@@ -4,7 +4,7 @@
 
 - 后端：Spring Boot + WebSocket + pty4j + Apache SSHD
 - 前端：Vite + React + TypeScript + xterm.js
-- 生产部署：Node 反向代理（`11947`）→ 后端（`11946`）
+- 生产部署：Node 反向代理（`FRONTEND_PORT`）→ 后端（`BACKEND_PORT`）
 
 ## 环境要求
 
@@ -36,13 +36,13 @@ cp application.example.yml backend/application.yml
 cd backend
 mvn spring-boot:run
 
-# 终端 2：启动前端（Vite 默认 localhost:5173，自动代理到后端）
+# 终端 2：启动前端（Vite 监听根 .env 的 FRONTEND_HOST/FRONTEND_PORT，自动代理到后端）
 cd frontend
 npm install
 npm run dev
 ```
 
-访问 `http://localhost:5173/term/`（Web）或 `http://localhost:5173/appterm/`（App WebView）。
+访问 `http://<FRONTEND_HOST>:<FRONTEND_PORT>/term/`（Web）或 `http://<FRONTEND_HOST>:<FRONTEND_PORT>/appterm/`（App WebView）。
 
 ### 一键打包部署
 
@@ -59,7 +59,7 @@ npm run dev
 
 脚本目录约定：`release-scripts/mac` 放 `.sh`，`release-scripts/windows` 放 `.ps1` / `.bat`。
 
-发布默认端口：后端 `127.0.0.1:11946`，前端 `0.0.0.0:11947`。
+发布端口由目标运行目录 `.env` 中的 `BACKEND_PORT` 与 `FRONTEND_PORT` 决定。
 
 ## 配置
 
@@ -117,16 +117,24 @@ cp application.example.yml /tmp/term-release/application.yml
 |---|---|---|
 | `VITE_API_BASE` | 空（同源） | API 基础地址，为空时使用同源路径 |
 | `VITE_COPILOT_REFRESH_MS` | `2000` | Copilot 自动刷新间隔（毫秒） |
-| `VITE_DEV_PROXY_TARGET` | `http://127.0.0.1:8080` | 开发模式代理目标（二级回退；优先使用根 `.env` 的 `BACKEND_HOST/BACKEND_PORT`） |
+
+开发模式网络地址（Vite 监听与后端代理）统一读取根目录 `.env`：
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `BACKEND_HOST` | 是 | 前端开发代理目标后端地址 |
+| `BACKEND_PORT` | 是 | 前端开发代理目标后端端口 |
+| `FRONTEND_HOST` | 是 | Vite 开发服务监听地址 |
+| `FRONTEND_PORT` | 是 | Vite 开发服务监听端口 |
 
 ### 启动脚本环境变量
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `BACKEND_HOST` | 优先从目标运行目录 `.env` 读取，回退脚本默认值 `127.0.0.1` | 后端监听地址 |
-| `BACKEND_PORT` | 优先从目标运行目录 `.env` 读取，回退脚本默认值 `11946` | 后端监听端口 |
+| `BACKEND_PORT` | 必须在目标运行目录 `.env` 中配置 | 后端监听端口 |
 | `FRONTEND_HOST` | `0.0.0.0` | 前端监听地址 |
-| `FRONTEND_PORT` | `11947` | 前端监听端口 |
+| `FRONTEND_PORT` | 必须在目标运行目录 `.env` 中配置 | 前端监听端口 |
 | `BACKEND_ORIGIN` | 自动拼接 | 前端代理的后端地址 |
 | `BACKEND_JAVA_OPTS` | `-Xms256m -Xmx512m` | JVM 参数 |
 | `BACKEND_ARGS` | 空 | 附加 Spring 启动参数 |
@@ -222,7 +230,7 @@ export TERMINAL_SSH_MASTER_KEY="replace-with-a-strong-secret"
 2. 创建 SSH 凭据（密码或私钥二选一）：
 
 ```bash
-curl -X POST http://127.0.0.1:11947/term/api/ssh/credentials \
+curl -X POST http://127.0.0.1:${FRONTEND_PORT}/term/api/ssh/credentials \
   -H "content-type: application/json" \
   -d '{
     "host": "10.0.0.2",
@@ -237,7 +245,7 @@ curl -X POST http://127.0.0.1:11947/term/api/ssh/credentials \
 ### SSH Exec（结构化命令执行）
 
 ```bash
-curl -X POST http://127.0.0.1:11947/term/api/ssh/exec \
+curl -X POST http://127.0.0.1:${FRONTEND_PORT}/term/api/ssh/exec \
   -H "content-type: application/json" \
   -d '{
     "credentialId": "<credential-id>",
@@ -357,7 +365,7 @@ Nginx 反向代理职责：
 
 - `80 → 443` 重定向
 - `443` TLS 终止
-- 所有流量反代到 `http://127.0.0.1:11947`
+- 所有流量反代到 `http://127.0.0.1:${FRONTEND_PORT}`
 - 透传 WebSocket Upgrade
 
 ## 测试与验证
@@ -373,7 +381,7 @@ npx tsc --noEmit      # TypeScript 类型检查
 npm run build         # 生产构建
 
 # 健康检查
-curl http://127.0.0.1:11947/healthz
+curl http://127.0.0.1:${FRONTEND_PORT}/healthz
 ```
 
 ### 前端生产代理
