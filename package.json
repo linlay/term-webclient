@@ -7,9 +7,9 @@
     "lint": "npm --prefix frontend run lint",
     "typecheck": "npm --prefix frontend run typecheck",
     "test:frontend": "npm --prefix frontend run test",
-    "dev:backend": "cd backend && GOCACHE=$(pwd)/.gocache GOFLAGS=-mod=mod go run ./cmd/server",
+    "dev:backend": "cd backend && GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} GOSUMDB=${GOSUMDB:-sum.golang.google.cn} GOFLAGS=-mod=mod go run ./cmd/server",
     "dev:frontend": "npm --prefix frontend run dev",
-    "test:backend": "cd backend && GOCACHE=$(pwd)/.gocache GOFLAGS=-mod=mod go test ./..."
+    "test:backend": "cd backend && GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} GOSUMDB=${GOSUMDB:-sum.golang.google.cn} GOFLAGS=-mod=mod go test ./..."
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

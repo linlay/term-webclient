@@ -16,6 +16,8 @@ fi
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 APP_ENV="${APP_ENV:-production}"
+BACKEND_GOPROXY="${BACKEND_GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
+BACKEND_GOSUMDB="${BACKEND_GOSUMDB:-sum.golang.google.cn}"
 
 if [[ "$APP_ENV" != "development" && "$APP_ENV" != "production" ]]; then
   echo "[package] invalid APP_ENV: $APP_ENV (expected: development|production)"
@@ -44,8 +46,8 @@ mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/release-scrip
 echo "[package] building backend binary"
 (
   cd "$BACKEND_DIR"
-  mkdir -p .gocache
-  GOCACHE="$BACKEND_DIR/.gocache" GOFLAGS=-mod=mod go build -o "$OUTPUT_DIR/backend/term-web-backend" ./cmd/server
+  mkdir -p .gocache .gomodcache
+  GOCACHE="$BACKEND_DIR/.gocache" GOMODCACHE="$BACKEND_DIR/.gomodcache" GOPROXY="$BACKEND_GOPROXY" GOSUMDB="$BACKEND_GOSUMDB" GOFLAGS=-mod=mod go build -o "$OUTPUT_DIR/backend/term-web-backend" ./cmd/server
 )
 
 echo "[package] building frontend dist"

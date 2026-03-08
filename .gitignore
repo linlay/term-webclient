@@ -16,6 +16,7 @@ backend/target/
 backend/data/
 backend/application.yml
 .gocache/
+.gomodcache/
 
 # frontend
 frontend/dist/
