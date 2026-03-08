@@ -45,6 +45,7 @@ make test-frontend
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
 - 只有结构化配置确实超过 `.env` 表达能力时，才使用 `CONFIG_PATH` 指向 `configs/*.yml`。
 - 配置优先级：内置默认值 < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
+- `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
 - 推荐用法：
 ```bash
 # 后端本地开发（从 backend/ 目录启动）
@@ -55,7 +56,59 @@ CONFIG_PATH=../configs/config.dev.yml make dev-backend
 CONFIG_PATH=./configs/config.prod.yml
 ```
 
-## 4. 部署
+### Web 登录（`/term/`）
+- Web 端登录使用 `AUTH_USERNAME` + `AUTH_PASSWORD_HASH_BCRYPT`。
+- `AUTH_PASSWORD_HASH_BCRYPT` 必须是有效 bcrypt 哈希；推荐把真实密码只保留在生成阶段，不直接写入配置。
+
+生成 bcrypt：
+```bash
+# macOS / Linux
+htpasswd -nbBC 10 '' 'change-this-password' | cut -d: -f2
+
+# Python
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'change-this-password', bcrypt.gensalt(10)).decode())"
+```
+
+写入 `.env`：
+```bash
+AUTH_ENABLED=true
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH_BCRYPT='<your-bcrypt-hash>'
+```
+
+### App JWT（`/appterm/`）
+- App 模式要求 Bearer Token，前端会通过 bridge 自动给 HTTP 请求和 WebSocket 带 token。
+- 后端优先使用 `APP_AUTH_LOCAL_PUBLIC_KEY` 验签；为空时回退到 `APP_AUTH_JWKS_URI`。
+- `APP_AUTH_ISSUER`、`APP_AUTH_AUDIENCE` 建议始终显式配置，避免接受约束不足的 token。
+
+推荐写法：
+```bash
+APP_AUTH_ENABLED=true
+# .env 推荐单行 base64 DER 公钥；多行 PEM 更适合通过环境变量或 YAML 注入
+APP_AUTH_LOCAL_PUBLIC_KEY='<base64-rsa-public-key>'
+APP_AUTH_JWKS_URI=
+APP_AUTH_ISSUER='your-app-issuer'
+APP_AUTH_AUDIENCE='appterm'
+```
+
+如果你更适合用 YAML：
+```yaml
+app-auth:
+  enabled: true
+  local-public-key: |
+    -----BEGIN PUBLIC KEY-----
+    ...
+    -----END PUBLIC KEY-----
+  issuer: your-app-issuer
+  audience: appterm
+```
+
+## 4. 界面主题
+- 前端提供白天和黑夜两种主题。
+- 主题切换按钮位于顶部操作区，切换结果保存在浏览器 `localStorage`。
+- 主题会同时作用于主界面、登录页、弹窗、文件侧栏和终端面板。
+
+## 5. 部署
 ### Docker Compose
 ```bash
 cp .env.example .env
@@ -78,7 +131,7 @@ make package-mac
 
 运行发布包前，至少准备 `release/.env`；如果需要结构化覆盖，再准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。
 
-## 5. 运维
+## 6. 运维
 ### 启停
 ```bash
 ./release-scripts/mac/start.sh release

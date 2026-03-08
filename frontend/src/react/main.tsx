@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
+import { initializeThemeMode } from "./shared/theme/theme";
 import "./styles.css";
 
 let reactRoot = document.getElementById("reactRoot");
@@ -11,6 +12,7 @@ if (!reactRoot) {
   document.body.appendChild(reactRoot);
 }
 reactRoot.classList.remove("hidden");
+initializeThemeMode();
 
 const queryClient = new QueryClient({
   defaultOptions: {

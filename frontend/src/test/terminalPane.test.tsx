@@ -7,14 +7,19 @@ const hoisted = vi.hoisted(() => {
     terminalFocusSpy: vi.fn(),
     fitSpy: vi.fn(),
     terminalConstructSpy: vi.fn(),
-    terminalDisposeSpy: vi.fn()
+    terminalDisposeSpy: vi.fn(),
+    terminalInstances: [] as Array<{ options: Record<string, unknown> }>
   };
 });
 
 vi.mock("xterm", () => {
   class MockTerminal {
-    constructor() {
+    options: Record<string, unknown>;
+
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = { ...options };
       hoisted.terminalConstructSpy();
+      hoisted.terminalInstances.push(this);
     }
 
     cols = 120;
@@ -157,6 +162,7 @@ beforeEach(() => {
   hoisted.fitSpy.mockClear();
   hoisted.terminalConstructSpy.mockClear();
   hoisted.terminalDisposeSpy.mockClear();
+  hoisted.terminalInstances = [];
   MockWebSocket.instances = [];
   vi.stubGlobal("WebSocket", MockWebSocket);
   vi.stubGlobal("ResizeObserver", MockResizeObserver);
@@ -193,6 +199,7 @@ describe("TerminalPane", () => {
       <TerminalPane
         tab={makeTab()}
         isActive={true}
+        themeMode="dark"
         onStatusChange={vi.fn()}
         onTerminalReady={(_localId, handle) => {
           handles.push(handle);
@@ -216,6 +223,7 @@ describe("TerminalPane", () => {
       <TerminalPane
         tab={makeTab()}
         isActive={false}
+        themeMode="dark"
         onStatusChange={vi.fn()}
       />
     );
@@ -237,6 +245,7 @@ describe("TerminalPane", () => {
       <TerminalPane
         tab={makeTab()}
         isActive={false}
+        themeMode="dark"
         onStatusChange={onStatusChange}
       />
     );
@@ -249,6 +258,7 @@ describe("TerminalPane", () => {
         <TerminalPane
           tab={makeTab()}
           isActive={true}
+          themeMode="dark"
           onStatusChange={onStatusChange}
         />
       );
@@ -256,5 +266,40 @@ describe("TerminalPane", () => {
 
     expect(hoisted.terminalConstructSpy).toHaveBeenCalledTimes(1);
     expect(hoisted.terminalDisposeSpy).toHaveBeenCalledTimes(0);
+  });
+
+  it("updates the existing terminal theme when themeMode changes", () => {
+    const onStatusChange = vi.fn();
+
+    render(
+      <TerminalPane
+        tab={makeTab()}
+        isActive={true}
+        themeMode="dark"
+        onStatusChange={onStatusChange}
+      />
+    );
+
+    expect(hoisted.terminalInstances[0]?.options.theme).toMatchObject({
+      background: "#09101a",
+      foreground: "#d6e2f0"
+    });
+
+    act(() => {
+      root?.render(
+        <TerminalPane
+          tab={makeTab()}
+          isActive={true}
+          themeMode="light"
+          onStatusChange={onStatusChange}
+        />
+      );
+    });
+
+    expect(hoisted.terminalConstructSpy).toHaveBeenCalledTimes(1);
+    expect(hoisted.terminalInstances[0]?.options.theme).toMatchObject({
+      background: "#f6fbff",
+      foreground: "#17324d"
+    });
   });
 });

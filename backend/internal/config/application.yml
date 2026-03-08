@@ -61,6 +61,7 @@ terminal:
 auth:
   enabled: false
   username: admin
+  password-hash-bcrypt: ""
   session-ttl-seconds: 43200
   login-rate-limit-enabled: true
   login-rate-limit-window-seconds: 60
@@ -68,5 +69,9 @@ auth:
 
 app-auth:
   enabled: false
+  local-public-key: ""
+  jwks-uri: ""
+  issuer: ""
   jwks-cache-seconds: 300
+  audience: ""
   clock-skew-seconds: 30

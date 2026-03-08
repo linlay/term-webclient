@@ -14,6 +14,7 @@ import { useViewportHeight } from "./shared/hooks/useViewportHeight";
 import { useNotice } from "./shared/hooks/useNotice";
 import { useCopilotState } from "./shared/hooks/useCopilotState";
 import { useMobileScroll } from "./shared/hooks/useMobileScroll";
+import { applyThemeMode, persistThemeMode, resolveThemeMode, type ThemeMode } from "./shared/theme/theme";
 import { LoginForm } from "./features/auth/LoginForm";
 import { isUnauthorizedError, useAuthStatus, useLogout } from "./features/auth/useAuth";
 import { TerminalPane, type TerminalPaneHandle } from "./features/terminal/TerminalPane";
@@ -82,10 +83,16 @@ export default function App(): JSX.Element {
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
   const [desktopFilesOpen, setDesktopFilesOpen] = useState(true);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveThemeMode());
 
   const { notice, showNotice } = useNotice();
 
   useViewportHeight();
+
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    persistThemeMode(themeMode);
+  }, [themeMode]);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.localId === activeTabId) ?? null,
@@ -508,6 +515,34 @@ export default function App(): JSX.Element {
           <div className="top-actions">
             <button
               type="button"
+              className="ghost-btn top-icon-btn theme-toggle-btn"
+              aria-label={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              data-testid="theme-toggle"
+              onClick={() => {
+                setThemeMode((prev) => (prev === "dark" ? "light" : "dark"));
+              }}
+            >
+              {themeMode === "dark" ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2" />
+                  <path d="M12 20v2" />
+                  <path d="m4.93 4.93 1.41 1.41" />
+                  <path d="m17.66 17.66 1.41 1.41" />
+                  <path d="M2 12h2" />
+                  <path d="M20 12h2" />
+                  <path d="m6.34 17.66-1.41 1.41" />
+                  <path d="m19.07 4.93-1.41 1.41" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3a6 6 0 1 0 9 9 9 9 0 1 1-9-9" />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
               className={`ghost-btn top-icon-btn files-toggle-btn ${desktopFilesOpen && !isMobile ? "active" : ""}`}
               aria-label="Files"
               title="Files"
@@ -575,6 +610,7 @@ export default function App(): JSX.Element {
                 <TerminalPane
                   tab={tab}
                   isActive={tab.localId === activeTabId}
+                  themeMode={themeMode}
                   onStatusChange={handleTabStatusChange}
                   onLostChange={handleTabLostChange}
                   onExitCodeChange={handleTabExitCodeChange}

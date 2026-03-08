@@ -5,6 +5,7 @@ import type { WsServerMessage } from "../../shared/api/types";
 import { apiClient } from "../../shared/api/client";
 import { isAppMode, toWsUrl } from "../../shared/config/env";
 import { getAppAccessToken, refreshAppAccessToken } from "../../shared/auth/appBridge";
+import type { ThemeMode } from "../../shared/theme/theme";
 import type { TerminalTab } from "../tabs/useTabsStore";
 import { replaySnapshotChunks } from "./snapshot";
 
@@ -33,6 +34,29 @@ function syncTerminalFontSize(terminal: Terminal): void {
   }
 }
 
+function terminalTheme(themeMode: ThemeMode) {
+  if (themeMode === "light") {
+    return {
+      background: "#f6fbff",
+      foreground: "#17324d",
+      cursor: "#2d5b86",
+      cursorAccent: "#f6fbff",
+      selectionBackground: "rgba(58, 111, 161, 0.22)"
+    };
+  }
+  return {
+    background: "#09101a",
+    foreground: "#d6e2f0",
+    cursor: "#8fc4ff",
+    cursorAccent: "#09101a",
+    selectionBackground: "rgba(123, 160, 212, 0.22)"
+  };
+}
+
+function syncTerminalTheme(terminal: Terminal, themeMode: ThemeMode): void {
+  terminal.options.theme = terminalTheme(themeMode);
+}
+
 export interface TerminalPaneHandle {
   scrollToBottom: () => void;
   isNearBottom: () => boolean;
@@ -42,6 +66,7 @@ export interface TerminalPaneHandle {
 interface TerminalPaneProps {
   tab: TerminalTab;
   isActive: boolean;
+  themeMode: ThemeMode;
   onStatusChange: (localId: string, status: TerminalTab["status"]) => void;
   onRegisterInputSender?: (localId: string, sender: ((data: string) => boolean) | null) => void;
   onTerminalReady?: (localId: string, handle: TerminalPaneHandle | null) => void;
@@ -80,6 +105,7 @@ function isTerminalNearBottom(terminal: Terminal): boolean {
 export function TerminalPane({
   tab,
   isActive,
+  themeMode,
   onStatusChange,
   onRegisterInputSender,
   onTerminalReady,
@@ -108,9 +134,7 @@ export function TerminalPane({
       fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
       scrollback: 5000,
       convertEol: true,
-      theme: {
-        background: "#09101a"
-      }
+      theme: terminalTheme(themeMode)
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -169,6 +193,13 @@ export function TerminalPane({
       fitRef.current = null;
     };
   }, [onTerminalReady, tab.localId]);
+
+  useEffect(() => {
+    if (!termRef.current) {
+      return;
+    }
+    syncTerminalTheme(termRef.current, themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     if (!isActive || !termRef.current || !fitRef.current) {
