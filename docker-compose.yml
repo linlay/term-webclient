@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 11946
+    ports:
+      - "${BACKEND_PORT:-11946}:11946"
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - backend
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${FRONTEND_PORT:-11947}
+      FRONTEND_HOST: 0.0.0.0
+      FRONTEND_PORT: ${FRONTEND_PORT:-11947}
+      BACKEND_HOST: backend
+      BACKEND_PORT: 11946
+      BACKEND_ORIGIN: http://backend:11946
+    ports:
+      - "${FRONTEND_PORT:-11947}:11947"

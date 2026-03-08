@@ -1,0 +1,10 @@
+# Optional production-style structured overrides loaded via CONFIG_PATH.
+# Environment variables still have the highest priority.
+
+terminal:
+  recent-sessions-file: data/recent-sessions.json
+  recent-sessions-per-tool: 10
+  files:
+    enabled: false
+  ssh:
+    credentials-file: data/ssh-credentials.json

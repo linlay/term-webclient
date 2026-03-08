@@ -1,0 +1,21 @@
+# Optional development overrides loaded via CONFIG_PATH.
+# Only include structured values that should differ from embedded defaults.
+
+terminal:
+  files:
+    enabled: true
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env: {}
+      shell: /bin/zsh
+    - id: claude
+      label: Claude Code
+      command: claude
+      args: []
+      workdir: .
+      env: {}
+      shell: /bin/zsh

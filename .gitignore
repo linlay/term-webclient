@@ -1,0 +1,30 @@
+# system
+.DS_Store
+
+# local workspace
+AGENTS.md
+.env
+/application.yml
+.husky/_
+
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# backend
+backend/target/
+backend/data/
+backend/application.yml
+.gocache/
+
+# frontend
+frontend/dist/
+frontend/coverage/
+frontend/.env
+
+# packaged runtime
+release/
+data/
+logs/
+configs/*.yml
+!configs/*.example.yml
