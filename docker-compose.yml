@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        BACKEND_GOPROXY: ${BACKEND_GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}
+        BACKEND_GOSUMDB: ${BACKEND_GOSUMDB:-sum.golang.google.cn}
     env_file:
       - .env
     environment:

@@ -1,11 +1,17 @@
 FROM golang:1.26-bookworm AS build
 
+ARG BACKEND_GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
+ARG BACKEND_GOSUMDB=sum.golang.google.cn
+
+ENV GOPROXY=$BACKEND_GOPROXY
+ENV GOSUMDB=$BACKEND_GOSUMDB
+
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN mkdir -p /tmp/go-build
-RUN GOCACHE=/tmp/go-build GOFLAGS=-mod=mod go mod download
+RUN GOCACHE=/tmp/go-build GOFLAGS=-mod=mod GOPROXY=$GOPROXY GOSUMDB=$GOSUMDB go mod download
 COPY backend/ /src/
-RUN GOCACHE=/tmp/go-build GOFLAGS=-mod=mod go build -o /out/term-web-backend ./cmd/server
+RUN GOCACHE=/tmp/go-build GOFLAGS=-mod=mod GOPROXY=$GOPROXY GOSUMDB=$GOSUMDB go build -o /out/term-web-backend ./cmd/server
 
 FROM debian:bookworm-slim
 
