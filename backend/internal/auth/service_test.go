@@ -11,6 +11,8 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -98,6 +100,57 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 	}
 }
 
+func TestLoginSupportsQuotedBcryptHash(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("secret-123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("generate bcrypt hash: %v", err)
+	}
+
+	testCases := []struct {
+		name string
+		hash string
+	}{
+		{
+			name: "single quoted",
+			hash: "'" + string(passwordHash) + "'",
+		},
+		{
+			name: "double quoted",
+			hash: `"` + string(passwordHash) + `"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := New(&config.Config{
+				Auth: config.AuthConfig{
+					Enabled:                     true,
+					Username:                    "tester",
+					PasswordHashBcrypt:          tc.hash,
+					SessionTTLSeconds:           300,
+					LoginRateLimitEnabled:       true,
+					LoginRateLimitWindowSeconds: 60,
+					LoginRateLimitMaxAttempts:   10,
+				},
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/webapi/auth/login", nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+
+			status, err := svc.Login(httptest.NewRecorder(), req, model.LoginRequest{
+				Username: "tester",
+				Password: "secret-123",
+			})
+			if err != nil {
+				t.Fatalf("login failed: %v", err)
+			}
+			if !status.Authenticated || status.Username != "tester" {
+				t.Fatalf("unexpected login status: %+v", status)
+			}
+		})
+	}
+}
+
 func TestLoginFailsWhenBcryptHashMissing(t *testing.T) {
 	svc := New(&config.Config{
 		Auth: config.AuthConfig{
@@ -125,6 +178,7 @@ func TestLoginFailsWhenBcryptHashMissing(t *testing.T) {
 
 func TestRequireAppWithLocalPublicKey(t *testing.T) {
 	privateKey := testRSAKey(t)
+	publicKeyFile := writePublicKeyFile(t, publicKeyPEM(t, &privateKey.PublicKey))
 	token := signRS256Token(t, privateKey, "kid-1", jwtClaims{
 		Sub: "mobile-user",
 		Iss: "issuer.example",
@@ -135,10 +189,10 @@ func TestRequireAppWithLocalPublicKey(t *testing.T) {
 
 	svc := New(&config.Config{
 		AppAuth: config.AppAuthConfig{
-			Enabled:        true,
-			LocalPublicKey: publicKeyPEM(t, &privateKey.PublicKey),
-			Issuer:         "issuer.example",
-			Audience:       "appterm",
+			Enabled:            true,
+			LocalPublicKeyFile: publicKeyFile,
+			Issuer:             "issuer.example",
+			Audience:           "appterm",
 		},
 	})
 
@@ -157,6 +211,7 @@ func TestRequireAppWithLocalPublicKey(t *testing.T) {
 func TestRequireAppRejectsInvalidSignature(t *testing.T) {
 	verificationKey := testRSAKey(t)
 	signingKey := testRSAKey(t)
+	publicKeyFile := writePublicKeyFile(t, publicKeyPEM(t, &verificationKey.PublicKey))
 	token := signRS256Token(t, signingKey, "kid-1", jwtClaims{
 		Sub: "mobile-user",
 		Iss: "issuer.example",
@@ -167,10 +222,10 @@ func TestRequireAppRejectsInvalidSignature(t *testing.T) {
 
 	svc := New(&config.Config{
 		AppAuth: config.AppAuthConfig{
-			Enabled:        true,
-			LocalPublicKey: publicKeyPEM(t, &verificationKey.PublicKey),
-			Issuer:         "issuer.example",
-			Audience:       "appterm",
+			Enabled:            true,
+			LocalPublicKeyFile: publicKeyFile,
+			Issuer:             "issuer.example",
+			Audience:           "appterm",
 		},
 	})
 
@@ -216,6 +271,7 @@ func TestAuthenticateWSTokenSupportsWebSessionAndAppToken(t *testing.T) {
 		t.Fatalf("generate bcrypt hash: %v", err)
 	}
 	privateKey := testRSAKey(t)
+	publicKeyFile := writePublicKeyFile(t, publicKeyPEM(t, &privateKey.PublicKey))
 	appToken := signRS256Token(t, privateKey, "kid-1", jwtClaims{
 		Sub: "app-user",
 		Iss: "issuer.example",
@@ -235,10 +291,10 @@ func TestAuthenticateWSTokenSupportsWebSessionAndAppToken(t *testing.T) {
 			LoginRateLimitMaxAttempts:   10,
 		},
 		AppAuth: config.AppAuthConfig{
-			Enabled:        true,
-			LocalPublicKey: publicKeyPEM(t, &privateKey.PublicKey),
-			Issuer:         "issuer.example",
-			Audience:       "appterm",
+			Enabled:            true,
+			LocalPublicKeyFile: publicKeyFile,
+			Issuer:             "issuer.example",
+			Audience:           "appterm",
 		},
 	})
 
@@ -294,6 +350,16 @@ func publicKeyPEM(t *testing.T, publicKey *rsa.PublicKey) string {
 		Bytes: encoded,
 	}
 	return string(pem.EncodeToMemory(block))
+}
+
+func writePublicKeyFile(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-public-key.pem")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write public key file: %v", err)
+	}
+	return path
 }
 
 func signRS256Token(t *testing.T, privateKey *rsa.PrivateKey, kid string, claims jwtClaims) string {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -368,8 +369,8 @@ func (l *loginRateLimiter) trim(key string, cutoff int64) []int64 {
 }
 
 func (s *Service) resolveVerificationKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	if local := strings.TrimSpace(s.cfg.AppAuth.LocalPublicKey); local != "" {
-		return parseLocalPublicKey(local)
+	if localFile := strings.TrimSpace(s.cfg.AppAuth.LocalPublicKeyFile); localFile != "" {
+		return parseLocalPublicKeyFile(localFile)
 	}
 	if strings.TrimSpace(s.cfg.AppAuth.JWKSURI) == "" {
 		return nil, util.NewStatusError(http.StatusUnauthorized, "missing jwt verification key", nil)
@@ -377,34 +378,22 @@ func (s *Service) resolveVerificationKey(ctx context.Context, kid string) (*rsa.
 	return s.fetchJWKSKey(ctx, kid)
 }
 
-func parseLocalPublicKey(raw string) (*rsa.PublicKey, error) {
-	trimmed := strings.TrimSpace(raw)
-	if strings.Contains(trimmed, "BEGIN PUBLIC KEY") {
-		block, _ := pem.Decode([]byte(trimmed))
-		if block == nil {
-			return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (pem decode failed)", nil)
-		}
-		key, err := x509.ParsePKIXPublicKey(block.Bytes)
-		if err != nil {
-			return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (rsa parse failed)", err)
-		}
-		rsaKey, ok := key.(*rsa.PublicKey)
-		if !ok {
-			return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (rsa parse failed)", nil)
-		}
-		return rsaKey, nil
-	}
-	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+func parseLocalPublicKeyFile(path string) (*rsa.PublicKey, error) {
+	payload, err := os.ReadFile(path)
 	if err != nil {
-		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (base64 decode failed)", err)
+		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key file (read failed)", err)
 	}
-	key, err := x509.ParsePKIXPublicKey(decoded)
+	block, _ := pem.Decode(payload)
+	if block == nil {
+		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key file (pem decode failed)", nil)
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (rsa parse failed)", err)
+		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key file (rsa parse failed)", err)
 	}
 	rsaKey, ok := key.(*rsa.PublicKey)
 	if !ok {
-		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key (rsa parse failed)", nil)
+		return nil, util.NewStatusError(http.StatusUnauthorized, "invalid local public key file (rsa parse failed)", nil)
 	}
 	return rsaKey, nil
 }

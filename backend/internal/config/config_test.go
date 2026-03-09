@@ -1,8 +1,13 @@
 package config
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,7 +62,7 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		"AUTH_USERNAME=tester\n" +
 		"AUTH_PASSWORD_HASH_BCRYPT=$2a$10$abcdefghijklmnopqrstuu4r0JZs6KQ4QvOB0fOkH1ZZ1xd6QbaO\n" +
 		"APP_AUTH_ENABLED=true\n" +
-		"APP_AUTH_LOCAL_PUBLIC_KEY=test-public-key\n" +
+		"APP_AUTH_LOCAL_PUBLIC_KEY_FILE=./configs/local-public-key.pem\n" +
 		"APP_AUTH_JWKS_URI=https://issuer.example/.well-known/jwks.json\n" +
 		"APP_AUTH_ISSUER=https://issuer.example\n" +
 		"APP_AUTH_AUDIENCE=appterm\n" +
@@ -76,6 +81,7 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(yamlContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+	writeTestPublicKeyFile(t, filepath.Join(configsDir, "local-public-key.pem"))
 
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -110,8 +116,9 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	if !cfg.AppAuth.Enabled {
 		t.Fatal("expected app auth env override to enable auth")
 	}
-	if cfg.AppAuth.LocalPublicKey != "test-public-key" {
-		t.Fatalf("expected local public key env override, got %q", cfg.AppAuth.LocalPublicKey)
+	expectedKeyPath := mustEvalPath(t, filepath.Join(configsDir, "local-public-key.pem"))
+	if cfg.AppAuth.LocalPublicKeyFile != expectedKeyPath {
+		t.Fatalf("expected local public key file %q, got %q", expectedKeyPath, cfg.AppAuth.LocalPublicKeyFile)
 	}
 	if cfg.AppAuth.JWKSURI != "https://issuer.example/.well-known/jwks.json" {
 		t.Fatalf("expected jwks uri env override, got %q", cfg.AppAuth.JWKSURI)
@@ -162,6 +169,152 @@ func TestLoadFailsWhenConfigPathMissing(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected missing CONFIG_PATH file to fail")
+	}
+}
+
+func TestLoadSupportsQuotedBcryptHashFromProcessEnv(t *testing.T) {
+	testCases := []struct {
+		name   string
+		value  string
+		expect string
+	}{
+		{
+			name:   "single quoted",
+			value:  "'$2a$10$abcdefghijklmnopqrstuu4r0JZs6KQ4QvOB0fOkH1ZZ1xd6QbaO'",
+			expect: "$2a$10$abcdefghijklmnopqrstuu4r0JZs6KQ4QvOB0fOkH1ZZ1xd6QbaO",
+		},
+		{
+			name:   "double quoted",
+			value:  "\"$2a$10$abcdefghijklmnopqrstuu4r0JZs6KQ4QvOB0fOkH1ZZ1xd6QbaO\"",
+			expect: "$2a$10$abcdefghijklmnopqrstuu4r0JZs6KQ4QvOB0fOkH1ZZ1xd6QbaO",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			repoRoot := t.TempDir()
+			backendDir := filepath.Join(repoRoot, "backend")
+			if err := os.MkdirAll(backendDir, 0o755); err != nil {
+				t.Fatalf("mkdir backend dir: %v", err)
+			}
+
+			t.Setenv("CONFIG_PATH", "")
+			t.Setenv("AUTH_PASSWORD_HASH_BCRYPT", tc.value)
+
+			previousWD, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			t.Cleanup(func() {
+				_ = os.Chdir(previousWD)
+			})
+			if err := os.Chdir(backendDir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("load config: %v", err)
+			}
+			if cfg.Auth.PasswordHashBcrypt != tc.expect {
+				t.Fatalf("expected bcrypt hash %q, got %q", tc.expect, cfg.Auth.PasswordHashBcrypt)
+			}
+		})
+	}
+}
+
+func TestLoadResolvesLocalPublicKeyFileRelativeToEnv(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("APP_AUTH_ENABLED=true\nAPP_AUTH_LOCAL_PUBLIC_KEY_FILE=./configs/local-public-key.pem\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	writeTestPublicKeyFile(t, filepath.Join(configsDir, "local-public-key.pem"))
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	expected := mustEvalPath(t, filepath.Join(configsDir, "local-public-key.pem"))
+	if cfg.AppAuth.LocalPublicKeyFile != expected {
+		t.Fatalf("expected resolved local public key file %q, got %q", expected, cfg.AppAuth.LocalPublicKeyFile)
+	}
+}
+
+func TestLoadFailsWhenLocalPublicKeyFileMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("APP_AUTH_ENABLED=true\nAPP_AUTH_LOCAL_PUBLIC_KEY_FILE=./configs/local-public-key.pem\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "read app auth local public key file") {
+		t.Fatalf("expected missing local public key file error, got %v", err)
+	}
+}
+
+func TestLoadFailsWhenLocalPublicKeyFileInvalid(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("APP_AUTH_ENABLED=true\nAPP_AUTH_LOCAL_PUBLIC_KEY_FILE=./configs/local-public-key.pem\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "local-public-key.pem"), []byte("not-a-pem"), 0o644); err != nil {
+		t.Fatalf("write invalid key: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse app auth local public key file") {
+		t.Fatalf("expected invalid local public key file error, got %v", err)
 	}
 }
 
@@ -236,4 +389,29 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func writeTestPublicKeyFile(t *testing.T, path string) {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	encoded, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	block := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: encoded})
+	if err := os.WriteFile(path, block, 0o644); err != nil {
+		t.Fatalf("write public key file: %v", err)
+	}
+}
+
+func mustEvalPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("eval symlinks for %s: %v", path, err)
+	}
+	return resolved
 }

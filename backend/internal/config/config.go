@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
 	_ "embed"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -118,13 +121,13 @@ type AuthConfig struct {
 }
 
 type AppAuthConfig struct {
-	Enabled          bool   `yaml:"enabled"`
-	LocalPublicKey   string `yaml:"local-public-key"`
-	JWKSURI          string `yaml:"jwks-uri"`
-	Issuer           string `yaml:"issuer"`
-	JWKSCacheSeconds int    `yaml:"jwks-cache-seconds"`
-	Audience         string `yaml:"audience"`
-	ClockSkewSeconds int    `yaml:"clock-skew-seconds"`
+	Enabled            bool   `yaml:"enabled"`
+	LocalPublicKeyFile string `yaml:"local-public-key-file"`
+	JWKSURI            string `yaml:"jwks-uri"`
+	Issuer             string `yaml:"issuer"`
+	JWKSCacheSeconds   int    `yaml:"jwks-cache-seconds"`
+	Audience           string `yaml:"audience"`
+	ClockSkewSeconds   int    `yaml:"clock-skew-seconds"`
 }
 
 type AppMetaConfig struct {
@@ -239,7 +242,7 @@ func Load() (*Config, error) {
 	cfg := defaultConfig()
 	effectiveValues := envToMap(os.Environ())
 
-	overrides, err := loadEnvFiles()
+	overrides, envBaseDir, err := loadEnvFiles()
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +265,7 @@ func Load() (*Config, error) {
 	applyEnvMap(cfg, overrides)
 	applyEnvMap(cfg, envToMap(os.Environ()))
 
-	if err := validate(cfg); err != nil {
+	if err := validate(cfg, envBaseDir); err != nil {
 		return nil, err
 	}
 	return cfg, nil
@@ -315,28 +318,30 @@ func mergeYAMLBytes(cfg *Config, payload []byte, placeholderValues map[string]st
 	return nil
 }
 
-func loadEnvFiles() (map[string]string, error) {
+func loadEnvFiles() (map[string]string, string, error) {
 	result := map[string]string{}
+	envBaseDir := ""
 	for _, filePath := range envCandidates() {
 		info, err := os.Stat(filePath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, fmt.Errorf("stat %s: %w", filePath, err)
+			return nil, "", fmt.Errorf("stat %s: %w", filePath, err)
 		}
 		if info.IsDir() {
 			continue
 		}
 		values, err := parseEnvFile(filePath)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for k, v := range values {
 			result[k] = v
 		}
+		envBaseDir = filepath.Dir(filePath)
 	}
-	return result, nil
+	return result, envBaseDir, nil
 }
 
 func parseEnvFile(filePath string) (map[string]string, error) {
@@ -430,7 +435,7 @@ func applyEnvMap(cfg *Config, values map[string]string) {
 	cfg.Auth.LoginRateLimitMaxAttempts = getenvIntMap(values, "AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS", cfg.Auth.LoginRateLimitMaxAttempts)
 
 	cfg.AppAuth.Enabled = getenvBoolMap(values, "APP_AUTH_ENABLED", cfg.AppAuth.Enabled)
-	cfg.AppAuth.LocalPublicKey = getenvMap(values, "APP_AUTH_LOCAL_PUBLIC_KEY", cfg.AppAuth.LocalPublicKey)
+	cfg.AppAuth.LocalPublicKeyFile = getenvMap(values, "APP_AUTH_LOCAL_PUBLIC_KEY_FILE", cfg.AppAuth.LocalPublicKeyFile)
 	cfg.AppAuth.JWKSURI = getenvMap(values, "APP_AUTH_JWKS_URI", cfg.AppAuth.JWKSURI)
 	cfg.AppAuth.Issuer = getenvMap(values, "APP_AUTH_ISSUER", cfg.AppAuth.Issuer)
 	cfg.AppAuth.JWKSCacheSeconds = getenvIntMap(values, "APP_AUTH_JWKS_CACHE_SECONDS", cfg.AppAuth.JWKSCacheSeconds)
@@ -450,7 +455,7 @@ func applyEnvMap(cfg *Config, values map[string]string) {
 	cfg.App.BuildTime = getenvMap(values, "APP_BUILD_TIME", cfg.App.BuildTime)
 }
 
-func validate(cfg *Config) error {
+func validate(cfg *Config, envBaseDir string) error {
 	if strings.TrimSpace(cfg.Server.Address) == "" {
 		cfg.Server.Address = "127.0.0.1"
 	}
@@ -518,11 +523,21 @@ func validate(cfg *Config) error {
 	if cfg.Auth.SessionTTLSeconds <= 0 {
 		cfg.Auth.SessionTTLSeconds = 43200
 	}
+	cfg.Auth.PasswordHashBcrypt = trimEnvQuotes(cfg.Auth.PasswordHashBcrypt)
 	if cfg.Auth.LoginRateLimitWindowSeconds <= 0 {
 		cfg.Auth.LoginRateLimitWindowSeconds = 60
 	}
 	if cfg.Auth.LoginRateLimitMaxAttempts <= 0 {
 		cfg.Auth.LoginRateLimitMaxAttempts = 10
+	}
+	if strings.TrimSpace(cfg.AppAuth.LocalPublicKeyFile) != "" {
+		if resolvedPath, err := resolveLocalPublicKeyFile(cfg.AppAuth.LocalPublicKeyFile, envBaseDir); err != nil {
+			if cfg.AppAuth.Enabled {
+				return err
+			}
+		} else {
+			cfg.AppAuth.LocalPublicKeyFile = resolvedPath
+		}
 	}
 	if cfg.AppAuth.JWKSCacheSeconds <= 0 {
 		cfg.AppAuth.JWKSCacheSeconds = 300
@@ -548,6 +563,47 @@ func validate(cfg *Config) error {
 		}
 	}
 	return nil
+}
+
+func resolveLocalPublicKeyFile(rawPath, envBaseDir string) (string, error) {
+	trimmed := strings.TrimSpace(rawPath)
+	if trimmed == "" {
+		return "", nil
+	}
+	resolved := trimmed
+	if !filepath.IsAbs(resolved) {
+		baseDir := strings.TrimSpace(envBaseDir)
+		if baseDir == "" {
+			cwd, _ := os.Getwd()
+			baseDir = cwd
+		}
+		resolved = filepath.Join(baseDir, resolved)
+	}
+	resolved = filepath.Clean(resolved)
+	payload, err := os.ReadFile(resolved)
+	if err != nil {
+		return "", fmt.Errorf("read app auth local public key file %s: %w", resolved, err)
+	}
+	if _, err := parseRSAPublicKeyPEM(payload); err != nil {
+		return "", fmt.Errorf("parse app auth local public key file %s: %w", resolved, err)
+	}
+	return resolved, nil
+}
+
+func parseRSAPublicKeyPEM(payload []byte) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode(payload)
+	if block == nil {
+		return nil, errors.New("pem decode failed")
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("rsa parse failed: %w", err)
+	}
+	rsaKey, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("rsa parse failed")
+	}
+	return rsaKey, nil
 }
 
 func getenvMap(values map[string]string, key, fallback string) string {

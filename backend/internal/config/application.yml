@@ -79,7 +79,7 @@ auth:
 
 app-auth:
   enabled: false
-  local-public-key: ""
+  local-public-key-file: ""
   jwks-uri: ""
   issuer: ""
   jwks-cache-seconds: 300

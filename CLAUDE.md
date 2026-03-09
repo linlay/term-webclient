@@ -17,7 +17,7 @@
 ## 4. 目录结构
 - `backend/`: Go 服务代码、模块声明和 Dockerfile
 - `frontend/`: React 源码、Vite 配置、Node 代理服务
-- `configs/`: 外部结构化配置示例，仅存 `.example.yml`
+- `configs/`: App 公钥 PEM 示例文件，以及用户自行创建的外部结构化配置目录
 - `README.md`: 使用、部署、运维入口
 - `.env.example`: 环境变量契约
 

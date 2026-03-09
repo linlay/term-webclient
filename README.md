@@ -44,6 +44,7 @@ make test-frontend
 - 根目录 `.env.example` 是唯一的环境变量契约；本地真实值写入根目录 `.env`，该文件不提交。
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
 - 只有结构化配置确实超过 `.env` 表达能力时，才使用 `CONFIG_PATH` 指向 `configs/*.yml`。
+- `configs/` 同时用于存放 App JWT 本地公钥 PEM 文件；仓库提供 `configs/local-public-key.example.pem` 作为示例。
 - 配置优先级：内置默认值 < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
 - 推荐用法：
@@ -59,6 +60,7 @@ CONFIG_PATH=./configs/config.prod.yml
 ### Web 登录（`/term/`）
 - Web 端登录使用 `AUTH_USERNAME` + `AUTH_PASSWORD_HASH_BCRYPT`。
 - `AUTH_PASSWORD_HASH_BCRYPT` 必须是有效 bcrypt 哈希；推荐把真实密码只保留在生成阶段，不直接写入配置。
+- `AUTH_PASSWORD_HASH_BCRYPT` 支持原始 bcrypt，也支持被成对单引号或双引号包住的 bcrypt。
 
 生成 bcrypt：
 ```bash
@@ -78,29 +80,22 @@ AUTH_PASSWORD_HASH_BCRYPT='<your-bcrypt-hash>'
 
 ### App JWT（`/appterm/`）
 - App 模式要求 Bearer Token，前端会通过 bridge 自动给 HTTP 请求和 WebSocket 带 token。
-- 后端优先使用 `APP_AUTH_LOCAL_PUBLIC_KEY` 验签；为空时回退到 `APP_AUTH_JWKS_URI`。
+- 后端优先使用 `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 指向的 PEM 文件验签；为空时回退到 `APP_AUTH_JWKS_URI`。
 - `APP_AUTH_ISSUER`、`APP_AUTH_AUDIENCE` 建议始终显式配置，避免接受约束不足的 token。
+- `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 的相对路径按 `.env` 所在目录解析，开发态和发布态都可以统一写 `./configs/local-public-key.pem`。
 
-推荐写法：
+准备公钥文件：
+```bash
+cp configs/local-public-key.example.pem configs/local-public-key.pem
+```
+
+推荐 `.env`：
 ```bash
 APP_AUTH_ENABLED=true
-# .env 推荐单行 base64 DER 公钥；多行 PEM 更适合通过环境变量或 YAML 注入
-APP_AUTH_LOCAL_PUBLIC_KEY='<base64-rsa-public-key>'
+APP_AUTH_LOCAL_PUBLIC_KEY_FILE=./configs/local-public-key.pem
 APP_AUTH_JWKS_URI=
 APP_AUTH_ISSUER='your-app-issuer'
 APP_AUTH_AUDIENCE='appterm'
-```
-
-如果你更适合用 YAML：
-```yaml
-app-auth:
-  enabled: true
-  local-public-key: |
-    -----BEGIN PUBLIC KEY-----
-    ...
-    -----END PUBLIC KEY-----
-  issuer: your-app-issuer
-  audience: appterm
 ```
 
 ### Assist / LLM
@@ -148,7 +143,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-`docker-compose.yml` 仅用于本地双服务编排。若需要结构化后端覆盖项，把 `configs/config.prod.yml.example` 复制为 `configs/config.prod.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/config.prod.yml`。
+`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 ### 本地打包
 ```bash
@@ -167,9 +162,9 @@ make local-up
 - `release/backend/term-web-backend`
 - `release/frontend/`
 - `release/.env.example`
-- `release/configs/*.example.yml`
+- `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`；如果需要结构化覆盖，再准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`make local-up` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并在需要本地公钥验签时把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`make local-up` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash
@@ -187,6 +182,7 @@ make local-down
 ### 常见排查
 - 后端启动失败时，先检查 `.env` 中的端口、认证和 SSH 相关变量是否完整。
 - 如果启用了 Assist，确认 `ASSIST_BASE_URL`、`ASSIST_API_KEY`、`ASSIST_MODEL` 都已配置，且 `ASSIST_BASE_URL` 已包含 `/v1`。
+- 如果启用了 App JWT 本地公钥验签，确认 `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 指向的 PEM 文件存在且是合法 RSA 公钥。
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
