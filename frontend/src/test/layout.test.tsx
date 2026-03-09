@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { CopilotSidebar } from "../react/features/layout/CopilotSidebar";
+import { MobileTabManagerSheet, MobileTabSwitcher } from "../react/features/layout/MobileTabSwitcher";
 import { TabBar, canRebuildTab } from "../react/features/layout/TabBar";
 import { TabContextMenu } from "../react/features/layout/TabContextMenu";
 import { CloseTabConfirmModal } from "../react/features/layout/CloseTabConfirmModal";
@@ -95,6 +97,74 @@ describe("layout components", () => {
     expect(onOpenContextMenu.mock.calls[0]?.[0]).toMatchObject({ tabId: "tab-1", x: 120, y: 88 });
   });
 
+  it("renders mobile tab switcher with select, manage, and add actions", () => {
+    const onSelectTab = vi.fn();
+    const onOpenManager = vi.fn();
+    const onOpenNewWindow = vi.fn();
+
+    render(
+      <MobileTabSwitcher
+        tabs={[makeTab(), makeTab({ localId: "tab-2", title: "ssh", sessionId: "s2" })]}
+        activeTabId="tab-1"
+        onSelectTab={onSelectTab}
+        onOpenManager={onOpenManager}
+        onOpenNewWindow={onOpenNewWindow}
+      />
+    );
+
+    const select = container?.querySelector("[data-testid='mobile-tab-select']") as HTMLSelectElement | null;
+    expect(select).not.toBeNull();
+    expect(select?.options).toHaveLength(2);
+
+    act(() => {
+      if (select) {
+        select.value = "tab-2";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    expect(onSelectTab).toHaveBeenCalledWith("tab-2");
+
+    act(() => {
+      (container?.querySelector("[data-testid='mobile-tab-manager-btn']") as HTMLButtonElement).click();
+      (container?.querySelector("[data-testid='mobile-tab-plus']") as HTMLButtonElement).click();
+    });
+    expect(onOpenManager).toHaveBeenCalledTimes(1);
+    expect(onOpenNewWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders mobile tab manager sheet for switching and closing tabs", () => {
+    const onSelectTab = vi.fn();
+    const onCloseTab = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <MobileTabManagerSheet
+        open={true}
+        tabs={[makeTab(), makeTab({ localId: "tab-2", title: "ssh", sessionId: "s2" })]}
+        activeTabId="tab-1"
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onOpenNewWindow={vi.fn()}
+        onClose={onClose}
+      />
+    );
+
+    const mainButtons = container?.querySelectorAll(".mobile-tab-main") ?? [];
+    expect(mainButtons.length).toBe(2);
+
+    act(() => {
+      (mainButtons[1] as HTMLButtonElement).click();
+    });
+    expect(onSelectTab).toHaveBeenCalledWith("tab-2");
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    const closeButtons = container?.querySelectorAll(".mobile-tab-close-btn") ?? [];
+    act(() => {
+      (closeButtons[0] as HTMLButtonElement).click();
+    });
+    expect(onCloseTab).toHaveBeenCalledWith("tab-1");
+  });
+
   it("renders tab context menu open/close actions", () => {
     const onRebuild = vi.fn();
     const onCloseTab = vi.fn();
@@ -159,5 +229,56 @@ describe("layout components", () => {
       (buttons[1] as HTMLButtonElement).click();
     });
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders Copilot sidebar as mobile sheet with assist tab", () => {
+    render(
+      <CopilotSidebar
+        open={true}
+        isMobile={true}
+        sideTab="assist"
+        sessionId="s1"
+        summaryLoading={false}
+        summaryError=""
+        summaryContext=""
+        summaryScreenText="git status"
+        agentBusy={false}
+        agentError=""
+        agentInstruction=""
+        agentSelectedPaths=""
+        agentQuickCommand=""
+        agentRun={null}
+        assistQuestion="How to inspect?"
+        assistSuggestions={[{
+          id: "git-status-short",
+          command: "git status --short",
+          reason: "Check repo state.",
+          confidence: "high"
+        }]}
+        assistBusy={false}
+        assistError=""
+        onTabChange={vi.fn()}
+        onRefreshSummary={vi.fn()}
+        onCopySummaryContext={vi.fn()}
+        onCopySummaryScreen={vi.fn()}
+        onAgentInstructionChange={vi.fn()}
+        onAgentSelectedPathsChange={vi.fn()}
+        onAgentQuickCommandChange={vi.fn()}
+        onStartAgentRun={vi.fn()}
+        onRefreshAgentRun={vi.fn()}
+        onApproveAgentRun={vi.fn()}
+        onAbortAgentRun={vi.fn()}
+        onSendQuickCommand={vi.fn()}
+        onAssistQuestionChange={vi.fn()}
+        onGenerateAssistSuggestions={vi.fn()}
+        onInsertAssistCommand={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const sidebar = container?.querySelector("[data-testid='copilot-sidebar']");
+    expect(sidebar).toHaveClass("mobile-sheet");
+    expect(container?.textContent).toContain("Assist");
+    expect(container?.textContent).toContain("git status --short");
   });
 });

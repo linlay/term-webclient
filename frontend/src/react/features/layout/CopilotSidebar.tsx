@@ -1,9 +1,11 @@
 import type { ChangeEvent } from "react";
 import type { AgentRunResponse } from "../../shared/api/types";
+import type { AssistSuggestion } from "../../shared/copilot/assistMock";
 
 interface CopilotSidebarProps {
   open: boolean;
-  sideTab: "summary" | "agent";
+  isMobile: boolean;
+  sideTab: "summary" | "agent" | "assist";
   sessionId: string | null;
   summaryLoading: boolean;
   summaryError: string;
@@ -15,7 +17,11 @@ interface CopilotSidebarProps {
   agentSelectedPaths: string;
   agentQuickCommand: string;
   agentRun: AgentRunResponse | null;
-  onTabChange: (tab: "summary" | "agent") => void;
+  assistQuestion: string;
+  assistSuggestions: AssistSuggestion[];
+  assistBusy: boolean;
+  assistError: string;
+  onTabChange: (tab: "summary" | "agent" | "assist") => void;
   onRefreshSummary: () => void;
   onCopySummaryContext: () => void;
   onCopySummaryScreen: () => void;
@@ -27,6 +33,9 @@ interface CopilotSidebarProps {
   onApproveAgentRun: (confirmRisk: boolean) => void;
   onAbortAgentRun: () => void;
   onSendQuickCommand: () => void;
+  onAssistQuestionChange: (value: string) => void;
+  onGenerateAssistSuggestions: () => void;
+  onInsertAssistCommand: (command: string) => void;
   onClose: () => void;
 }
 
@@ -40,6 +49,7 @@ function onInputChange(event: ChangeEvent<HTMLInputElement>, setter: (value: str
 
 export function CopilotSidebar({
   open,
+  isMobile,
   sideTab,
   sessionId,
   summaryLoading,
@@ -52,6 +62,10 @@ export function CopilotSidebar({
   agentSelectedPaths,
   agentQuickCommand,
   agentRun,
+  assistQuestion,
+  assistSuggestions,
+  assistBusy,
+  assistError,
   onTabChange,
   onRefreshSummary,
   onCopySummaryContext,
@@ -64,10 +78,18 @@ export function CopilotSidebar({
   onApproveAgentRun,
   onAbortAgentRun,
   onSendQuickCommand,
+  onAssistQuestionChange,
+  onGenerateAssistSuggestions,
+  onInsertAssistCommand,
   onClose
 }: CopilotSidebarProps): JSX.Element {
   return (
-    <aside className={`agent-sidebar ${open ? "" : "hidden"}`} aria-hidden={open ? "false" : "true"}>
+    <aside
+      className={`agent-sidebar ${isMobile ? "mobile-sheet" : ""} ${open ? "" : "hidden"}`}
+      aria-hidden={open ? "false" : "true"}
+      data-testid="copilot-sidebar"
+    >
+      {isMobile && <div className="copilot-sheet-handle" aria-hidden="true" />}
       <div className="agent-header">
         <div className="agent-title">Copilot</div>
         <button
@@ -87,6 +109,13 @@ export function CopilotSidebar({
           onClick={() => onTabChange("summary")}
         >
           Summary
+        </button>
+        <button
+          type="button"
+          className={`ghost-btn copilot-tab ${sideTab === "assist" ? "active" : ""}`}
+          onClick={() => onTabChange("assist")}
+        >
+          Assist
         </button>
         <button
           type="button"
@@ -117,7 +146,68 @@ export function CopilotSidebar({
           <label className="field-label" htmlFor="sessionSummaryScreenText">Screen Text</label>
           <textarea id="sessionSummaryScreenText" className="summary-text" rows={8} readOnly value={summaryScreenText} />
         </section>
-      ) : (
+      ) : null}
+
+      {sideTab === "assist" ? (
+        <section className="copilot-panel">
+          <label className="field-label" htmlFor="assistQuestionInput">Question</label>
+          <textarea
+            id="assistQuestionInput"
+            rows={4}
+            value={assistQuestion}
+            onChange={(event) => onTextareaChange(event, onAssistQuestionChange)}
+            placeholder="Describe what you want to inspect or do next."
+          />
+
+          <div className="agent-actions-row">
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={onGenerateAssistSuggestions}
+              disabled={assistBusy}
+            >
+              {assistBusy ? "Generating..." : "生成建议"}
+            </button>
+          </div>
+
+          {assistError && <div className="tree-status error">{assistError}</div>}
+
+          <label className="field-label" htmlFor="assistScreenText">Recent Screen Text</label>
+          <textarea
+            id="assistScreenText"
+            className="summary-text assist-screen-preview"
+            rows={7}
+            readOnly
+            value={summaryScreenText}
+            placeholder="Summary screen text will appear here after refresh."
+          />
+
+          <div className="assist-suggestion-list">
+            {assistSuggestions.length === 0 ? (
+              <div className="agent-run-status">No suggestions yet</div>
+            ) : (
+              assistSuggestions.map((suggestion) => (
+                <article key={suggestion.id} className="assist-suggestion-card">
+                  <div className="assist-suggestion-head">
+                    <code>{suggestion.command}</code>
+                    <span className={`assist-confidence ${suggestion.confidence}`}>{suggestion.confidence}</span>
+                  </div>
+                  <div className="assist-suggestion-reason">{suggestion.reason}</div>
+                  <button
+                    type="button"
+                    className="ghost-btn assist-insert-btn"
+                    onClick={() => onInsertAssistCommand(suggestion.command)}
+                  >
+                    写入终端
+                  </button>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {sideTab === "agent" ? (
         <section className="copilot-panel">
           <label className="field-label" htmlFor="agentQuickCommandInput">Quick Command</label>
           <div className="agent-inline-row">
@@ -186,7 +276,7 @@ export function CopilotSidebar({
             <div className="agent-run-status">No run</div>
           )}
         </section>
-      )}
+      ) : null}
     </aside>
   );
 }

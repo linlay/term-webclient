@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import { COPILOT_REFRESH_MS } from "../config/env";
+import { buildAssistSuggestions, type AssistSuggestion } from "../copilot/assistMock";
 import { parseQuickCommand } from "../terminal/quickCommand";
 import type { AgentRunResponse } from "../api/types";
 import type { TerminalTab } from "../../features/tabs/useTabsStore";
@@ -15,13 +16,14 @@ function parseSelectedPaths(value: string): string[] {
 export interface UseCopilotStateOptions {
   activeTab: TerminalTab | null;
   senderMapRef: React.RefObject<Map<string, (data: string) => boolean>>;
+  focusTerminal: (localId: string) => void;
   showNotice: (message: string, type?: "info" | "warn" | "error" | "success", timeoutMs?: number) => void;
   setTabAgentRunId: (localId: string, runId: string | null) => void;
 }
 
 export interface UseCopilotStateReturn {
-  sideTab: "summary" | "agent";
-  setSideTab: (tab: "summary" | "agent") => void;
+  sideTab: "summary" | "agent" | "assist";
+  setSideTab: (tab: "summary" | "agent" | "assist") => void;
   isCopilotOpen: boolean;
   setIsCopilotOpen: React.Dispatch<React.SetStateAction<boolean>>;
   summaryContext: string;
@@ -38,21 +40,29 @@ export interface UseCopilotStateReturn {
   agentError: string;
   setAgentError: (v: string) => void;
   agentBusy: boolean;
-  refreshSummary: () => Promise<void>;
+  assistQuestion: string;
+  setAssistQuestion: (v: string) => void;
+  assistSuggestions: AssistSuggestion[];
+  assistBusy: boolean;
+  assistError: string;
+  refreshSummary: () => Promise<{ summaryContext: string; summaryScreenText: string } | null>;
   refreshAgentRun: () => Promise<void>;
   startAgentRun: () => Promise<void>;
   approveAgentRun: (confirmRisk: boolean) => Promise<void>;
   abortAgentRun: () => Promise<void>;
   sendQuickCommand: () => void;
+  generateAssistSuggestions: () => Promise<void>;
+  insertAssistCommand: (command: string) => void;
 }
 
 export function useCopilotState({
   activeTab,
   senderMapRef,
+  focusTerminal,
   showNotice,
   setTabAgentRunId
 }: UseCopilotStateOptions): UseCopilotStateReturn {
-  const [sideTab, setSideTab] = useState<"summary" | "agent">("summary");
+  const [sideTab, setSideTab] = useState<"summary" | "agent" | "assist">("summary");
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
 
   const [summaryContext, setSummaryContext] = useState("");
@@ -67,12 +77,17 @@ export function useCopilotState({
   const [agentError, setAgentError] = useState("");
   const [agentBusy, setAgentBusy] = useState(false);
 
-  async function refreshSummary(): Promise<void> {
+  const [assistQuestion, setAssistQuestion] = useState("");
+  const [assistSuggestions, setAssistSuggestions] = useState<AssistSuggestion[]>([]);
+  const [assistBusy, setAssistBusy] = useState(false);
+  const [assistError, setAssistError] = useState("");
+
+  async function refreshSummary(): Promise<{ summaryContext: string; summaryScreenText: string } | null> {
     if (!activeTab?.sessionId) {
       setSummaryContext("");
       setSummaryScreenText("");
       setSummaryError("No active tab");
-      return;
+      return null;
     }
     setSummaryLoading(true);
     setSummaryError("");
@@ -81,10 +96,17 @@ export function useCopilotState({
         apiClient.getSessionContext(activeTab.sessionId),
         apiClient.getSessionScreenText(activeTab.sessionId)
       ]);
-      setSummaryContext(JSON.stringify(context, null, 2));
-      setSummaryScreenText(screen.text || "");
+      const nextSummaryContext = JSON.stringify(context, null, 2);
+      const nextSummaryScreenText = screen.text || "";
+      setSummaryContext(nextSummaryContext);
+      setSummaryScreenText(nextSummaryScreenText);
+      return {
+        summaryContext: nextSummaryContext,
+        summaryScreenText: nextSummaryScreenText
+      };
     } catch (error) {
       setSummaryError(error instanceof Error ? error.message : "Failed to load summary");
+      return null;
     } finally {
       setSummaryLoading(false);
     }
@@ -190,8 +212,66 @@ export function useCopilotState({
       setAgentError("Active terminal websocket is not connected");
       return;
     }
+    focusTerminal(activeTab.localId);
     setAgentQuickCommand("");
     setAgentError("");
+  }
+
+  async function generateAssistSuggestions(): Promise<void> {
+    if (!activeTab?.sessionId) {
+      setAssistError("No active tab");
+      setAssistSuggestions([]);
+      return;
+    }
+    const question = assistQuestion.trim();
+    if (!question) {
+      setAssistError("Question is required");
+      setAssistSuggestions([]);
+      return;
+    }
+
+    setAssistBusy(true);
+    setAssistError("");
+    try {
+      const summary = await refreshSummary();
+      if (!summary) {
+        setAssistSuggestions([]);
+        setAssistError("Failed to refresh summary");
+        return;
+      }
+      const suggestions = buildAssistSuggestions(question, summary.summaryScreenText);
+      setAssistSuggestions(suggestions);
+      if (suggestions.length === 0) {
+        setAssistError("No suggestions generated");
+      }
+    } finally {
+      setAssistBusy(false);
+    }
+  }
+
+  function insertAssistCommand(command: string): void {
+    if (!activeTab) {
+      setAssistError("No active tab");
+      return;
+    }
+    const payload = command.trim();
+    if (!payload) {
+      setAssistError("Command is empty");
+      return;
+    }
+    const sender = senderMapRef.current?.get(activeTab.localId);
+    if (!sender) {
+      setAssistError("Active terminal is not ready");
+      return;
+    }
+    const ok = sender(payload);
+    if (!ok) {
+      setAssistError("Active terminal websocket is not connected");
+      return;
+    }
+    focusTerminal(activeTab.localId);
+    setAssistError("");
+    showNotice("Command inserted into terminal", "success", 1800);
   }
 
   useEffect(() => {
@@ -216,6 +296,11 @@ export function useCopilotState({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideTab, activeTab?.sessionId, activeTab?.agentRunId, isCopilotOpen]);
 
+  useEffect(() => {
+    setAssistSuggestions([]);
+    setAssistError("");
+  }, [activeTab?.sessionId]);
+
   return {
     sideTab,
     setSideTab,
@@ -235,11 +320,18 @@ export function useCopilotState({
     agentError,
     setAgentError,
     agentBusy,
+    assistQuestion,
+    setAssistQuestion,
+    assistSuggestions,
+    assistBusy,
+    assistError,
     refreshSummary,
     refreshAgentRun,
     startAgentRun,
     approveAgentRun,
     abortAgentRun,
-    sendQuickCommand
+    sendQuickCommand,
+    generateAssistSuggestions,
+    insertAssistCommand
   };
 }

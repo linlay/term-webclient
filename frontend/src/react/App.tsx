@@ -21,6 +21,7 @@ import { TerminalPane, type TerminalPaneHandle } from "./features/terminal/Termi
 import { useTabsStore } from "./features/tabs/useTabsStore";
 import { CopilotSidebar } from "./features/layout/CopilotSidebar";
 import { MobileShortcutBar } from "./features/layout/MobileShortcutBar";
+import { MobileTabManagerSheet, MobileTabSwitcher } from "./features/layout/MobileTabSwitcher";
 import { NewWindowModal } from "./features/layout/NewWindowModal";
 import { TabBar, canRebuildTab, type TabContextPayload } from "./features/layout/TabBar";
 import { TabContextMenu, type TabContextMenuState } from "./features/layout/TabContextMenu";
@@ -81,6 +82,7 @@ export default function App(): JSX.Element {
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [mobileTabManagerOpen, setMobileTabManagerOpen] = useState(false);
   const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
   const [desktopFilesOpen, setDesktopFilesOpen] = useState(true);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveThemeMode());
@@ -103,6 +105,9 @@ export default function App(): JSX.Element {
   const copilot = useCopilotState({
     activeTab,
     senderMapRef,
+    focusTerminal: (localId) => {
+      terminalHandleMapRef.current.get(localId)?.focus();
+    },
     showNotice,
     setTabAgentRunId
   });
@@ -265,6 +270,12 @@ export default function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!isMobile && mobileTabManagerOpen) {
+      setMobileTabManagerOpen(false);
+    }
+  }, [isMobile, mobileTabManagerOpen]);
+
+  useEffect(() => {
     if (!activeTab && mobileFilesOpen) {
       setMobileFilesOpen(false);
     }
@@ -327,6 +338,10 @@ export default function App(): JSX.Element {
         closeNewWindow();
         return;
       }
+      if (mobileTabManagerOpen) {
+        setMobileTabManagerOpen(false);
+        return;
+      }
       if (mobileFilesOpen) {
         setMobileFilesOpen(false);
         return;
@@ -339,7 +354,7 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, mobileFilesOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
+  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, mobileFilesOpen, mobileTabManagerOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
 
   async function copyText(value: string, successNotice: string): Promise<void> {
     if (!value.trim()) {
@@ -499,18 +514,28 @@ export default function App(): JSX.Element {
     <>
       <div className="layout">
         <div className="top-row">
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onSelectTab={selectTabAndSyncRoute}
-            onCloseTab={(tabId) => {
-              requestCloseTab(tabId);
-            }}
-            onOpenNewWindow={openNewWindowFromUi}
-            onOpenContextMenu={(payload: TabContextPayload) => {
-              setTabContextMenu(payload);
-            }}
-          />
+          {isMobile ? (
+            <MobileTabSwitcher
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={selectTabAndSyncRoute}
+              onOpenManager={() => setMobileTabManagerOpen(true)}
+              onOpenNewWindow={openNewWindowFromUi}
+            />
+          ) : (
+            <TabBar
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={selectTabAndSyncRoute}
+              onCloseTab={(tabId) => {
+                requestCloseTab(tabId);
+              }}
+              onOpenNewWindow={openNewWindowFromUi}
+              onOpenContextMenu={(payload: TabContextPayload) => {
+                setTabContextMenu(payload);
+              }}
+            />
+          )}
 
           <div className="top-actions">
             <button
@@ -664,6 +689,7 @@ export default function App(): JSX.Element {
 
           <CopilotSidebar
             open={copilot.isCopilotOpen}
+            isMobile={isMobile}
             sideTab={copilot.sideTab}
             sessionId={activeTab?.sessionId ?? null}
             summaryLoading={copilot.summaryLoading}
@@ -676,6 +702,10 @@ export default function App(): JSX.Element {
             agentSelectedPaths={copilot.agentSelectedPaths}
             agentQuickCommand={copilot.agentQuickCommand}
             agentRun={copilot.agentRun}
+            assistQuestion={copilot.assistQuestion}
+            assistSuggestions={copilot.assistSuggestions}
+            assistBusy={copilot.assistBusy}
+            assistError={copilot.assistError}
             onTabChange={copilot.setSideTab}
             onRefreshSummary={() => {
               void copilot.refreshSummary();
@@ -702,6 +732,11 @@ export default function App(): JSX.Element {
               void copilot.abortAgentRun();
             }}
             onSendQuickCommand={copilot.sendQuickCommand}
+            onAssistQuestionChange={copilot.setAssistQuestion}
+            onGenerateAssistSuggestions={() => {
+              void copilot.generateAssistSuggestions();
+            }}
+            onInsertAssistCommand={copilot.insertAssistCommand}
             onClose={() => setIsCopilotOpen(false)}
           />
         </div>
@@ -709,6 +744,18 @@ export default function App(): JSX.Element {
 
       {isMobile && isCopilotOpen && (
         <div className="copilot-mobile-backdrop" aria-hidden="true" onClick={() => setIsCopilotOpen(false)} />
+      )}
+
+      {isMobile && (
+        <MobileTabManagerSheet
+          open={mobileTabManagerOpen}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={selectTabAndSyncRoute}
+          onCloseTab={requestCloseTab}
+          onOpenNewWindow={openNewWindowFromUi}
+          onClose={() => setMobileTabManagerOpen(false)}
+        />
       )}
 
       {isMobile && activeTab && canUseFiles && (
