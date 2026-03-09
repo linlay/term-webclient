@@ -7,7 +7,7 @@
 - Backend: Go 1.26, `net/http`, Gorilla WebSocket, YAML 配置加载
 - Frontend: React 18, Vite 5, TypeScript, Vitest
 - Frontend runtime proxy: Node.js 22 + Express + `http-proxy-middleware`
-- Build/package: npm, Go toolchain, Docker Compose, macOS release scripts
+- Build/package: npm, Go toolchain, Docker Compose, Makefile
 
 ## 3. 架构设计
 - `frontend/server.js` 提供静态资源服务，并将 `/term/api`、`/appterm/api`、`/term/ws`、`/appterm/ws` 代理到 Go 后端。
@@ -18,7 +18,6 @@
 - `backend/`: Go 服务代码、模块声明和 Dockerfile
 - `frontend/`: React 源码、Vite 配置、Node 代理服务
 - `configs/`: 外部结构化配置示例，仅存 `.example.yml`
-- `release-scripts/`: 本地打包与启停脚本
 - `README.md`: 使用、部署、运维入口
 - `.env.example`: 环境变量契约
 
@@ -43,7 +42,7 @@
 - 初始化：复制 `.env.example` 为 `.env`，安装前端依赖。
 - 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；需要结构化覆盖时通过 `CONFIG_PATH` 启用 `configs/*.yml`。
 - 校验：Go 侧运行 `make test-backend`；前端运行 `make typecheck-frontend` 和 `make test-frontend`。
-- 打包：执行 `make package-mac`，产出 `release/` 目录，再通过 `release-scripts/mac/start.sh` 启动。
+- 打包：执行 `make package-mac` 生成 `release/` 目录；执行 `make local-up` 可自动先打包再通过 `scripts/mac/start.sh` 以发布态启动。
 
 ## 9. 已知约束与注意事项
 - `frontend/vite.config.ts` 本地开发默认从根 `.env` 读取前后端端口，不应再依赖 `frontend/.env`。

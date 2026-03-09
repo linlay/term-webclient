@@ -152,8 +152,15 @@ docker compose up --build
 ### 本地打包
 ```bash
 make package-mac
-./release-scripts/mac/start.sh release
 ```
+
+### 本机发布态启动
+推荐通过 Make 统一执行“先打包，再启动”：
+```bash
+make local-up
+```
+
+`make local-up` 会始终先重新生成默认 `release/` 目录产物，再通过 `scripts/mac/start.sh` 启动发布态前后端服务。
 
 打包产物包含：
 - `release/backend/term-web-backend`
@@ -161,13 +168,19 @@ make package-mac
 - `release/.env.example`
 - `release/configs/*.example.yml`
 
-运行发布包前，至少准备 `release/.env`；如果需要结构化覆盖，再准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。
+运行发布包前，至少准备 `release/.env`；如果需要结构化覆盖，再准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`make local-up` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+
+发布包手工入口：
+```bash
+./scripts/mac/start.sh release
+./scripts/mac/stop.sh release
+```
 
 ## 6. 运维
 ### 启停
 ```bash
-./release-scripts/mac/start.sh release
-./release-scripts/mac/stop.sh release
+make local-up
+make local-down
 ```
 
 ### 常见排查
