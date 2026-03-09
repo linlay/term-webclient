@@ -36,6 +36,7 @@ type openAIChatCompletionsRequest struct {
 	Messages       []openAIChatMessage   `json:"messages"`
 	ResponseFormat *openAIResponseFormat `json:"response_format,omitempty"`
 	Stream         bool                  `json:"stream,omitempty"`
+	EnableThinking *bool                 `json:"enable_thinking,omitempty"`
 }
 
 type openAIChatMessage struct {
@@ -123,6 +124,7 @@ func (s *Service) requestModel(sessionID, question, capturedScreenText string) (
 		Messages:       messages,
 		ResponseFormat: &openAIResponseFormat{Type: "json_object"},
 		Stream:         true,
+		EnableThinking: boolPtr(false),
 	}
 
 	body, err := json.Marshal(payload)
@@ -139,7 +141,7 @@ func (s *Service) requestModel(sessionID, question, capturedScreenText string) (
 	httpRequest.Header.Set("accept", "text/event-stream")
 	httpRequest.Header.Set("authorization", "Bearer "+s.cfg.APIKey)
 
-	s.logRequest(sessionID, endpoint, payload, httpRequest.Header)
+	s.logRequest(sessionID, http.MethodPost, endpoint, body, payload, httpRequest.Header)
 	startedAt := time.Now()
 	response, err := s.client.Do(httpRequest)
 	if err != nil {
@@ -245,7 +247,7 @@ func extractOptionalModelContent(raw json.RawMessage) (string, bool, error) {
 
 	var asString string
 	if err := json.Unmarshal(raw, &asString); err == nil {
-		return strings.TrimSpace(asString), true, nil
+		return asString, true, nil
 	}
 
 	var asParts []struct {
@@ -255,23 +257,23 @@ func extractOptionalModelContent(raw json.RawMessage) (string, bool, error) {
 	if err := json.Unmarshal(raw, &asParts); err == nil {
 		var builder strings.Builder
 		for _, part := range asParts {
-			if strings.TrimSpace(part.Text) == "" {
+			if part.Text == "" {
 				continue
-			}
-			if builder.Len() > 0 {
-				builder.WriteString("\n")
 			}
 			builder.WriteString(part.Text)
 		}
-		return strings.TrimSpace(builder.String()), true, nil
+		return builder.String(), true, nil
 	}
 
 	return "", false, nil
 }
 
 func (s *Service) collectStreamContent(sessionID string, response *http.Response, startedAt time.Time) (string, error) {
+	contentType := strings.TrimSpace(response.Header.Get("content-type"))
+	s.logDebug(sessionID, "response status=%d status_text=%q content_type=%q headers=%v", response.StatusCode, response.Status, contentType, flattenHeaders(response.Header))
+
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, err := io.ReadAll(response.Body)
+		body, err := readResponseSnippet(response.Body)
 		if err != nil {
 			s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), "read error response body failed", "")
 			return "", util.NewStatusError(http.StatusBadGateway, "assist model response is invalid", err)
@@ -280,26 +282,43 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), message, string(body))
 		return "", util.NewStatusError(http.StatusBadGateway, "assist model request failed: "+message, nil)
 	}
+	if !isSSEContentType(contentType) {
+		body, err := readResponseSnippet(response.Body)
+		if err != nil {
+			s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), "read non-SSE response body failed", "")
+			return "", util.NewStatusError(http.StatusBadGateway, "assist model stream response is invalid", err)
+		}
+		message := fmt.Sprintf("assist model did not return SSE (content-type: %s)", fallbackString(contentType, "(empty)"))
+		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), message, string(body))
+		return "", util.NewStatusError(http.StatusBadGateway, message, nil)
+	}
 
 	s.logDebug(sessionID, "stream started")
 
 	var builder strings.Builder
 	eventCount := 0
 	done := false
+	choiceChunkCount := 0
 	if err := readSSEDataEvents(response.Body, func(payload string) error {
 		trimmed := strings.TrimSpace(payload)
 		if trimmed == "" {
 			return nil
 		}
 		eventCount++
+		s.logDebug(sessionID, "stream event[%d]=%q", eventCount, truncateForLog(trimmed, 1024))
 		if trimmed == "[DONE]" {
 			done = true
 			return nil
 		}
-		delta, err := extractStreamDelta(trimmed)
+		delta, hasChoices, err := extractStreamDelta(trimmed)
 		if err != nil {
 			return err
 		}
+		if !hasChoices {
+			s.logDebug(sessionID, "stream event[%d] ignored: no choices", eventCount)
+			return nil
+		}
+		choiceChunkCount++
 		builder.WriteString(delta)
 		return nil
 	}); err != nil {
@@ -313,6 +332,11 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 	}
 
 	content := strings.TrimSpace(builder.String())
+	if choiceChunkCount == 0 {
+		err := util.NewStatusError(http.StatusBadGateway, "assist model stream returned no choice chunks", nil)
+		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), util.ErrorMessage(err, "assist model stream returned no choice chunks"), content)
+		return "", err
+	}
 	s.logDebug(sessionID, "stream completed status=%d duration_ms=%d events=%d content_chars=%d", response.StatusCode, time.Since(startedAt).Milliseconds(), eventCount, utf8.RuneCountInString(content))
 	s.logDebug(sessionID, "response content=%q", content)
 	return content, nil
@@ -334,7 +358,7 @@ func readSSEDataEvents(reader io.Reader, onEvent func(payload string) error) err
 	for {
 		line, err := buffered.ReadString('\n')
 		if err != nil && err != io.EOF {
-			return util.NewStatusError(http.StatusBadGateway, "assist model stream read failed", err)
+			return util.NewStatusError(http.StatusBadGateway, "assist model stream read failed: "+err.Error(), err)
 		}
 
 		line = strings.TrimRight(line, "\r\n")
@@ -357,30 +381,30 @@ func readSSEDataEvents(reader io.Reader, onEvent func(payload string) error) err
 	}
 }
 
-func extractStreamDelta(payload string) (string, error) {
+func extractStreamDelta(payload string) (string, bool, error) {
 	var chunk openAIChatCompletionsStreamChunk
 	if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-		return "", util.NewStatusError(http.StatusBadGateway, "assist model stream payload is invalid", err)
+		return "", false, util.NewStatusError(http.StatusBadGateway, "assist model stream payload is invalid: "+truncateForLog(payload, 512), err)
 	}
 	if chunk.Error != nil && strings.TrimSpace(chunk.Error.Message) != "" {
-		return "", util.NewStatusError(http.StatusBadGateway, "assist model request failed: "+strings.TrimSpace(chunk.Error.Message), nil)
+		return "", false, util.NewStatusError(http.StatusBadGateway, "assist model request failed: "+strings.TrimSpace(chunk.Error.Message), nil)
 	}
 	if len(chunk.Choices) == 0 {
-		return "", util.NewStatusError(http.StatusBadGateway, "assist model stream returned no choices", nil)
+		return "", false, nil
 	}
 
 	var builder strings.Builder
 	for _, choice := range chunk.Choices {
 		content, ok, err := extractOptionalModelContent(choice.Delta.Content)
 		if err != nil {
-			return "", util.NewStatusError(http.StatusBadGateway, "assist model stream content is invalid", err)
+			return "", false, util.NewStatusError(http.StatusBadGateway, "assist model stream content is invalid", err)
 		}
 		if !ok {
-			return "", util.NewStatusError(http.StatusBadGateway, "assist model stream content is invalid", fmt.Errorf("unsupported content shape"))
+			return "", false, util.NewStatusError(http.StatusBadGateway, "assist model stream content is invalid", fmt.Errorf("unsupported content shape"))
 		}
 		builder.WriteString(content)
 	}
-	return builder.String(), nil
+	return builder.String(), true, nil
 }
 
 func extractErrorMessage(status string, body []byte) string {
@@ -397,12 +421,13 @@ func extractErrorMessage(status string, body []byte) string {
 	return string(trimmed)
 }
 
-func (s *Service) logRequest(sessionID, endpoint string, payload openAIChatCompletionsRequest, headers http.Header) {
-	s.logDebug(sessionID, "request model=%s endpoint=%s timeout=%s stream=%t response_format=%s", payload.Model, endpoint, s.client.Timeout, payload.Stream, responseFormatType(payload.ResponseFormat))
+func (s *Service) logRequest(sessionID, method, endpoint string, body []byte, payload openAIChatCompletionsRequest, headers http.Header) {
+	s.logDebug(sessionID, "request method=%s model=%s endpoint=%s timeout=%s stream=%t response_format=%s enable_thinking=%v", method, payload.Model, endpoint, s.client.Timeout, payload.Stream, responseFormatType(payload.ResponseFormat), boolValue(payload.EnableThinking))
 	for index, message := range payload.Messages {
 		s.logDebug(sessionID, "message[%d] role=%s content=%q", index, message.Role, message.Content)
 	}
 	s.logDebug(sessionID, "headers=%v", redactHeaders(headers))
+	s.logDebug(sessionID, "request_body=%s", string(body))
 }
 
 func (s *Service) logFailure(sessionID string, statusCode int, duration time.Duration, message, responseBody string) {
@@ -456,6 +481,41 @@ func responseFormatType(format *openAIResponseFormat) string {
 		return ""
 	}
 	return format.Type
+}
+
+func flattenHeaders(headers http.Header) map[string]string {
+	result := make(map[string]string, len(headers))
+	for key, values := range headers {
+		result[key] = strings.Join(values, ", ")
+	}
+	return result
+}
+
+func isSSEContentType(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/event-stream")
+}
+
+func readResponseSnippet(reader io.Reader) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(reader, 4096))
+}
+
+func truncateForLog(value string, max int) string {
+	trimmed := strings.TrimSpace(value)
+	if max <= 0 || len(trimmed) <= max {
+		return trimmed
+	}
+	return trimmed[:max] + "...(truncated)"
+}
+
+func boolPtr(value bool) *bool {
+	return &value
+}
+
+func boolValue(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func stripCodeFences(value string) string {

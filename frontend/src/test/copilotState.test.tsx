@@ -10,6 +10,8 @@ const apiClientMock = vi.hoisted(() => ({
   createAssistSuggestions: vi.fn()
 }));
 
+const clipboardWriteText = vi.fn();
+
 vi.mock("../react/shared/api/client", () => ({
   apiClient: apiClientMock
 }));
@@ -60,6 +62,21 @@ function Harness({ activeTab, senderMapRef, focusTerminal, showNotice }: Harness
       <button type="button" data-testid="generate" onClick={() => void copilot.generateAssistSuggestions()}>
         generate
       </button>
+      <button type="button" data-testid="clear" onClick={() => copilot.clearAssistQuestion()}>
+        clear
+      </button>
+      <button
+        type="button"
+        data-testid="copy"
+        onClick={() => {
+          const first = copilot.assistSuggestions[0];
+          if (first) {
+            void copilot.copyAssistCommand(first.command);
+          }
+        }}
+      >
+        copy
+      </button>
       <button
         type="button"
         data-testid="insert"
@@ -98,6 +115,13 @@ beforeEach(() => {
   apiClientMock.getSessionContext.mockReset();
   apiClientMock.getSessionScreenText.mockReset();
   apiClientMock.createAssistSuggestions.mockReset();
+  clipboardWriteText.mockReset();
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: clipboardWriteText
+    }
+  });
 });
 
 afterEach(() => {
@@ -227,5 +251,46 @@ describe("useCopilotState assist mode", () => {
     expect(sender).toHaveBeenNthCalledWith(2, "git status --short\r");
     expect(focusTerminal).toHaveBeenCalledWith("tab-1");
     expect(showNotice).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports clearing the question and copying a command", async () => {
+    apiClientMock.createAssistSuggestions.mockResolvedValue({
+      capturedScreenText: "modified: frontend/src/react/App.tsx",
+      capturedChars: 34,
+      suggestions: [
+        { id: "one", command: "git status --short", reason: "Check repo state." }
+      ]
+    });
+    clipboardWriteText.mockResolvedValue(undefined);
+
+    const showNotice = vi.fn();
+    render(
+      <Harness
+        activeTab={makeTab()}
+        senderMapRef={{ current: new Map<string, (data: string) => boolean>() }}
+        focusTerminal={vi.fn()}
+        showNotice={showNotice}
+      />
+    );
+
+    const question = container?.querySelector("[data-testid='question']") as HTMLTextAreaElement;
+    await act(async () => {
+      setTextareaValue(question, "Need a command");
+    });
+    await act(async () => {
+      (container?.querySelector("[data-testid='clear']") as HTMLButtonElement).click();
+    });
+
+    expect(question.value).toBe("");
+
+    await act(async () => {
+      (container?.querySelector("[data-testid='generate']") as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      (container?.querySelector("[data-testid='copy']") as HTMLButtonElement).click();
+    });
+
+    expect(clipboardWriteText).toHaveBeenCalledWith("git status --short");
+    expect(showNotice).toHaveBeenCalledWith("Command copied", "success", 1800);
   });
 });

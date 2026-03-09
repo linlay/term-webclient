@@ -1,12 +1,9 @@
-import type { ChangeEvent } from "react";
 import type { TerminalTab } from "../tabs/useTabsStore";
 
 interface MobileTabSwitcherProps {
   tabs: TerminalTab[];
   activeTabId: string | null;
-  onSelectTab: (tabId: string) => void;
-  onOpenManager: () => void;
-  onOpenNewWindow: () => void;
+  onOpenSheet: () => void;
 }
 
 interface MobileTabManagerSheetProps {
@@ -15,6 +12,7 @@ interface MobileTabManagerSheetProps {
   activeTabId: string | null;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onOpenNewWindow: () => void;
   onClose: () => void;
 }
 
@@ -23,57 +21,30 @@ function formatTabLabel(tab: TerminalTab): string {
   return `${tab.title} [${state}]`;
 }
 
-function handleSelectChange(event: ChangeEvent<HTMLSelectElement>, onSelectTab: (tabId: string) => void): void {
-  const value = event.target.value;
-  if (!value) {
-    return;
+function getActiveTabLabel(tabs: TerminalTab[], activeTabId: string | null): string {
+  const activeTab = tabs.find((tab) => tab.localId === activeTabId) ?? tabs[0] ?? null;
+  if (!activeTab) {
+    return "No windows";
   }
-  onSelectTab(value);
+  return formatTabLabel(activeTab);
 }
 
 export function MobileTabSwitcher({
   tabs,
   activeTabId,
-  onSelectTab,
-  onOpenManager,
-  onOpenNewWindow
+  onOpenSheet
 }: MobileTabSwitcherProps): JSX.Element {
   return (
     <div className="mobile-tab-switcher" data-testid="mobile-tab-switcher">
-      <select
+      <button
+        type="button"
         className="mobile-tab-select"
-        aria-label="Select session tab"
+        aria-label="Open session manager"
         data-testid="mobile-tab-select"
-        value={activeTabId ?? ""}
-        onChange={(event) => handleSelectChange(event, onSelectTab)}
-        disabled={tabs.length === 0}
+        onClick={onOpenSheet}
       >
-        {tabs.length === 0 ? (
-          <option value="">No windows</option>
-        ) : (
-          tabs.map((tab) => (
-            <option key={tab.localId} value={tab.localId}>
-              {formatTabLabel(tab)}
-            </option>
-          ))
-        )}
-      </select>
-      <button
-        type="button"
-        className="ghost-btn mobile-tab-manager-btn"
-        data-testid="mobile-tab-manager-btn"
-        onClick={onOpenManager}
-      >
-        管理
-      </button>
-      <button
-        type="button"
-        className="mobile-tab-plus"
-        title="New window"
-        data-testid="mobile-tab-plus"
-        onClick={onOpenNewWindow}
-      >
-        +
+        <span className="mobile-tab-select-label">{getActiveTabLabel(tabs, activeTabId)}</span>
+        <span className="mobile-tab-select-caret" aria-hidden="true">v</span>
       </button>
     </div>
   );
@@ -85,6 +56,7 @@ export function MobileTabManagerSheet({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onOpenNewWindow,
   onClose
 }: MobileTabManagerSheetProps): JSX.Element | null {
   if (!open) {
@@ -97,7 +69,19 @@ export function MobileTabManagerSheet({
       <div className="mobile-tab-sheet" role="dialog" aria-label="Tab manager">
         <div className="mobile-tab-sheet-head">
           <div className="mobile-tab-sheet-title">会话管理</div>
-          <button type="button" className="ghost-btn" onClick={onClose}>关闭</button>
+          <div className="mobile-tab-sheet-head-actions">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                onClose();
+                onOpenNewWindow();
+              }}
+            >
+              新增
+            </button>
+            <button type="button" className="ghost-btn" onClick={onClose}>关闭</button>
+          </div>
         </div>
 
         <div className="mobile-tab-sheet-list">

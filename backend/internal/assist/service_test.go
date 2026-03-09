@@ -2,7 +2,9 @@ package assist
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +64,9 @@ func TestCreateSuggestionsTruncatesRecentScreenTextAndPadsToFive(t *testing.T) {
 	assertRequestMessages(t, requestBody, strings.Repeat("a", 500), "(none)")
 	if requestBody["stream"] != true {
 		t.Fatalf("expected stream=true, got %#v", requestBody["stream"])
+	}
+	if requestBody["enable_thinking"] != false {
+		t.Fatalf("expected enable_thinking=false, got %#v", requestBody["enable_thinking"])
 	}
 }
 
@@ -143,6 +148,89 @@ func TestCreateSuggestionsAllowsEmptyQuestionAndUsesModelResponse(t *testing.T) 
 	}
 }
 
+func TestCreateSuggestionsPreservesWhitespaceAcrossStreamChunks(t *testing.T) {
+	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"for dir"}}]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":" in */; do"}}]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":" (cd \\\"$dir\\\""}}]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":"&& git pull); done\",\"reason\":\"Batch update repos.\"}]}"}}]}`)
+		writeSSEDone(t, w)
+	}, nil)
+	defer server.Close()
+
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            server.URL,
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "recent text",
+		},
+	})
+
+	response, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if err != nil {
+		t.Fatalf("CreateSuggestions returned error: %v", err)
+	}
+
+	want := `for dir in */; do (cd "$dir"&& git pull); done`
+	if response.Suggestions[0].Command != want {
+		t.Fatalf("expected command %q, got %q", want, response.Suggestions[0].Command)
+	}
+}
+
+func TestExtractOptionalModelContentPreservesWhitespaceInArrayContentParts(t *testing.T) {
+	raw := json.RawMessage(`[{"type":"text","text":"echo"},{"type":"text","text":" "},{"type":"text","text":"hello"},{"type":"text","text":" "},{"type":"text","text":"world"}]`)
+
+	content, ok, err := extractOptionalModelContent(raw)
+	if err != nil {
+		t.Fatalf("extractOptionalModelContent returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected content to be recognized")
+	}
+
+	want := "echo hello world"
+	if content != want {
+		t.Fatalf("expected content %q, got %q", want, content)
+	}
+}
+
+func TestCreateSuggestionsIgnoresMetadataChunkWithoutChoices(t *testing.T) {
+	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeSSEData(t, w, `{"id":"chunk-1","object":"chat.completion.chunk","choices":[]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"pwd\",\"reason\":\"Confirm current directory.\"},{\"command\":\"ls -la\",\"reason\":\"List files.\"},{\"command\":\"npm test\",\"reason\":\"Run tests.\"},{\"command\":\"git status --short\",\"reason\":\"Check repo state.\"},{\"command\":\"go test ./...\",\"reason\":\"Run Go tests.\"}]}"}}]}`)
+		writeSSEDone(t, w)
+	}, nil)
+	defer server.Close()
+
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            server.URL,
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "git status output",
+		},
+	})
+
+	response, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if err != nil {
+		t.Fatalf("CreateSuggestions returned error: %v", err)
+	}
+	if response.Suggestions[0].Command != "pwd" {
+		t.Fatalf("unexpected first suggestion: %+v", response.Suggestions[0])
+	}
+}
+
 func TestCreateSuggestionsReturnsBadGatewayWhenModelJSONIsInvalid(t *testing.T) {
 	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeSSEData(t, w, `{"choices":[{"delta":{"content":"not-json"}}]}`)
@@ -197,8 +285,69 @@ func TestCreateSuggestionsReturnsBadGatewayWhenStreamPayloadIsInvalid(t *testing
 	if util.ErrorStatus(err) != http.StatusBadGateway {
 		t.Fatalf("expected bad gateway error, got %d (%v)", util.ErrorStatus(err), err)
 	}
-	if !strings.Contains(util.ErrorMessage(err, ""), "stream payload is invalid") {
+	if !strings.Contains(util.ErrorMessage(err, ""), "stream payload is invalid: not-json") {
 		t.Fatalf("expected invalid payload error, got %v", err)
+	}
+}
+
+func TestCreateSuggestionsReturnsBadGatewayWhenResponseIsNotSSE(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"suggestions\":[]}"}}]}`))
+	}))
+	defer server.Close()
+
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            server.URL,
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "recent text",
+		},
+	})
+
+	_, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if util.ErrorStatus(err) != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway error, got %d (%v)", util.ErrorStatus(err), err)
+	}
+	if !strings.Contains(util.ErrorMessage(err, ""), "did not return SSE") {
+		t.Fatalf("expected non-SSE error, got %v", err)
+	}
+}
+
+func TestCreateSuggestionsReturnsBadGatewayWhenStreamHasNoChoiceChunks(t *testing.T) {
+	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeSSEData(t, w, `{"id":"chunk-1","object":"chat.completion.chunk","choices":[]}`)
+		writeSSEDone(t, w)
+	}, nil)
+	defer server.Close()
+
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            server.URL,
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "recent text",
+		},
+	})
+
+	_, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if util.ErrorStatus(err) != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway error, got %d (%v)", util.ErrorStatus(err), err)
+	}
+	if !strings.Contains(util.ErrorMessage(err, ""), "stream returned no choice chunks") {
+		t.Fatalf("expected no choice chunks error, got %v", err)
 	}
 }
 
@@ -229,6 +378,78 @@ func TestCreateSuggestionsReturnsBadGatewayWhenStreamEndsWithoutDone(t *testing.
 	if !strings.Contains(util.ErrorMessage(err, ""), "stream ended before completion") {
 		t.Fatalf("expected incomplete stream error, got %v", err)
 	}
+}
+
+func TestCreateSuggestionsReturnsBadGatewayWhenStreamReadFails(t *testing.T) {
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            "https://example.com/v1",
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "recent text",
+		},
+	})
+	svc.client = &http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: &errReadCloser{
+					reader: &failingReader{
+						parts: []string{"data: "},
+						err:   errors.New("boom"),
+					},
+				},
+			}, nil
+		}),
+	}
+
+	_, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if util.ErrorStatus(err) != http.StatusBadGateway {
+		t.Fatalf("expected bad gateway error, got %d (%v)", util.ErrorStatus(err), err)
+	}
+	if !strings.Contains(util.ErrorMessage(err, ""), "assist model stream read failed:") {
+		t.Fatalf("expected stream read error with cause, got %v", err)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+type errReadCloser struct {
+	reader io.Reader
+}
+
+func (r *errReadCloser) Read(p []byte) (int, error) {
+	return r.reader.Read(p)
+}
+
+func (r *errReadCloser) Close() error {
+	return nil
+}
+
+type failingReader struct {
+	parts []string
+	index int
+	err   error
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if r.index < len(r.parts) {
+		part := r.parts[r.index]
+		r.index++
+		return copy(p, part), nil
+	}
+	return 0, r.err
 }
 
 func TestCreateSuggestionsDebugLogRedactsAuthorization(t *testing.T) {
@@ -266,6 +487,12 @@ func TestCreateSuggestionsDebugLogRedactsAuthorization(t *testing.T) {
 	logOutput := logs.String()
 	if !strings.Contains(logOutput, `assist debug session=s1 message[0] role=system`) {
 		t.Fatalf("expected system prompt log, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, `request_body={"model":"gpt-test"`) {
+		t.Fatalf("expected request body log, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, `"enable_thinking":false`) {
+		t.Fatalf("expected enable_thinking in request body log, got %q", logOutput)
 	}
 	if !strings.Contains(logOutput, "Bearer ***") {
 		t.Fatalf("expected redacted authorization header, got %q", logOutput)

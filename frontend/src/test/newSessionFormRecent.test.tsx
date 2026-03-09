@@ -234,6 +234,10 @@ describe("NewSessionForm recent + ssh title", () => {
     await flush();
     await flush();
 
+    expect(container?.querySelector("#new-session-recent")).toBeNull();
+    expect(container?.querySelector("#new-session-title")).toBeNull();
+    expect(container?.querySelector("#new-ssh-title")).not.toBeNull();
+
     const credentialSelect = container?.querySelector("#new-session-ssh-credential") as HTMLSelectElement | null;
     expect(credentialSelect).not.toBeNull();
 

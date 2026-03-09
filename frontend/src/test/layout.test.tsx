@@ -97,44 +97,33 @@ describe("layout components", () => {
     expect(onOpenContextMenu.mock.calls[0]?.[0]).toMatchObject({ tabId: "tab-1", x: 120, y: 88 });
   });
 
-  it("renders mobile tab switcher with select, manage, and add actions", () => {
-    const onSelectTab = vi.fn();
-    const onOpenManager = vi.fn();
-    const onOpenNewWindow = vi.fn();
+  it("renders mobile tab switcher as a single trigger", () => {
+    const onOpenSheet = vi.fn();
 
     render(
       <MobileTabSwitcher
         tabs={[makeTab(), makeTab({ localId: "tab-2", title: "ssh", sessionId: "s2" })]}
         activeTabId="tab-1"
-        onSelectTab={onSelectTab}
-        onOpenManager={onOpenManager}
-        onOpenNewWindow={onOpenNewWindow}
+        onOpenSheet={onOpenSheet}
       />
     );
 
-    const select = container?.querySelector("[data-testid='mobile-tab-select']") as HTMLSelectElement | null;
+    const select = container?.querySelector("[data-testid='mobile-tab-select']") as HTMLButtonElement | null;
     expect(select).not.toBeNull();
-    expect(select?.options).toHaveLength(2);
+    expect(select?.textContent).toContain("terminal [connected]");
+    expect(container?.querySelector("[data-testid='mobile-tab-manager-btn']")).toBeNull();
+    expect(container?.querySelector("[data-testid='mobile-tab-plus']")).toBeNull();
 
     act(() => {
-      if (select) {
-        select.value = "tab-2";
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      }
+      select?.click();
     });
-    expect(onSelectTab).toHaveBeenCalledWith("tab-2");
-
-    act(() => {
-      (container?.querySelector("[data-testid='mobile-tab-manager-btn']") as HTMLButtonElement).click();
-      (container?.querySelector("[data-testid='mobile-tab-plus']") as HTMLButtonElement).click();
-    });
-    expect(onOpenManager).toHaveBeenCalledTimes(1);
-    expect(onOpenNewWindow).toHaveBeenCalledTimes(1);
+    expect(onOpenSheet).toHaveBeenCalledTimes(1);
   });
 
-  it("renders mobile tab manager sheet for switching and closing tabs", () => {
+  it("renders mobile tab manager sheet for switching, adding and closing tabs", () => {
     const onSelectTab = vi.fn();
     const onCloseTab = vi.fn();
+    const onOpenNewWindow = vi.fn();
     const onClose = vi.fn();
 
     render(
@@ -144,9 +133,21 @@ describe("layout components", () => {
         activeTabId="tab-1"
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
+        onOpenNewWindow={onOpenNewWindow}
         onClose={onClose}
       />
     );
+
+    const addButton = Array.from(container?.querySelectorAll(".mobile-tab-sheet-head button") ?? []).find(
+      (button) => button.textContent === "新增"
+    ) as HTMLButtonElement | undefined;
+    expect(addButton).toBeDefined();
+
+    act(() => {
+      addButton?.click();
+    });
+    expect(onOpenNewWindow).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
 
     const mainButtons = container?.querySelectorAll(".mobile-tab-main") ?? [];
     expect(mainButtons.length).toBe(2);
@@ -155,7 +156,7 @@ describe("layout components", () => {
       (mainButtons[1] as HTMLButtonElement).click();
     });
     expect(onSelectTab).toHaveBeenCalledWith("tab-2");
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(2);
 
     const closeButtons = container?.querySelectorAll(".mobile-tab-close-btn") ?? [];
     act(() => {
@@ -231,6 +232,9 @@ describe("layout components", () => {
   });
 
   it("renders Copilot sidebar as mobile sheet with assist tab", () => {
+    const onGenerateAssistSuggestions = vi.fn();
+    const onClearAssistQuestion = vi.fn();
+    const onCopyAssistCommand = vi.fn();
     const onInsertAssistCommand = vi.fn();
     const onExecuteAssistCommand = vi.fn();
     render(
@@ -258,7 +262,9 @@ describe("layout components", () => {
         onCopySummaryContext={vi.fn()}
         onCopySummaryScreen={vi.fn()}
         onAssistQuestionChange={vi.fn()}
-        onGenerateAssistSuggestions={vi.fn()}
+        onGenerateAssistSuggestions={onGenerateAssistSuggestions}
+        onClearAssistQuestion={onClearAssistQuestion}
+        onCopyAssistCommand={onCopyAssistCommand}
         onInsertAssistCommand={onInsertAssistCommand}
         onExecuteAssistCommand={onExecuteAssistCommand}
         onClose={vi.fn()}
@@ -271,18 +277,36 @@ describe("layout components", () => {
     expect(container?.textContent).toContain("git status --short");
     expect(container?.textContent).not.toContain("Agent");
     expect(container?.querySelector("[data-testid='assist-screen-text']")).toBeNull();
+    expect((container?.querySelector("#assistQuestionInput") as HTMLTextAreaElement | null)?.rows).toBe(2);
 
     act(() => {
       (container?.querySelector("[data-testid='assist-screen-toggle']") as HTMLButtonElement).click();
     });
     expect(container?.querySelector("[data-testid='assist-screen-text']")).not.toBeNull();
 
-    const actionButtons = container?.querySelectorAll(".assist-suggestion-actions button") ?? [];
-    expect(actionButtons.length).toBe(2);
     act(() => {
+      const question = container?.querySelector("#assistQuestionInput");
+      question?.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      const event = new KeyboardEvent("keydown", { bubbles: true, key: "Enter" });
+      Object.defineProperty(event, "isComposing", { value: true });
+      question?.dispatchEvent(event);
+      question?.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+    expect(onGenerateAssistSuggestions).toHaveBeenCalledTimes(0);
+
+    const actionButtons = container?.querySelectorAll(".assist-suggestion-actions button") ?? [];
+    expect(actionButtons.length).toBe(3);
+
+    act(() => {
+      (Array.from(container?.querySelectorAll(".agent-actions-row button") ?? []).find(
+        (button) => button.textContent === "清空"
+      ) as HTMLButtonElement | undefined)?.click();
       (actionButtons[0] as HTMLButtonElement).click();
       (actionButtons[1] as HTMLButtonElement).click();
+      (actionButtons[2] as HTMLButtonElement).click();
     });
+    expect(onClearAssistQuestion).toHaveBeenCalledTimes(1);
+    expect(onCopyAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onInsertAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onExecuteAssistCommand).toHaveBeenCalledWith("git status --short");
   });

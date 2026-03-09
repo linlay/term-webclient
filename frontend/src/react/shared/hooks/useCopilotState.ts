@@ -29,6 +29,8 @@ export interface UseCopilotStateReturn {
   assistError: string;
   refreshSummary: () => Promise<void>;
   generateAssistSuggestions: () => Promise<void>;
+  clearAssistQuestion: () => void;
+  copyAssistCommand: (command: string) => Promise<void>;
   insertAssistCommand: (command: string) => void;
   executeAssistCommand: (command: string) => void;
 }
@@ -105,7 +107,28 @@ export function useCopilotState({
     }
   }
 
-  function sendAssistCommand(command: string, execute: boolean): void {
+  function clearAssistQuestion(): void {
+    setAssistQuestion("");
+    setAssistError("");
+  }
+
+  async function copyAssistCommand(command: string): Promise<void> {
+    const payload = command.trim();
+    if (!payload) {
+      setAssistError("Command is empty");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(payload);
+      setAssistError("");
+      showNotice("Command copied", "success", 1800);
+    } catch {
+      setAssistError("Copy failed in this browser context");
+      showNotice("Copy failed in this browser context", "warn", 2400);
+    }
+  }
+
+function sendAssistCommand(command: string, execute: boolean): void {
     if (!activeTab) {
       setAssistError("No active tab");
       return;
@@ -159,6 +182,12 @@ export function useCopilotState({
     setAssistError("");
   }, [activeTab?.sessionId]);
 
+  useEffect(() => {
+    if (window.innerWidth > 900) {
+      setIsCopilotOpen(true);
+    }
+  }, []);
+
   return {
     sideTab,
     setSideTab,
@@ -177,6 +206,8 @@ export function useCopilotState({
     assistError,
     refreshSummary,
     generateAssistSuggestions,
+    clearAssistQuestion,
+    copyAssistCommand,
     insertAssistCommand,
     executeAssistCommand
   };

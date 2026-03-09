@@ -262,6 +262,11 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
 
   useEffect(() => {
     setSelectedRecentSessionIndex("");
+    setRecentSessionsError("");
+    if (toolId === "ssh") {
+      setRecentSessions([]);
+      return;
+    }
     void refreshRecentSessions(toolId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolId]);
@@ -639,44 +644,48 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
       </div>
       {terminalClientsError && <div className="tree-status error">{terminalClientsError}</div>}
 
-      <section className="recent-sessions-section">
-        <div className="recent-sessions-head">
-          <label className="field-label" htmlFor="new-session-recent">Recent {toolId}</label>
-          <button
-            type="button"
-            className="ghost-btn recent-refresh-btn"
-            onClick={() => void refreshRecentSessions(toolId)}
-            disabled={recentSessionsLoading}
-          >
-            {recentSessionsLoading ? "Loading" : "Refresh"}
-          </button>
-        </div>
-        {recentSessionsError && <div className="tree-status error">{recentSessionsError}</div>}
-        <div className="recent-select-row">
-          <select
-            id="new-session-recent"
-            className="recent-select"
-            value={selectedRecentSessionIndex}
-            onChange={onSelectRecentSession}
-            disabled={recentSessionsLoading || createSessionMutation.isPending}
-          >
-            <option value="">Select recent session</option>
-            {recentSessions.map((item, index) => (
-              <option key={`${item.toolId}-${item.lastUsedAt}-${index}`} value={`${index}`}>
-                {formatRecentSessionLabel(item)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
+      {toolId !== "ssh" && (
+        <>
+          <section className="recent-sessions-section">
+            <div className="recent-sessions-head">
+              <label className="field-label" htmlFor="new-session-recent">Recent {toolId}</label>
+              <button
+                type="button"
+                className="ghost-btn recent-refresh-btn"
+                onClick={() => void refreshRecentSessions(toolId)}
+                disabled={recentSessionsLoading}
+              >
+                {recentSessionsLoading ? "Loading" : "Refresh"}
+              </button>
+            </div>
+            {recentSessionsError && <div className="tree-status error">{recentSessionsError}</div>}
+            <div className="recent-select-row">
+              <select
+                id="new-session-recent"
+                className="recent-select"
+                value={selectedRecentSessionIndex}
+                onChange={onSelectRecentSession}
+                disabled={recentSessionsLoading || createSessionMutation.isPending}
+              >
+                <option value="">Select recent session</option>
+                {recentSessions.map((item, index) => (
+                  <option key={`${item.toolId}-${item.lastUsedAt}-${index}`} value={`${index}`}>
+                    {formatRecentSessionLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
 
-      <label className="field-label" htmlFor="new-session-title">Title (optional)</label>
-      <input
-        id="new-session-title"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        placeholder={toolId === "ssh" ? "ssh" : toolId}
-      />
+          <label className="field-label" htmlFor="new-session-title">Title (optional)</label>
+          <input
+            id="new-session-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={toolId}
+          />
+        </>
+      )}
 
       {sessionType === "LOCAL_PTY" && (
         <>

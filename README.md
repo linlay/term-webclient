@@ -121,7 +121,7 @@ ASSIST_SYSTEM_PROMPT=
 ```
 
 - Assist 后端会以流式方式调用 `/chat/completions`，但对前端仍返回最终聚合后的 suggestions JSON。
-- `ASSIST_DEBUG_LOG=true` 时，后端会把发给模型的完整 prompt、脱敏后的请求头、流式调用状态和聚合后的响应内容写到服务日志；该开关只适合本地排障，日志会包含 recent screen text。
+- `ASSIST_DEBUG_LOG=true` 时，后端会把发给模型的完整原始请求 JSON、脱敏后的请求头、响应状态/响应头、SSE 排障信息和聚合后的响应内容写到服务日志；该开关只适合本地排障，日志会包含 recent screen text。
 
 如果你更适合把非敏感项放进 YAML：
 ```yaml

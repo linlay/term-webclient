@@ -83,7 +83,7 @@ export default function App(): JSX.Element {
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [mobileTabManagerOpen, setMobileTabManagerOpen] = useState(false);
   const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
-  const [desktopFilesOpen, setDesktopFilesOpen] = useState(true);
+  const [desktopFilesOpen, setDesktopFilesOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveThemeMode());
 
   const { notice, showNotice } = useNotice();
@@ -515,9 +515,7 @@ export default function App(): JSX.Element {
             <MobileTabSwitcher
               tabs={tabs}
               activeTabId={activeTabId}
-              onSelectTab={selectTabAndSyncRoute}
-              onOpenManager={() => setMobileTabManagerOpen(true)}
-              onOpenNewWindow={openNewWindowFromUi}
+              onOpenSheet={() => setMobileTabManagerOpen(true)}
             />
           ) : (
             <TabBar
@@ -713,6 +711,10 @@ export default function App(): JSX.Element {
             onGenerateAssistSuggestions={() => {
               void copilot.generateAssistSuggestions();
             }}
+            onClearAssistQuestion={copilot.clearAssistQuestion}
+            onCopyAssistCommand={(command) => {
+              void copilot.copyAssistCommand(command);
+            }}
             onInsertAssistCommand={copilot.insertAssistCommand}
             onExecuteAssistCommand={copilot.executeAssistCommand}
             onClose={() => setIsCopilotOpen(false)}
@@ -731,6 +733,7 @@ export default function App(): JSX.Element {
           activeTabId={activeTabId}
           onSelectTab={selectTabAndSyncRoute}
           onCloseTab={requestCloseTab}
+          onOpenNewWindow={openNewWindowFromUi}
           onClose={() => setMobileTabManagerOpen(false)}
         />
       )}

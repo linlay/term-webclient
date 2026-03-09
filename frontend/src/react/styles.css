@@ -351,7 +351,6 @@ body {
 .mobile-tab-switcher {
   display: flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
@@ -359,33 +358,37 @@ body {
 }
 
 .mobile-tab-select {
+  all: unset;
   flex: 1;
   min-width: 0;
-}
-
-.mobile-tab-manager-btn {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.mobile-tab-plus {
-  all: unset;
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 8px;
-  border: 1px dashed var(--tab-plus-border);
-  background: var(--tab-plus-bg);
-  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--tab-item-border);
+  border-radius: 10px;
+  background: var(--tab-item-bg);
   cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  flex: 0 0 auto;
+  color: var(--text);
 }
 
-.mobile-tab-plus:hover {
-  border-color: var(--tab-plus-hover-border);
+.mobile-tab-select:hover {
+  border-color: var(--tab-item-active-border);
+  background: var(--tab-item-active-bg);
+}
+
+.mobile-tab-select-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.mobile-tab-select-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
 .main-content {
@@ -1115,6 +1118,10 @@ textarea {
   gap: 6px;
 }
 
+.agent-actions-row .primary-btn {
+  margin-right: auto;
+}
+
 .agent-run-status {
   border: 1px solid var(--agent-run-status-border);
   border-radius: 8px;
@@ -1213,14 +1220,40 @@ textarea {
 
 .assist-suggestion-actions {
   display: grid;
-  grid-auto-flow: row;
-  gap: 6px;
+  grid-template-columns: auto auto;
+  gap: 4px;
   flex: 0 0 auto;
+  align-items: start;
+  justify-content: end;
 }
 
 .assist-suggestion-actions button {
-  min-width: 58px;
-  padding: 7px 10px;
+  min-width: 48px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.assist-suggestion-actions .assist-icon-btn {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 0;
+}
+
+.assist-suggestion-actions .assist-icon-btn svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.assist-suggestion-actions .primary-btn {
+  grid-column: 1 / -1;
+  justify-self: stretch;
 }
 
 .react-login-screen {
@@ -1320,16 +1353,11 @@ textarea {
   }
 
   .mobile-tab-switcher {
-    gap: 4px;
     padding: 4px 6px;
   }
 
   .mobile-tab-select {
     padding: 7px 8px;
-  }
-
-  .mobile-tab-manager-btn {
-    padding-inline: 8px;
   }
 
   .top-actions {
@@ -1566,6 +1594,11 @@ textarea {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+  }
+
+  .mobile-tab-sheet-head-actions {
+    display: flex;
+    gap: 6px;
   }
 
   .mobile-tab-sheet-title {
