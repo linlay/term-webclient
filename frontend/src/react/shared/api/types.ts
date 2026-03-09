@@ -235,6 +235,22 @@ export interface ScreenTextResponse {
   text: string;
 }
 
+export interface CreateAssistSuggestionsRequest {
+  question?: string;
+}
+
+export interface AssistSuggestionItem {
+  id: string;
+  command: string;
+  reason: string;
+}
+
+export interface AssistSuggestionsResponse {
+  capturedScreenText: string;
+  capturedChars: number;
+  suggestions: AssistSuggestionItem[];
+}
+
 export type AgentRunStatus =
   | "DRAFTED"
   | "WAITING_APPROVAL"

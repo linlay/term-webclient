@@ -67,7 +67,6 @@ export default function App(): JSX.Element {
   const setActiveTab = useTabsStore((state) => state.setActiveTab);
   const setTabs = useTabsStore((state) => state.setTabs);
   const setTabStatus = useTabsStore((state) => state.setTabStatus);
-  const setTabAgentRunId = useTabsStore((state) => state.setTabAgentRunId);
   const setTabLost = useTabsStore((state) => state.setTabLost);
   const setTabExitCode = useTabsStore((state) => state.setTabExitCode);
   const replaceTabSession = useTabsStore((state) => state.replaceTabSession);
@@ -108,8 +107,7 @@ export default function App(): JSX.Element {
     focusTerminal: (localId) => {
       terminalHandleMapRef.current.get(localId)?.focus();
     },
-    showNotice,
-    setTabAgentRunId
+    showNotice
   });
   const isCopilotOpen = copilot.isCopilotOpen;
   const setIsCopilotOpen = copilot.setIsCopilotOpen;
@@ -437,7 +435,6 @@ export default function App(): JSX.Element {
       showNotice(`Rebuilt ${tab.title}`, "success", 2200);
     } catch (error) {
       setTabStatus(localId, "error");
-      copilot.setAgentError(error instanceof Error ? error.message : "Failed to rebuild session");
       showNotice(error instanceof Error ? error.message : "Failed to rebuild session", "error", 3200);
     }
   }
@@ -696,14 +693,10 @@ export default function App(): JSX.Element {
             summaryError={copilot.summaryError}
             summaryContext={copilot.summaryContext}
             summaryScreenText={copilot.summaryScreenText}
-            agentBusy={copilot.agentBusy}
-            agentError={copilot.agentError}
-            agentInstruction={copilot.agentInstruction}
-            agentSelectedPaths={copilot.agentSelectedPaths}
-            agentQuickCommand={copilot.agentQuickCommand}
-            agentRun={copilot.agentRun}
             assistQuestion={copilot.assistQuestion}
             assistSuggestions={copilot.assistSuggestions}
+            assistCapturedScreenText={copilot.assistCapturedScreenText}
+            assistCapturedChars={copilot.assistCapturedChars}
             assistBusy={copilot.assistBusy}
             assistError={copilot.assistError}
             onTabChange={copilot.setSideTab}
@@ -716,27 +709,12 @@ export default function App(): JSX.Element {
             onCopySummaryScreen={() => {
               void copyText(copilot.summaryScreenText, "Copied screen text");
             }}
-            onAgentInstructionChange={copilot.setAgentInstruction}
-            onAgentSelectedPathsChange={copilot.setAgentSelectedPaths}
-            onAgentQuickCommandChange={copilot.setAgentQuickCommand}
-            onStartAgentRun={() => {
-              void copilot.startAgentRun();
-            }}
-            onRefreshAgentRun={() => {
-              void copilot.refreshAgentRun();
-            }}
-            onApproveAgentRun={(confirmRisk) => {
-              void copilot.approveAgentRun(confirmRisk);
-            }}
-            onAbortAgentRun={() => {
-              void copilot.abortAgentRun();
-            }}
-            onSendQuickCommand={copilot.sendQuickCommand}
             onAssistQuestionChange={copilot.setAssistQuestion}
             onGenerateAssistSuggestions={() => {
               void copilot.generateAssistSuggestions();
             }}
             onInsertAssistCommand={copilot.insertAssistCommand}
+            onExecuteAssistCommand={copilot.executeAssistCommand}
             onClose={() => setIsCopilotOpen(false)}
           />
         </div>
@@ -753,7 +731,6 @@ export default function App(): JSX.Element {
           activeTabId={activeTabId}
           onSelectTab={selectTabAndSyncRoute}
           onCloseTab={requestCloseTab}
-          onOpenNewWindow={openNewWindowFromUi}
           onClose={() => setMobileTabManagerOpen(false)}
         />
       )}

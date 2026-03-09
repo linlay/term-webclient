@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"term-webclient-go/backend/internal/agent"
+	"term-webclient-go/backend/internal/assist"
 	"term-webclient-go/backend/internal/auth"
 	"term-webclient-go/backend/internal/config"
 	"term-webclient-go/backend/internal/files"
@@ -31,6 +32,7 @@ type App struct {
 	workspace *workspace.Service
 	workdir   *workdir.Service
 	agent     *agent.Service
+	assist    *assist.Service
 	mux       *http.ServeMux
 	upgrader  websocket.Upgrader
 }
@@ -46,6 +48,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	fileService := files.New(cfg, sessionService, sshManager)
 	agentService := agent.New(cfg, sessionService, workspaceService)
+	assistService := assist.New(cfg, sessionService)
 
 	app := &App{
 		cfg:       cfg,
@@ -56,6 +59,7 @@ func New(cfg *config.Config) (*App, error) {
 		workspace: workspaceService,
 		workdir:   workdirService,
 		agent:     agentService,
+		assist:    assistService,
 		mux:       http.NewServeMux(),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
@@ -310,11 +314,37 @@ func (a *App) handleSessions(w http.ResponseWriter, r *http.Request, appMode boo
 		writeJSON(w, http.StatusOK, response)
 	case "files":
 		a.handleSessionFiles(w, r, appMode, sessionID, segments[2:])
+	case "assist":
+		a.handleAssist(w, r, sessionID, segments[2:])
 	case "agent":
 		a.handleAgent(w, r, sessionID, segments[2:])
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (a *App) handleAssist(w http.ResponseWriter, r *http.Request, sessionID string, segments []string) {
+	if len(segments) != 1 || segments[0] != "suggestions" || r.Method != http.MethodPost {
+		if len(segments) == 1 && segments[0] == "suggestions" {
+			writeMethodNotAllowed(w)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
+	var request model.CreateAssistSuggestionsRequest
+	if err := decodeJSON(r, &request); err != nil && err != errEmptyBody {
+		writeError(w, util.NewStatusError(http.StatusBadRequest, "invalid request body", err))
+		return
+	}
+
+	response, err := a.assist.CreateSuggestions(sessionID, request)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleSessionFiles(w http.ResponseWriter, r *http.Request, appMode bool, sessionID string, segments []string) {

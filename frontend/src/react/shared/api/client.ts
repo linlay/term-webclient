@@ -3,11 +3,13 @@ import { getAppAccessToken, refreshAppAccessToken } from "../auth/appBridge";
 import type {
   AbortAgentRunRequest,
   AgentRunResponse,
+  AssistSuggestionsResponse,
   ApproveAgentRunRequest,
   AppVersionResponse,
   AuthStatusResponse,
   RecentSessionItemResponse,
   CreateAgentRunRequest,
+  CreateAssistSuggestionsRequest,
   CreateSessionRequest,
   CreateSessionResponse,
   FileDownloadTicketRequest,
@@ -324,6 +326,14 @@ export const apiClient = {
       };
 
       xhr.send(formData);
+    });
+  },
+
+  createAssistSuggestions(sessionId: string, payload: CreateAssistSuggestionsRequest = {}): Promise<AssistSuggestionsResponse> {
+    return request<AssistSuggestionsResponse>(`/sessions/${sessionId}/assist/suggestions`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
     });
   },
 

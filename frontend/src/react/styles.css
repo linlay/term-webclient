@@ -1079,7 +1079,7 @@ textarea {
 
 .copilot-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -1165,7 +1165,7 @@ textarea {
 }
 
 .assist-screen-preview {
-  min-height: 140px;
+  min-height: 120px;
 }
 
 .assist-suggestion-list {
@@ -1173,57 +1173,54 @@ textarea {
   gap: 8px;
 }
 
+.assist-screen-toggle-row {
+  display: flex;
+}
+
+.assist-screen-toggle {
+  justify-self: start;
+}
+
 .assist-suggestion-card {
   border: 1px solid var(--agent-step-border);
   border-radius: 10px;
-  padding: 10px;
+  padding: 8px 10px;
   background: var(--agent-step-bg);
-  display: grid;
-  gap: 8px;
-}
-
-.assist-suggestion-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
-.assist-suggestion-head code {
+.assist-suggestion-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.assist-suggestion-command {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 12px;
 }
 
-.assist-confidence {
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 8px;
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.assist-confidence.high {
-  color: var(--ok);
-}
-
-.assist-confidence.medium {
-  color: var(--info);
-}
-
-.assist-confidence.mock {
-  color: var(--muted);
-}
-
 .assist-suggestion-reason {
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
-.assist-insert-btn {
-  justify-self: start;
+.assist-suggestion-actions {
+  display: grid;
+  grid-auto-flow: row;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.assist-suggestion-actions button {
+  min-width: 58px;
+  padding: 7px 10px;
 }
 
 .react-login-screen {
@@ -1558,7 +1555,7 @@ textarea {
     border: 1px solid var(--mobile-files-sheet-border);
     background: var(--mobile-files-sheet-bg);
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
     gap: 8px;
     padding: 10px;
     overflow: hidden;
@@ -1574,16 +1571,6 @@ textarea {
   .mobile-tab-sheet-title {
     font-size: 14px;
     font-weight: 600;
-  }
-
-  .mobile-tab-sheet-toolbar {
-    display: flex;
-    gap: 6px;
-  }
-
-  .mobile-tab-sheet-toolbar button {
-    flex: 1;
-    min-width: 0;
   }
 
   .mobile-tab-sheet-list {

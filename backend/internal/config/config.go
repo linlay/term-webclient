@@ -21,6 +21,7 @@ var envPlaceholderPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Terminal TerminalConfig `yaml:"terminal"`
+	Assist   AssistConfig   `yaml:"assist"`
 	Auth     AuthConfig     `yaml:"auth"`
 	AppAuth  AppAuthConfig  `yaml:"app-auth"`
 	App      AppMetaConfig  `yaml:"app"`
@@ -93,6 +94,17 @@ type FilesConfig struct {
 	AllowOutsideRoot         bool     `yaml:"allow-outside-root"`
 	AllowedRoots             []string `yaml:"allowed-roots"`
 	DownloadTicketTTLSeconds int      `yaml:"download-ticket-ttl-seconds"`
+}
+
+type AssistConfig struct {
+	Enabled            bool   `yaml:"enabled"`
+	BaseURL            string `yaml:"base-url"`
+	APIKey             string `yaml:"api-key"`
+	Model              string `yaml:"model"`
+	TimeoutSeconds     int    `yaml:"timeout-seconds"`
+	MaxScreenTextChars int    `yaml:"max-screen-text-chars"`
+	DebugLog           bool   `yaml:"debug-log"`
+	SystemPrompt       string `yaml:"system-prompt"`
 }
 
 type AuthConfig struct {
@@ -192,6 +204,13 @@ func defaultConfig() *Config {
 				AllowedRoots:             []string{},
 				DownloadTicketTTLSeconds: 60,
 			},
+		},
+		Assist: AssistConfig{
+			Enabled:            false,
+			BaseURL:            "https://api.openai.com/v1",
+			Model:              "",
+			TimeoutSeconds:     30,
+			MaxScreenTextChars: 500,
 		},
 		Auth: AuthConfig{
 			Enabled:                     false,
@@ -418,6 +437,15 @@ func applyEnvMap(cfg *Config, values map[string]string) {
 	cfg.AppAuth.Audience = getenvMap(values, "APP_AUTH_AUDIENCE", cfg.AppAuth.Audience)
 	cfg.AppAuth.ClockSkewSeconds = getenvIntMap(values, "APP_AUTH_CLOCK_SKEW_SECONDS", cfg.AppAuth.ClockSkewSeconds)
 
+	cfg.Assist.Enabled = getenvBoolMap(values, "ASSIST_ENABLED", cfg.Assist.Enabled)
+	cfg.Assist.BaseURL = getenvMap(values, "ASSIST_BASE_URL", cfg.Assist.BaseURL)
+	cfg.Assist.APIKey = getenvMap(values, "ASSIST_API_KEY", cfg.Assist.APIKey)
+	cfg.Assist.Model = getenvMap(values, "ASSIST_MODEL", cfg.Assist.Model)
+	cfg.Assist.TimeoutSeconds = getenvIntMap(values, "ASSIST_TIMEOUT_SECONDS", cfg.Assist.TimeoutSeconds)
+	cfg.Assist.MaxScreenTextChars = getenvIntMap(values, "ASSIST_MAX_SCREEN_TEXT_CHARS", cfg.Assist.MaxScreenTextChars)
+	cfg.Assist.DebugLog = getenvBoolMap(values, "ASSIST_DEBUG_LOG", cfg.Assist.DebugLog)
+	cfg.Assist.SystemPrompt = getenvMap(values, "ASSIST_SYSTEM_PROMPT", cfg.Assist.SystemPrompt)
+
 	cfg.App.GitSHA = getenvMap(values, "APP_GIT_SHA", cfg.App.GitSHA)
 	cfg.App.BuildTime = getenvMap(values, "APP_BUILD_TIME", cfg.App.BuildTime)
 }
@@ -501,6 +529,23 @@ func validate(cfg *Config) error {
 	}
 	if cfg.AppAuth.ClockSkewSeconds < 0 {
 		cfg.AppAuth.ClockSkewSeconds = 30
+	}
+	if cfg.Assist.TimeoutSeconds <= 0 {
+		cfg.Assist.TimeoutSeconds = 30
+	}
+	if cfg.Assist.MaxScreenTextChars <= 0 {
+		cfg.Assist.MaxScreenTextChars = 500
+	}
+	if cfg.Assist.Enabled {
+		if strings.TrimSpace(cfg.Assist.BaseURL) == "" {
+			return fmt.Errorf("assist base-url is required when assist is enabled")
+		}
+		if strings.TrimSpace(cfg.Assist.APIKey) == "" {
+			return fmt.Errorf("assist api-key is required when assist is enabled")
+		}
+		if strings.TrimSpace(cfg.Assist.Model) == "" {
+			return fmt.Errorf("assist model is required when assist is enabled")
+		}
 	}
 	return nil
 }

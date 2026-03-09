@@ -103,6 +103,38 @@ app-auth:
   audience: appterm
 ```
 
+### Assist / LLM
+- 当前仓库只支持单一 `assist.*` 配置，不兼容旧版 `agent.providers.*` 多提供方结构。
+- 推荐把真实 `ASSIST_API_KEY` 放在根目录 `.env`，结构化 YAML 只保留非敏感项或引用 `${ASSIST_API_KEY:}`。
+- `ASSIST_BASE_URL` 需要包含 `/v1`，这样后端会把请求拼成 `/v1/chat/completions`。
+
+推荐 `.env`：
+```bash
+ASSIST_ENABLED=true
+ASSIST_BASE_URL='https://api.babelark.com/v1'
+ASSIST_API_KEY='<your-api-key>'
+ASSIST_MODEL='Qwen3.5-397B-A17B'
+ASSIST_TIMEOUT_SECONDS=30
+ASSIST_MAX_SCREEN_TEXT_CHARS=500
+ASSIST_DEBUG_LOG=false
+ASSIST_SYSTEM_PROMPT=
+```
+
+- Assist 后端会以流式方式调用 `/chat/completions`，但对前端仍返回最终聚合后的 suggestions JSON。
+- `ASSIST_DEBUG_LOG=true` 时，后端会把发给模型的完整 prompt、脱敏后的请求头、流式调用状态和聚合后的响应内容写到服务日志；该开关只适合本地排障，日志会包含 recent screen text。
+
+如果你更适合把非敏感项放进 YAML：
+```yaml
+assist:
+  enabled: true
+  base-url: https://api.babelark.com/v1
+  api-key: ${ASSIST_API_KEY:}
+  model: Qwen3.5-397B-A17B
+  timeout-seconds: 30
+  max-screen-text-chars: 500
+  debug-log: false
+```
+
 ## 4. 界面主题
 - 前端提供白天和黑夜两种主题。
 - 主题切换按钮位于顶部操作区，切换结果保存在浏览器 `localStorage`。
@@ -140,6 +172,7 @@ make package-mac
 
 ### 常见排查
 - 后端启动失败时，先检查 `.env` 中的端口、认证和 SSH 相关变量是否完整。
+- 如果启用了 Assist，确认 `ASSIST_BASE_URL`、`ASSIST_API_KEY`、`ASSIST_MODEL` 都已配置，且 `ASSIST_BASE_URL` 已包含 `/v1`。
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。

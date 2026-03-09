@@ -107,6 +107,22 @@ describe("apiClient", () => {
     expect(fetchSpy.mock.calls[2]?.[0]).toBe("/term/api/sessions/s1/agent/runs/r1/abort");
   });
 
+  it("requests assist suggestions via session assist api", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockJsonResponse({
+        capturedScreenText: "git status",
+        capturedChars: 10,
+        suggestions: [
+          { id: "git-status-short", command: "git status --short", reason: "Check repo state." }
+        ]
+      })
+    );
+
+    await apiClient.createAssistSuggestions("s1", { question: "What next?" });
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/assist/suggestions");
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+
   it("requests session file tree with encoded path", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       mockJsonResponse({

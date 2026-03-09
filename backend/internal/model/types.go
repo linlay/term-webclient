@@ -171,6 +171,22 @@ type ScreenTextResponse struct {
 	Text      string `json:"text"`
 }
 
+type CreateAssistSuggestionsRequest struct {
+	Question string `json:"question"`
+}
+
+type AssistSuggestionItem struct {
+	ID      string `json:"id"`
+	Command string `json:"command"`
+	Reason  string `json:"reason"`
+}
+
+type AssistSuggestionsResponse struct {
+	CapturedScreenText string                 `json:"capturedScreenText"`
+	CapturedChars      int                    `json:"capturedChars"`
+	Suggestions        []AssistSuggestionItem `json:"suggestions"`
+}
+
 type TerminalClientResponse struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`

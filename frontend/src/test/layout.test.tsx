@@ -144,7 +144,6 @@ describe("layout components", () => {
         activeTabId="tab-1"
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
-        onOpenNewWindow={vi.fn()}
         onClose={onClose}
       />
     );
@@ -232,6 +231,8 @@ describe("layout components", () => {
   });
 
   it("renders Copilot sidebar as mobile sheet with assist tab", () => {
+    const onInsertAssistCommand = vi.fn();
+    const onExecuteAssistCommand = vi.fn();
     render(
       <CopilotSidebar
         open={true}
@@ -242,36 +243,24 @@ describe("layout components", () => {
         summaryError=""
         summaryContext=""
         summaryScreenText="git status"
-        agentBusy={false}
-        agentError=""
-        agentInstruction=""
-        agentSelectedPaths=""
-        agentQuickCommand=""
-        agentRun={null}
         assistQuestion="How to inspect?"
         assistSuggestions={[{
           id: "git-status-short",
           command: "git status --short",
-          reason: "Check repo state.",
-          confidence: "high"
+          reason: "Check repo state."
         }]}
+        assistCapturedScreenText="modified: app.tsx"
+        assistCapturedChars={17}
         assistBusy={false}
         assistError=""
         onTabChange={vi.fn()}
         onRefreshSummary={vi.fn()}
         onCopySummaryContext={vi.fn()}
         onCopySummaryScreen={vi.fn()}
-        onAgentInstructionChange={vi.fn()}
-        onAgentSelectedPathsChange={vi.fn()}
-        onAgentQuickCommandChange={vi.fn()}
-        onStartAgentRun={vi.fn()}
-        onRefreshAgentRun={vi.fn()}
-        onApproveAgentRun={vi.fn()}
-        onAbortAgentRun={vi.fn()}
-        onSendQuickCommand={vi.fn()}
         onAssistQuestionChange={vi.fn()}
         onGenerateAssistSuggestions={vi.fn()}
-        onInsertAssistCommand={vi.fn()}
+        onInsertAssistCommand={onInsertAssistCommand}
+        onExecuteAssistCommand={onExecuteAssistCommand}
         onClose={vi.fn()}
       />
     );
@@ -280,5 +269,21 @@ describe("layout components", () => {
     expect(sidebar).toHaveClass("mobile-sheet");
     expect(container?.textContent).toContain("Assist");
     expect(container?.textContent).toContain("git status --short");
+    expect(container?.textContent).not.toContain("Agent");
+    expect(container?.querySelector("[data-testid='assist-screen-text']")).toBeNull();
+
+    act(() => {
+      (container?.querySelector("[data-testid='assist-screen-toggle']") as HTMLButtonElement).click();
+    });
+    expect(container?.querySelector("[data-testid='assist-screen-text']")).not.toBeNull();
+
+    const actionButtons = container?.querySelectorAll(".assist-suggestion-actions button") ?? [];
+    expect(actionButtons.length).toBe(2);
+    act(() => {
+      (actionButtons[0] as HTMLButtonElement).click();
+      (actionButtons[1] as HTMLButtonElement).click();
+    });
+    expect(onInsertAssistCommand).toHaveBeenCalledWith("git status --short");
+    expect(onExecuteAssistCommand).toHaveBeenCalledWith("git status --short");
   });
 });

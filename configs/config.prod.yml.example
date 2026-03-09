@@ -8,3 +8,13 @@ terminal:
     enabled: false
   ssh:
     credentials-file: data/ssh-credentials.json
+
+assist:
+  enabled: true
+  # Keep /v1 in base-url so requests resolve to /v1/chat/completions.
+  base-url: https://api.babelark.com/v1
+  api-key: ${ASSIST_API_KEY:}
+  model: Qwen3.5-397B-A17B
+  timeout-seconds: 30
+  max-screen-text-chars: 500
+  debug-log: false

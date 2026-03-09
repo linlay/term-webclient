@@ -7,10 +7,7 @@ import type { TerminalTab } from "../react/features/tabs/useTabsStore";
 const apiClientMock = vi.hoisted(() => ({
   getSessionContext: vi.fn(),
   getSessionScreenText: vi.fn(),
-  getAgentRun: vi.fn(),
-  createAgentRun: vi.fn(),
-  approveAgentRun: vi.fn(),
-  abortAgentRun: vi.fn()
+  createAssistSuggestions: vi.fn()
 }));
 
 vi.mock("../react/shared/api/client", () => ({
@@ -50,8 +47,7 @@ function Harness({ activeTab, senderMapRef, focusTerminal, showNotice }: Harness
     activeTab,
     senderMapRef,
     focusTerminal,
-    showNotice,
-    setTabAgentRunId: vi.fn()
+    showNotice
   });
 
   return (
@@ -76,7 +72,20 @@ function Harness({ activeTab, senderMapRef, focusTerminal, showNotice }: Harness
       >
         insert
       </button>
+      <button
+        type="button"
+        data-testid="execute"
+        onClick={() => {
+          const first = copilot.assistSuggestions[0];
+          if (first) {
+            copilot.executeAssistCommand(first.command);
+          }
+        }}
+      >
+        execute
+      </button>
       <div data-testid="assist-error">{copilot.assistError}</div>
+      <div data-testid="assist-screen">{copilot.assistCapturedScreenText}</div>
       <div data-testid="assist-suggestions">{copilot.assistSuggestions.map((item) => item.command).join("|")}</div>
     </div>
   );
@@ -88,10 +97,7 @@ let root: Root | null = null;
 beforeEach(() => {
   apiClientMock.getSessionContext.mockReset();
   apiClientMock.getSessionScreenText.mockReset();
-  apiClientMock.getAgentRun.mockReset();
-  apiClientMock.createAgentRun.mockReset();
-  apiClientMock.approveAgentRun.mockReset();
-  apiClientMock.abortAgentRun.mockReset();
+  apiClientMock.createAssistSuggestions.mockReset();
 });
 
 afterEach(() => {
@@ -136,10 +142,6 @@ describe("useCopilotState assist mode", () => {
       />
     );
 
-    const question = container?.querySelector("[data-testid='question']") as HTMLTextAreaElement;
-    await act(async () => {
-      setTextareaValue(question, "What should I run?");
-    });
     await act(async () => {
       (container?.querySelector("[data-testid='generate']") as HTMLButtonElement).click();
     });
@@ -147,20 +149,17 @@ describe("useCopilotState assist mode", () => {
     expect(container?.querySelector("[data-testid='assist-error']")?.textContent).toBe("No active tab");
   });
 
-  it("generates mock suggestions from refreshed summary screen text", async () => {
-    apiClientMock.getSessionContext.mockResolvedValue({
-      sessionId: "s1",
-      meta: {},
-      commands: [],
-      events: [],
-      summary: "git repo"
-    });
-    apiClientMock.getSessionScreenText.mockResolvedValue({
-      sessionId: "s1",
-      lastSeq: 8,
-      cols: 120,
-      rows: 40,
-      text: "modified: frontend/src/react/App.tsx\nOn branch main"
+  it("requests assist suggestions even when question is empty", async () => {
+    apiClientMock.createAssistSuggestions.mockResolvedValue({
+      capturedScreenText: "modified: frontend/src/react/App.tsx",
+      capturedChars: 34,
+      suggestions: [
+        { id: "one", command: "git status --short", reason: "Check repo state." },
+        { id: "two", command: "git diff --stat", reason: "See diff summary." },
+        { id: "three", command: "pwd", reason: "Check current directory." },
+        { id: "four", command: "ls -la", reason: "Inspect files." },
+        { id: "five", command: "npm test", reason: "Run tests." }
+      ]
     });
 
     const senderMapRef = { current: new Map<string, (data: string) => boolean>() };
@@ -173,33 +172,26 @@ describe("useCopilotState assist mode", () => {
       />
     );
 
-    const question = container?.querySelector("[data-testid='question']") as HTMLTextAreaElement;
-    await act(async () => {
-      setTextareaValue(question, "How do I inspect git changes?");
-    });
     await act(async () => {
       (container?.querySelector("[data-testid='generate']") as HTMLButtonElement).click();
     });
 
-    expect(container?.querySelector("[data-testid='assist-error']")?.textContent).toBe("");
+    expect(apiClientMock.createAssistSuggestions).toHaveBeenCalledWith("s1", { question: undefined });
+    expect(container?.querySelector("[data-testid='assist-screen']")?.textContent).toContain("frontend/src/react/App.tsx");
     expect(container?.querySelector("[data-testid='assist-suggestions']")?.textContent).toContain("git status --short");
-    expect(apiClientMock.getSessionScreenText).toHaveBeenCalledWith("s1");
   });
 
-  it("inserts suggested commands into the terminal without appending a newline", async () => {
-    apiClientMock.getSessionContext.mockResolvedValue({
-      sessionId: "s1",
-      meta: {},
-      commands: [],
-      events: [],
-      summary: "git repo"
-    });
-    apiClientMock.getSessionScreenText.mockResolvedValue({
-      sessionId: "s1",
-      lastSeq: 8,
-      cols: 120,
-      rows: 40,
-      text: "modified: frontend/src/react/App.tsx\nOn branch main"
+  it("supports write and execute command actions", async () => {
+    apiClientMock.createAssistSuggestions.mockResolvedValue({
+      capturedScreenText: "modified: frontend/src/react/App.tsx",
+      capturedChars: 34,
+      suggestions: [
+        { id: "one", command: "git status --short", reason: "Check repo state." },
+        { id: "two", command: "git diff --stat", reason: "See diff summary." },
+        { id: "three", command: "pwd", reason: "Check current directory." },
+        { id: "four", command: "ls -la", reason: "Inspect files." },
+        { id: "five", command: "npm test", reason: "Run tests." }
+      ]
     });
 
     const sender = vi.fn(() => true);
@@ -218,7 +210,7 @@ describe("useCopilotState assist mode", () => {
 
     const question = container?.querySelector("[data-testid='question']") as HTMLTextAreaElement;
     await act(async () => {
-      setTextareaValue(question, "How do I inspect git changes?");
+      setTextareaValue(question, "What should I do next?");
     });
     await act(async () => {
       (container?.querySelector("[data-testid='generate']") as HTMLButtonElement).click();
@@ -226,10 +218,14 @@ describe("useCopilotState assist mode", () => {
     await act(async () => {
       (container?.querySelector("[data-testid='insert']") as HTMLButtonElement).click();
     });
+    await act(async () => {
+      (container?.querySelector("[data-testid='execute']") as HTMLButtonElement).click();
+    });
 
-    expect(sender).toHaveBeenCalledWith("git status --short");
-    expect(sender).not.toHaveBeenCalledWith("git status --short\r");
+    expect(apiClientMock.createAssistSuggestions).toHaveBeenCalledWith("s1", { question: "What should I do next?" });
+    expect(sender).toHaveBeenNthCalledWith(1, "git status --short");
+    expect(sender).toHaveBeenNthCalledWith(2, "git status --short\r");
     expect(focusTerminal).toHaveBeenCalledWith("tab-1");
-    expect(showNotice).toHaveBeenCalled();
+    expect(showNotice).toHaveBeenCalledTimes(2);
   });
 });

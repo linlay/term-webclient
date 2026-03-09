@@ -58,6 +58,16 @@ terminal:
     allowed-roots: []
     download-ticket-ttl-seconds: 60
 
+assist:
+  enabled: false
+  base-url: https://api.openai.com/v1
+  api-key: ""
+  model: ""
+  timeout-seconds: 30
+  max-screen-text-chars: 500
+  debug-log: false
+  system-prompt: ""
+
 auth:
   enabled: false
   username: admin

@@ -15,7 +15,6 @@ interface MobileTabManagerSheetProps {
   activeTabId: string | null;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onOpenNewWindow: () => void;
   onClose: () => void;
 }
 
@@ -86,7 +85,6 @@ export function MobileTabManagerSheet({
   activeTabId,
   onSelectTab,
   onCloseTab,
-  onOpenNewWindow,
   onClose
 }: MobileTabManagerSheetProps): JSX.Element | null {
   if (!open) {
@@ -100,19 +98,6 @@ export function MobileTabManagerSheet({
         <div className="mobile-tab-sheet-head">
           <div className="mobile-tab-sheet-title">会话管理</div>
           <button type="button" className="ghost-btn" onClick={onClose}>关闭</button>
-        </div>
-
-        <div className="mobile-tab-sheet-toolbar">
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() => {
-              onOpenNewWindow();
-              onClose();
-            }}
-          >
-            新建窗口
-          </button>
         </div>
 
         <div className="mobile-tab-sheet-list">
