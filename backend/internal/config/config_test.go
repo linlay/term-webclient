@@ -62,9 +62,9 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		"APP_AUTH_ISSUER=https://issuer.example\n" +
 		"APP_AUTH_AUDIENCE=appterm\n" +
 		"ASSIST_ENABLED=true\n" +
-		"ASSIST_BASE_URL=https://api.babelark.com/v1\n" +
+		"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
 		"ASSIST_API_KEY=test-assist-key\n" +
-		"ASSIST_MODEL=Qwen3.5-397B-A17B\n" +
+		"ASSIST_MODEL=qwen-plus\n" +
 		"ASSIST_TIMEOUT_SECONDS=45\n" +
 		"ASSIST_MAX_SCREEN_TEXT_CHARS=900\n" +
 		"ASSIST_DEBUG_LOG=true\n" +
@@ -122,10 +122,10 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	if !cfg.Assist.Enabled {
 		t.Fatal("expected assist env override to enable assist")
 	}
-	if cfg.Assist.BaseURL != "https://api.babelark.com/v1" {
+	if cfg.Assist.BaseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
 		t.Fatalf("expected assist base url env override, got %q", cfg.Assist.BaseURL)
 	}
-	if cfg.Assist.APIKey != "test-assist-key" || cfg.Assist.Model != "Qwen3.5-397B-A17B" {
+	if cfg.Assist.APIKey != "test-assist-key" || cfg.Assist.Model != "qwen-plus" {
 		t.Fatalf("expected assist credentials/model env override, got apiKey=%q model=%q", cfg.Assist.APIKey, cfg.Assist.Model)
 	}
 	if cfg.Assist.TimeoutSeconds != 45 || cfg.Assist.MaxScreenTextChars != 900 {
@@ -178,7 +178,7 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 				"CONFIG_PATH=../configs/config.dev.yml\n" +
 				"ASSIST_ENABLED=true\n" +
 				"ASSIST_API_KEY=test-assist-key\n" +
-				"ASSIST_MODEL=Qwen3.5-397B-A17B\n",
+				"ASSIST_MODEL=qwen-plus\n",
 			yamlContent: "assist:\n  base-url: \"\"\n",
 			wantErr:     "assist base-url is required when assist is enabled",
 		},
@@ -186,15 +186,15 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 			name: "missing api key",
 			envContent: "" +
 				"ASSIST_ENABLED=true\n" +
-				"ASSIST_BASE_URL=https://api.babelark.com/v1\n" +
-				"ASSIST_MODEL=Qwen3.5-397B-A17B\n",
+				"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+				"ASSIST_MODEL=qwen-plus\n",
 			wantErr: "assist api-key is required when assist is enabled",
 		},
 		{
 			name: "missing model",
 			envContent: "" +
 				"ASSIST_ENABLED=true\n" +
-				"ASSIST_BASE_URL=https://api.babelark.com/v1\n" +
+				"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
 				"ASSIST_API_KEY=test-assist-key\n",
 			wantErr: "assist model is required when assist is enabled",
 		},

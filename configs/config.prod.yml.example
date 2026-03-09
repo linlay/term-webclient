@@ -11,10 +11,10 @@ terminal:
 
 assist:
   enabled: true
-  # Keep /v1 in base-url so requests resolve to /v1/chat/completions.
-  base-url: https://api.babelark.com/v1
+  # Keep /compatible-mode/v1 in base-url so requests resolve to /chat/completions.
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
   api-key: ${ASSIST_API_KEY:}
-  model: Qwen3.5-397B-A17B
+  model: qwen-plus
   timeout-seconds: 30
   max-screen-text-chars: 500
   debug-log: false

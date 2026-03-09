@@ -207,7 +207,7 @@ func defaultConfig() *Config {
 		},
 		Assist: AssistConfig{
 			Enabled:            false,
-			BaseURL:            "https://api.openai.com/v1",
+			BaseURL:            "https://dashscope.aliyuncs.com/compatible-mode/v1",
 			Model:              "",
 			TimeoutSeconds:     30,
 			MaxScreenTextChars: 500,

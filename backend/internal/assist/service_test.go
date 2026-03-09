@@ -510,13 +510,13 @@ func TestResolveChatCompletionsEndpointKeepsVersionedBaseURL(t *testing.T) {
 	}{
 		{
 			name:    "versioned base url",
-			baseURL: "https://api.babelark.com/v1",
-			want:    "https://api.babelark.com/v1/chat/completions",
+			baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			want:    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
 		},
 		{
 			name:    "already full endpoint",
-			baseURL: "https://api.babelark.com/v1/chat/completions",
-			want:    "https://api.babelark.com/v1/chat/completions",
+			baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+			want:    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
 		},
 	}
 

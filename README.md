@@ -105,15 +105,16 @@ app-auth:
 
 ### Assist / LLM
 - 当前仓库只支持单一 `assist.*` 配置，不兼容旧版 `agent.providers.*` 多提供方结构。
+- 当前示例默认对接阿里云百炼 OpenAI 兼容接口。
 - 推荐把真实 `ASSIST_API_KEY` 放在根目录 `.env`，结构化 YAML 只保留非敏感项或引用 `${ASSIST_API_KEY:}`。
-- `ASSIST_BASE_URL` 需要包含 `/v1`，这样后端会把请求拼成 `/v1/chat/completions`。
+- `ASSIST_BASE_URL` 建议直接使用百炼兼容模式根地址，例如北京地域 `https://dashscope.aliyuncs.com/compatible-mode/v1`；后端会在其后拼接 `/chat/completions`。
 
 推荐 `.env`：
 ```bash
 ASSIST_ENABLED=true
-ASSIST_BASE_URL='https://api.babelark.com/v1'
+ASSIST_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
 ASSIST_API_KEY='<your-api-key>'
-ASSIST_MODEL='Qwen3.5-397B-A17B'
+ASSIST_MODEL='qwen-plus'
 ASSIST_TIMEOUT_SECONDS=30
 ASSIST_MAX_SCREEN_TEXT_CHARS=500
 ASSIST_DEBUG_LOG=false
@@ -127,9 +128,9 @@ ASSIST_SYSTEM_PROMPT=
 ```yaml
 assist:
   enabled: true
-  base-url: https://api.babelark.com/v1
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
   api-key: ${ASSIST_API_KEY:}
-  model: Qwen3.5-397B-A17B
+  model: qwen-plus
   timeout-seconds: 30
   max-screen-text-chars: 500
   debug-log: false
