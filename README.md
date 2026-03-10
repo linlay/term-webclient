@@ -32,7 +32,7 @@ make dev-frontend
 
 默认访问地址：
 - 前端：`http://127.0.0.1:11947/term/`
-- 后端探活：`http://127.0.0.1:11946/webapi/version`
+- 后端探活：`http://127.0.0.1:11937/webapi/version`
 
 ### 测试
 ```bash
@@ -114,7 +114,7 @@ ASSIST_MODEL='qwen-plus'
 ASSIST_TIMEOUT_SECONDS=30
 ASSIST_MAX_SCREEN_TEXT_CHARS=500
 ASSIST_DEBUG_LOG=false
-ASSIST_SYSTEM_PROMPT=
+ASSIST_SYSTEM_PROMPT='You are an assistant for a terminal web client. Use the recent terminal or console text and the optional user question to infer the best next shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must contain command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable next steps that directly validate or advance what the recent console output suggests. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field.'
 ```
 
 - Assist 后端会以流式方式调用 `/chat/completions`，但对前端仍返回最终聚合后的 suggestions JSON。

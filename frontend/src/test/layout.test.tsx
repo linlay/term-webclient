@@ -231,7 +231,7 @@ describe("layout components", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("renders Copilot sidebar as mobile sheet with assist tab", () => {
+  it("renders Copilot sidebar as mobile sheet with builtin assist agent", () => {
     const onGenerateAssistSuggestions = vi.fn();
     const onClearAssistQuestion = vi.fn();
     const onCopyAssistCommand = vi.fn();
@@ -241,41 +241,77 @@ describe("layout components", () => {
       <CopilotSidebar
         open={true}
         isMobile={true}
-        sideTab="assist"
+        sideTab="agent"
         sessionId="s1"
         summaryLoading={false}
         summaryError=""
         summaryContext=""
         summaryScreenText="git status"
+        agents={[{
+          key: "default-assist",
+          label: "Default Assist",
+          description: "Local suggestions",
+          type: "builtin_assist",
+          default: true
+        }]}
+        selectedAgentKey="default-assist"
+        selectedAgent={{
+          key: "default-assist",
+          label: "Default Assist",
+          description: "Local suggestions",
+          type: "builtin_assist",
+          default: true
+        }}
         assistQuestion="How to inspect?"
         assistSuggestions={[{
           id: "git-status-short",
           command: "git status --short",
-          reason: "Check repo state."
+          reason: "Check repo state.",
+          weight: 92
         }]}
         assistCapturedScreenText="modified: app.tsx"
         assistCapturedChars={17}
         assistBusy={false}
         assistError=""
+        runnerPrompt=""
+        runnerBusy={false}
+        runnerError=""
+        runnerHistoryBusy={false}
+        runnerHistory={[]}
+        runnerChatId={null}
+        runnerConversation={[]}
+        runnerPlan={[]}
+        runnerPendingReview={null}
+        runnerCanRun={true}
+        runnerCapabilityMessage="Runner agents require a shell or SSH terminal tab."
         onTabChange={vi.fn()}
         onRefreshSummary={vi.fn()}
         onCopySummaryContext={vi.fn()}
         onCopySummaryScreen={vi.fn()}
+        onSelectAgent={vi.fn()}
         onAssistQuestionChange={vi.fn()}
         onGenerateAssistSuggestions={onGenerateAssistSuggestions}
         onClearAssistQuestion={onClearAssistQuestion}
         onCopyAssistCommand={onCopyAssistCommand}
         onInsertAssistCommand={onInsertAssistCommand}
         onExecuteAssistCommand={onExecuteAssistCommand}
+        onRunnerPromptChange={vi.fn()}
+        onRefreshRunnerHistory={vi.fn()}
+        onSendRunnerMessage={vi.fn()}
+        onNewRunnerChat={vi.fn()}
+        onOpenRunnerChat={vi.fn()}
+        onApproveNextReviewCommand={vi.fn()}
+        onApproveAllReviewCommands={vi.fn()}
+        onRejectReviewCommands={vi.fn()}
         onClose={vi.fn()}
       />
     );
 
     const sidebar = container?.querySelector("[data-testid='copilot-sidebar']");
     expect(sidebar).toHaveClass("mobile-sheet");
-    expect(container?.textContent).toContain("Assist");
+    expect(container?.textContent).toContain("Agent");
     expect(container?.textContent).toContain("git status --short");
-    expect(container?.textContent).not.toContain("Agent");
+    expect(container?.textContent).toContain("Weight 92");
     expect(container?.querySelector("[data-testid='assist-screen-text']")).toBeNull();
     expect((container?.querySelector("#assistQuestionInput") as HTMLTextAreaElement | null)?.rows).toBe(2);
 
@@ -309,5 +345,135 @@ describe("layout components", () => {
     expect(onCopyAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onInsertAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onExecuteAssistCommand).toHaveBeenCalledWith("git status --short");
+  });
+
+  it("renders runner agent history and terminal review actions", () => {
+    const onNewRunnerChat = vi.fn();
+    const onOpenRunnerChat = vi.fn();
+    const onApproveNextReviewCommand = vi.fn();
+    const onApproveAllReviewCommands = vi.fn();
+    const onRejectReviewCommands = vi.fn();
+
+    render(
+      <CopilotSidebar
+        open={true}
+        isMobile={false}
+        sideTab="agent"
+        sessionId="s1"
+        summaryLoading={false}
+        summaryError=""
+        summaryContext=""
+        summaryScreenText=""
+        agents={[{
+          key: "terminal-helper",
+          label: "Terminal Helper",
+          description: "Runner assistant",
+          type: "runner_agent",
+          runnerAgentKey: "terminalAssistant",
+          default: false
+        }]}
+        selectedAgentKey="terminal-helper"
+        selectedAgent={{
+          key: "terminal-helper",
+          label: "Terminal Helper",
+          description: "Runner assistant",
+          type: "runner_agent",
+          runnerAgentKey: "terminalAssistant",
+          default: false
+        }}
+        assistQuestion=""
+        assistSuggestions={[]}
+        assistCapturedScreenText=""
+        assistCapturedChars={0}
+        assistBusy={false}
+        assistError=""
+        runnerPrompt="Inspect repo"
+        runnerBusy={false}
+        runnerError=""
+        runnerHistoryBusy={false}
+        runnerHistory={[{
+          chatId: "chat-1",
+          chatName: "Chat 1",
+          agentKey: "terminalAssistant",
+          createdAt: 1,
+          updatedAt: 2,
+          lastRunId: "run-1",
+          lastRunContent: "Inspect repository",
+          readStatus: 1,
+          readAt: null
+        }]}
+        runnerChatId="chat-1"
+        runnerConversation={[
+          { id: "user-1", role: "user", text: "Inspect repository" },
+          { id: "assistant-1", role: "assistant", text: "Plan ready." }
+        ]}
+        runnerPlan={[
+          { taskId: "t1", title: "Inspect repo", status: "in_progress" }
+        ]}
+        runnerPendingReview={{
+          runId: "run-1",
+          toolId: "tool-1",
+          title: "Review commands",
+          summary: "Need approval before execution.",
+          allowBatchApprove: true,
+          submitting: false,
+          commands: [{
+            id: "cmd-1",
+            title: "Inspect repo",
+            command: "pwd",
+            reason: "Check workdir",
+            highRisk: false,
+            status: "pending",
+            exitCode: null,
+            outputExcerpt: "",
+            transcriptDelta: "",
+            error: null,
+            startedAt: null,
+            completedAt: null
+          }]
+        }}
+        runnerCanRun={true}
+        runnerCapabilityMessage="Runner agents require a shell or SSH terminal tab."
+        onTabChange={vi.fn()}
+        onRefreshSummary={vi.fn()}
+        onCopySummaryContext={vi.fn()}
+        onCopySummaryScreen={vi.fn()}
+        onSelectAgent={vi.fn()}
+        onAssistQuestionChange={vi.fn()}
+        onGenerateAssistSuggestions={vi.fn()}
+        onClearAssistQuestion={vi.fn()}
+        onCopyAssistCommand={vi.fn()}
+        onInsertAssistCommand={vi.fn()}
+        onExecuteAssistCommand={vi.fn()}
+        onRunnerPromptChange={vi.fn()}
+        onRefreshRunnerHistory={vi.fn()}
+        onSendRunnerMessage={vi.fn()}
+        onNewRunnerChat={onNewRunnerChat}
+        onOpenRunnerChat={onOpenRunnerChat}
+        onApproveNextReviewCommand={onApproveNextReviewCommand}
+        onApproveAllReviewCommands={onApproveAllReviewCommands}
+        onRejectReviewCommands={onRejectReviewCommands}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(container?.textContent).toContain("Chat History");
+    expect(container?.textContent).toContain("Inspect repository");
+    expect(container?.textContent).toContain("Plan ready.");
+    expect(container?.textContent).toContain("Approve All");
+
+    act(() => {
+      (container?.querySelector("[data-testid='runner-new-chat']") as HTMLButtonElement).click();
+      (container?.querySelector(".runner-history-item") as HTMLButtonElement).click();
+      (container?.querySelector("[data-testid='runner-approve-next']") as HTMLButtonElement).click();
+      (container?.querySelector("[data-testid='runner-approve-all']") as HTMLButtonElement).click();
+      (container?.querySelector("[data-testid='runner-reject']") as HTMLButtonElement).click();
+    });
+
+    expect(onNewRunnerChat).toHaveBeenCalledTimes(1);
+    expect(onOpenRunnerChat).toHaveBeenCalledWith("chat-1");
+    expect(onApproveNextReviewCommand).toHaveBeenCalledTimes(1);
+    expect(onApproveAllReviewCommands).toHaveBeenCalledTimes(1);
+    expect(onRejectReviewCommands).toHaveBeenCalledTimes(1);
   });
 });

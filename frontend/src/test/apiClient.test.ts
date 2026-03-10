@@ -113,7 +113,7 @@ describe("apiClient", () => {
         capturedScreenText: "git status",
         capturedChars: 10,
         suggestions: [
-          { id: "git-status-short", command: "git status --short", reason: "Check repo state." }
+          { id: "git-status-short", command: "git status --short", reason: "Check repo state.", weight: 92 }
         ]
       })
     );
@@ -218,5 +218,79 @@ describe("apiClient", () => {
     expect(MockXHR.created[0]?.method).toBe("POST");
     expect(MockXHR.created[0]?.url).toBe("/term/api/sessions/s1/files/upload");
     expect(MockXHR.created[0]?.withCredentials).toBe(true);
+  });
+
+  it("requests copilot chats filtered by agent key and lastRunId", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockJsonResponse([])
+    );
+
+    await apiClient.listCopilotChats("s1", "terminal-helper", "run-9");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/copilot/chats?agentKey=terminal-helper&lastRunId=run-9");
+  });
+
+  it("streams copilot query SSE events", async () => {
+    const payload = [
+      "data: {\"type\":\"chat.start\",\"chatId\":\"chat-1\"}",
+      "",
+      "data: {\"type\":\"content.delta\",\"contentId\":\"msg-1\",\"delta\":\"Hello\"}",
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n");
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload));
+        controller.close();
+      }
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream"
+      }
+    }));
+
+    const onEvent = vi.fn();
+    await apiClient.streamCopilotQuery("s1", {
+      agentKey: "terminal-helper",
+      chatId: null,
+      message: "Inspect repository"
+    }, { onEvent });
+
+    expect(onEvent).toHaveBeenNthCalledWith(1, { type: "chat.start", chatId: "chat-1" });
+    expect(onEvent).toHaveBeenNthCalledWith(2, { type: "content.delta", contentId: "msg-1", delta: "Hello" });
+  });
+
+  it("submits copilot tool results and executes reviewed commands", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockJsonResponse({
+        accepted: true,
+        status: "ok",
+        runId: "run-1",
+        toolId: "tool-1",
+        detail: "accepted"
+      }))
+      .mockResolvedValueOnce(mockJsonResponse({
+        sessionId: "s1",
+        command: "pwd",
+        exitCode: 0,
+        transcriptDelta: "/tmp/project\n",
+        outputExcerpt: "/tmp/project\n",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:01Z"
+      }));
+
+    await apiClient.submitCopilotTool("s1", {
+      runId: "run-1",
+      toolId: "tool-1",
+      params: { approved: true }
+    });
+    await apiClient.executeCopilotCommand("s1", {
+      command: "pwd"
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/copilot/submit");
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe("/term/api/sessions/s1/copilot/commands/execute");
   });
 });

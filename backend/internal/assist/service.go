@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,8 +18,9 @@ import (
 	"term-webclient-go/backend/internal/util"
 )
 
-const defaultSystemPrompt = "You are an assistant for a terminal web client. Return strict JSON with a top-level object containing a suggestions array. Each suggestion must contain command and reason. Produce at least 5 concise, actionable terminal next-step suggestions based on the recent screen text and optional user question. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field."
-const forcedJSONSystemPrompt = "Return valid JSON only. The final answer must be a json object with a top-level suggestions array. Do not include markdown, code fences, or any non-JSON text."
+const defaultSystemPrompt = "You are an assistant for a terminal web client. Use the recent terminal or console text and the optional user question to infer the best next shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must contain command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable next steps that directly validate or advance what the recent console output suggests. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field."
+const forcedJSONSystemPrompt = "Return valid JSON only. The final answer must be a json object with a top-level suggestions array. Every suggestion object must include command, reason, and weight. Do not include markdown, code fences, or any non-JSON text."
+const assistSuggestionTargetCount = 5
 
 type screenTextProvider interface {
 	GetScreenText(sessionID string) (model.ScreenTextResponse, error)
@@ -67,10 +69,13 @@ type openAIChatCompletionsStreamChunk struct {
 }
 
 type assistModelResponse struct {
-	Suggestions []struct {
-		Command string `json:"command"`
-		Reason  string `json:"reason"`
-	} `json:"suggestions"`
+	Suggestions []assistModelSuggestion `json:"suggestions"`
+}
+
+type assistModelSuggestion struct {
+	Command string   `json:"command"`
+	Reason  string   `json:"reason"`
+	Weight  *float64 `json:"weight"`
 }
 
 func New(cfg *config.Config, sessions screenTextProvider) *Service {
@@ -193,7 +198,7 @@ func buildSystemPrompt(customSystemPrompt string) string {
 
 func buildUserPrompt(question, capturedScreenText string) string {
 	var builder strings.Builder
-	builder.WriteString("Recent screen text (last 500 chars max):\n")
+	builder.WriteString("Recent terminal/console text (last 500 chars max):\n")
 	if strings.TrimSpace(capturedScreenText) == "" {
 		builder.WriteString("(empty)\n")
 	} else {
@@ -529,39 +534,42 @@ func stripCodeFences(value string) string {
 	return strings.TrimSpace(trimmed)
 }
 
-func normalizeSuggestions(raw []struct {
-	Command string `json:"command"`
-	Reason  string `json:"reason"`
-}) []model.AssistSuggestionItem {
-	seen := map[string]struct{}{}
+func normalizeSuggestions(raw []assistModelSuggestion) []model.AssistSuggestionItem {
+	seen := map[string]int{}
 	result := make([]model.AssistSuggestionItem, 0, len(raw))
-	for _, item := range raw {
+	for index, item := range raw {
 		command := strings.TrimSpace(item.Command)
 		reason := strings.TrimSpace(item.Reason)
 		if command == "" || reason == "" {
 			continue
 		}
 		key := strings.ToLower(command)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, model.AssistSuggestionItem{
+		normalized := model.AssistSuggestionItem{
 			ID:      suggestionID(command),
 			Command: command,
 			Reason:  reason,
-		})
+			Weight:  normalizeSuggestionWeight(item.Weight, index),
+		}
+		if existingIndex, ok := seen[key]; ok {
+			if normalized.Weight > result[existingIndex].Weight {
+				result[existingIndex] = normalized
+			}
+			continue
+		}
+		seen[key] = len(result)
+		result = append(result, normalized)
 	}
+	sortSuggestions(result)
 	return result
 }
 
 func padSuggestions(suggestions []model.AssistSuggestionItem) []model.AssistSuggestionItem {
 	fallbacks := []model.AssistSuggestionItem{
-		{ID: suggestionID("pwd"), Command: "pwd", Reason: "Confirm the current working directory before taking the next step."},
-		{ID: suggestionID("ls -la"), Command: "ls -la", Reason: "Inspect the current directory and file metadata."},
-		{ID: suggestionID("git status --short"), Command: "git status --short", Reason: "Check whether the workspace has pending repository changes."},
-		{ID: suggestionID("npm test"), Command: "npm test", Reason: "Run the default frontend or Node test command when relevant."},
-		{ID: suggestionID("go test ./..."), Command: "go test ./...", Reason: "Run the Go test suite when the workspace is a Go project."},
+		{ID: suggestionID("pwd"), Command: "pwd", Reason: "Confirm the current working directory before taking the next step.", Weight: 60},
+		{ID: suggestionID("ls -la"), Command: "ls -la", Reason: "Inspect the current directory and file metadata.", Weight: 55},
+		{ID: suggestionID("git status --short"), Command: "git status --short", Reason: "Check whether the workspace has pending repository changes.", Weight: 50},
+		{ID: suggestionID("npm test"), Command: "npm test", Reason: "Run the default frontend or Node test command when relevant.", Weight: 45},
+		{ID: suggestionID("go test ./..."), Command: "go test ./...", Reason: "Run the Go test suite when the workspace is a Go project.", Weight: 40},
 	}
 	seen := map[string]struct{}{}
 	for _, item := range suggestions {
@@ -569,7 +577,7 @@ func padSuggestions(suggestions []model.AssistSuggestionItem) []model.AssistSugg
 	}
 	result := append([]model.AssistSuggestionItem(nil), suggestions...)
 	for _, fallback := range fallbacks {
-		if len(result) >= 5 {
+		if len(result) >= assistSuggestionTargetCount {
 			break
 		}
 		if _, ok := seen[strings.ToLower(fallback.Command)]; ok {
@@ -578,10 +586,35 @@ func padSuggestions(suggestions []model.AssistSuggestionItem) []model.AssistSugg
 		seen[strings.ToLower(fallback.Command)] = struct{}{}
 		result = append(result, fallback)
 	}
-	if len(result) > 8 {
-		return result[:8]
+	sortSuggestions(result)
+	if len(result) > assistSuggestionTargetCount {
+		return result[:assistSuggestionTargetCount]
 	}
 	return result
+}
+
+func normalizeSuggestionWeight(weight *float64, index int) int {
+	if weight == nil {
+		inferred := 100 - index*5
+		if inferred < 1 {
+			return 1
+		}
+		return inferred
+	}
+	value := int(*weight + 0.5)
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func sortSuggestions(items []model.AssistSuggestionItem) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Weight > items[j].Weight
+	})
 }
 
 func suggestionID(command string) string {

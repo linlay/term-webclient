@@ -23,9 +23,9 @@ WORKDIR /app
 COPY --from=build /out/term-web-backend /app/term-web-backend
 
 ENV BACKEND_HOST=0.0.0.0
-ENV BACKEND_PORT=11946
+ENV BACKEND_PORT=11937
 
 VOLUME ["/app/data"]
-EXPOSE 11946
+EXPOSE 11937
 
 CMD ["/app/term-web-backend"]

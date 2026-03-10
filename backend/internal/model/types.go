@@ -179,12 +179,107 @@ type AssistSuggestionItem struct {
 	ID      string `json:"id"`
 	Command string `json:"command"`
 	Reason  string `json:"reason"`
+	Weight  int    `json:"weight"`
 }
 
 type AssistSuggestionsResponse struct {
 	CapturedScreenText string                 `json:"capturedScreenText"`
 	CapturedChars      int                    `json:"capturedChars"`
 	Suggestions        []AssistSuggestionItem `json:"suggestions"`
+}
+
+type CopilotAgentType string
+
+const (
+	CopilotAgentTypeBuiltinAssist CopilotAgentType = "builtin_assist"
+	CopilotAgentTypeRunnerAgent   CopilotAgentType = "runner_agent"
+)
+
+type CopilotAgentIcon struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type CopilotAgentResponse struct {
+	Key            string            `json:"key"`
+	Label          string            `json:"label"`
+	Description    string            `json:"description"`
+	Type           CopilotAgentType  `json:"type"`
+	RunnerAgentKey string            `json:"runnerAgentKey,omitempty"`
+	Default        bool              `json:"default"`
+	Icon           *CopilotAgentIcon `json:"icon,omitempty"`
+}
+
+type CopilotChatSummaryResponse struct {
+	ChatID         string `json:"chatId"`
+	ChatName       string `json:"chatName"`
+	AgentKey       string `json:"agentKey"`
+	TeamID         string `json:"teamId,omitempty"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	LastRunID      string `json:"lastRunId"`
+	LastRunContent string `json:"lastRunContent"`
+	ReadStatus     int    `json:"readStatus"`
+	ReadAt         *int64 `json:"readAt"`
+}
+
+type CopilotReference struct {
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	Name      string         `json:"name"`
+	MIMEType  string         `json:"mimeType"`
+	SizeBytes *int64         `json:"sizeBytes"`
+	URL       string         `json:"url"`
+	SHA256    string         `json:"sha256"`
+	Meta      map[string]any `json:"meta"`
+}
+
+type CopilotChatDetailResponse struct {
+	ChatID      string             `json:"chatId"`
+	ChatName    string             `json:"chatName"`
+	Events      []map[string]any   `json:"events"`
+	References  []CopilotReference `json:"references,omitempty"`
+	RawMessages []map[string]any   `json:"rawMessages,omitempty"`
+}
+
+type CopilotQueryRequest struct {
+	AgentKey   string             `json:"agentKey"`
+	RequestID  string             `json:"requestId"`
+	ChatID     string             `json:"chatId"`
+	Role       string             `json:"role"`
+	Message    string             `json:"message"`
+	References []CopilotReference `json:"references"`
+	Params     map[string]any     `json:"params"`
+	Scene      map[string]any     `json:"scene"`
+}
+
+type CopilotSubmitRequest struct {
+	RunID  string `json:"runId"`
+	ToolID string `json:"toolId"`
+	Params any    `json:"params"`
+}
+
+type CopilotSubmitResponse struct {
+	Accepted bool   `json:"accepted"`
+	Status   string `json:"status"`
+	RunID    string `json:"runId"`
+	ToolID   string `json:"toolId"`
+	Detail   string `json:"detail"`
+}
+
+type CopilotExecuteCommandRequest struct {
+	Command        string `json:"command"`
+	TimeoutSeconds *int   `json:"timeoutSeconds"`
+}
+
+type CopilotExecuteCommandResponse struct {
+	SessionID       string    `json:"sessionId"`
+	Command         string    `json:"command"`
+	ExitCode        int       `json:"exitCode"`
+	TranscriptDelta string    `json:"transcriptDelta"`
+	OutputExcerpt   string    `json:"outputExcerpt"`
+	StartedAt       time.Time `json:"startedAt"`
+	CompletedAt     time.Time `json:"completedAt"`
 }
 
 type TerminalClientResponse struct {

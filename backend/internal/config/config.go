@@ -24,6 +24,7 @@ var envPlaceholderPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Terminal TerminalConfig `yaml:"terminal"`
+	Copilot  CopilotConfig  `yaml:"copilot"`
 	Assist   AssistConfig   `yaml:"assist"`
 	Auth     AuthConfig     `yaml:"auth"`
 	AppAuth  AppAuthConfig  `yaml:"app-auth"`
@@ -73,6 +74,32 @@ type AgentConfig struct {
 	StepTimeoutSeconds  int  `yaml:"step-timeout-seconds"`
 	MaxStepResultChars  int  `yaml:"max-step-result-chars"`
 	MaxContextPackBytes int  `yaml:"max-context-pack-bytes"`
+}
+
+type CopilotConfig struct {
+	Runner CopilotRunnerConfig  `yaml:"runner"`
+	Agents []CopilotAgentConfig `yaml:"agents"`
+}
+
+type CopilotRunnerConfig struct {
+	BaseURL             string `yaml:"base-url"`
+	TimeoutSeconds      int    `yaml:"timeout-seconds"`
+	AuthorizationBearer string `yaml:"authorization-bearer"`
+}
+
+type CopilotAgentConfig struct {
+	Key            string                 `yaml:"key"`
+	Label          string                 `yaml:"label"`
+	Description    string                 `yaml:"description"`
+	Type           string                 `yaml:"type"`
+	RunnerAgentKey string                 `yaml:"runner-agent-key"`
+	Default        bool                   `yaml:"default"`
+	Icon           CopilotAgentIconConfig `yaml:"icon"`
+}
+
+type CopilotAgentIconConfig struct {
+	Name  string `yaml:"name"`
+	Color string `yaml:"color"`
 }
 
 type SSHConfig struct {
@@ -206,6 +233,24 @@ func defaultConfig() *Config {
 				AllowOutsideRoot:         false,
 				AllowedRoots:             []string{},
 				DownloadTicketTTLSeconds: 60,
+			},
+		},
+		Copilot: CopilotConfig{
+			Runner: CopilotRunnerConfig{
+				TimeoutSeconds: 60,
+			},
+			Agents: []CopilotAgentConfig{
+				{
+					Key:         "default-assist",
+					Label:       "Default Assist",
+					Description: "Built-in terminal suggestions powered by assist.",
+					Type:        "builtin_assist",
+					Default:     true,
+					Icon: CopilotAgentIconConfig{
+						Name:  "sparkles",
+						Color: "#2563EB",
+					},
+				},
 			},
 		},
 		Assist: AssistConfig{
@@ -426,6 +471,10 @@ func applyEnvMap(cfg *Config, values map[string]string) {
 	cfg.Terminal.SSH.CredentialsFile = getenvMap(values, "TERMINAL_SSH_CREDENTIALS_FILE", cfg.Terminal.SSH.CredentialsFile)
 	cfg.Terminal.SSH.MasterKey = getenvMap(values, "TERMINAL_SSH_MASTER_KEY", cfg.Terminal.SSH.MasterKey)
 
+	cfg.Copilot.Runner.BaseURL = getenvMap(values, "COPILOT_RUNNER_BASE_URL", cfg.Copilot.Runner.BaseURL)
+	cfg.Copilot.Runner.TimeoutSeconds = getenvIntMap(values, "COPILOT_RUNNER_TIMEOUT_SECONDS", cfg.Copilot.Runner.TimeoutSeconds)
+	cfg.Copilot.Runner.AuthorizationBearer = getenvMap(values, "COPILOT_RUNNER_AUTHORIZATION_BEARER", cfg.Copilot.Runner.AuthorizationBearer)
+
 	cfg.Auth.Enabled = getenvBoolMap(values, "AUTH_ENABLED", cfg.Auth.Enabled)
 	cfg.Auth.Username = getenvMap(values, "AUTH_USERNAME", cfg.Auth.Username)
 	cfg.Auth.PasswordHashBcrypt = getenvMap(values, "AUTH_PASSWORD_HASH_BCRYPT", cfg.Auth.PasswordHashBcrypt)
@@ -502,6 +551,9 @@ func validate(cfg *Config, envBaseDir string) error {
 	if cfg.Terminal.Agent.MaxContextPackBytes <= 0 {
 		cfg.Terminal.Agent.MaxContextPackBytes = 256 * 1024
 	}
+	if cfg.Copilot.Runner.TimeoutSeconds <= 0 {
+		cfg.Copilot.Runner.TimeoutSeconds = 60
+	}
 	if cfg.Terminal.SSH.DefaultPort <= 0 {
 		cfg.Terminal.SSH.DefaultPort = 22
 	}
@@ -561,6 +613,61 @@ func validate(cfg *Config, envBaseDir string) error {
 		if strings.TrimSpace(cfg.Assist.Model) == "" {
 			return fmt.Errorf("assist model is required when assist is enabled")
 		}
+	}
+	if err := validateCopilot(cfg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCopilot(cfg *Config) error {
+	if len(cfg.Copilot.Agents) == 0 {
+		return fmt.Errorf("copilot agents must not be empty")
+	}
+
+	seenKeys := map[string]struct{}{}
+	defaultCount := 0
+	hasRunnerAgent := false
+	for index := range cfg.Copilot.Agents {
+		agent := &cfg.Copilot.Agents[index]
+		agent.Key = strings.TrimSpace(agent.Key)
+		agent.Label = strings.TrimSpace(agent.Label)
+		agent.Description = strings.TrimSpace(agent.Description)
+		agent.Type = strings.TrimSpace(agent.Type)
+		agent.RunnerAgentKey = strings.TrimSpace(agent.RunnerAgentKey)
+		agent.Icon.Name = strings.TrimSpace(agent.Icon.Name)
+		agent.Icon.Color = strings.TrimSpace(agent.Icon.Color)
+
+		if agent.Key == "" {
+			return fmt.Errorf("copilot agent key is required")
+		}
+		if _, ok := seenKeys[agent.Key]; ok {
+			return fmt.Errorf("copilot agent key must be unique: %s", agent.Key)
+		}
+		seenKeys[agent.Key] = struct{}{}
+		if agent.Label == "" {
+			agent.Label = agent.Key
+		}
+		switch agent.Type {
+		case "builtin_assist":
+			agent.RunnerAgentKey = ""
+		case "runner_agent":
+			hasRunnerAgent = true
+			if agent.RunnerAgentKey == "" {
+				return fmt.Errorf("copilot runner_agent %s requires runner-agent-key", agent.Key)
+			}
+		default:
+			return fmt.Errorf("copilot agent %s has unsupported type: %s", agent.Key, agent.Type)
+		}
+		if agent.Default {
+			defaultCount++
+		}
+	}
+	if defaultCount != 1 {
+		return fmt.Errorf("copilot requires exactly one default agent")
+	}
+	if hasRunnerAgent && strings.TrimSpace(cfg.Copilot.Runner.BaseURL) == "" {
+		return fmt.Errorf("copilot runner base-url is required when runner_agent is configured")
 	}
 	return nil
 }

@@ -57,8 +57,11 @@ func TestCreateSuggestionsTruncatesRecentScreenTextAndPadsToFive(t *testing.T) {
 	if response.CapturedChars != 500 {
 		t.Fatalf("expected captured chars to be 500, got %d", response.CapturedChars)
 	}
-	if len(response.Suggestions) < 5 {
-		t.Fatalf("expected at least 5 suggestions, got %d", len(response.Suggestions))
+	if len(response.Suggestions) != 5 {
+		t.Fatalf("expected exactly 5 suggestions, got %d", len(response.Suggestions))
+	}
+	if response.Suggestions[0].Weight < response.Suggestions[1].Weight {
+		t.Fatalf("expected suggestions to be sorted by weight desc, got %+v", response.Suggestions)
 	}
 
 	assertRequestMessages(t, requestBody, strings.Repeat("a", 500), "(none)")
@@ -112,12 +115,15 @@ func TestCreateSuggestionsCustomSystemPromptStillAppendsJSONInstruction(t *testi
 	if !strings.Contains(strings.ToLower(content), "json") {
 		t.Fatalf("expected json constraint in system prompt, got %q", content)
 	}
+	if !strings.Contains(strings.ToLower(content), "weight") {
+		t.Fatalf("expected weight constraint in system prompt, got %q", content)
+	}
 }
 
 func TestCreateSuggestionsAllowsEmptyQuestionAndUsesModelResponse(t *testing.T) {
 	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"pwd\",\"reason\":\"Confirm current directory.\"},{\"command\":\"ls -la\",\"reason\":\"List files.\"}"}}]}`)
-		writeSSEData(t, w, `{"choices":[{"delta":{"content":",{\"command\":\"npm test\",\"reason\":\"Run tests.\"},{\"command\":\"git status --short\",\"reason\":\"Check repo state.\"},{\"command\":\"go test ./...\",\"reason\":\"Run Go tests.\"}]}"}}]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"pwd\",\"reason\":\"Confirm current directory.\",\"weight\":70},{\"command\":\"ls -la\",\"reason\":\"List files.\",\"weight\":60}"}}]}`)
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":",{\"command\":\"npm test\",\"reason\":\"Run tests.\",\"weight\":40},{\"command\":\"git status --short\",\"reason\":\"Check repo state.\",\"weight\":90},{\"command\":\"go test ./...\",\"reason\":\"Run Go tests.\",\"weight\":55}]}"}}]}`)
 		writeSSEDone(t, w)
 	}, nil)
 	defer server.Close()
@@ -143,8 +149,48 @@ func TestCreateSuggestionsAllowsEmptyQuestionAndUsesModelResponse(t *testing.T) 
 	if response.CapturedScreenText != "git status output" {
 		t.Fatalf("unexpected captured screen text: %q", response.CapturedScreenText)
 	}
-	if response.Suggestions[0].Command != "pwd" {
+	if response.Suggestions[0].Command != "git status --short" || response.Suggestions[0].Weight != 90 {
 		t.Fatalf("unexpected first suggestion: %+v", response.Suggestions[0])
+	}
+}
+
+func TestCreateSuggestionsPadsToFiveAndRanksByWeight(t *testing.T) {
+	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"git diff --stat\",\"reason\":\"Inspect the current diff summary.\",\"weight\":82},{\"command\":\"git status --short\",\"reason\":\"Check whether files are modified.\",\"weight\":95},{\"command\":\"git diff --stat\",\"reason\":\"Duplicate with lower weight.\",\"weight\":20}]}"}}]}`)
+		writeSSEDone(t, w)
+	}, nil)
+	defer server.Close()
+
+	svc := newTestService(config.AssistConfig{
+		Enabled:            true,
+		BaseURL:            server.URL,
+		APIKey:             "test-key",
+		Model:              "gpt-test",
+		TimeoutSeconds:     5,
+		MaxScreenTextChars: 500,
+	}, stubScreenTextProvider{
+		response: model.ScreenTextResponse{
+			SessionID: "s1",
+			Text:      "git status output",
+		},
+	})
+
+	response, err := svc.CreateSuggestions("s1", model.CreateAssistSuggestionsRequest{})
+	if err != nil {
+		t.Fatalf("CreateSuggestions returned error: %v", err)
+	}
+
+	if len(response.Suggestions) != 5 {
+		t.Fatalf("expected exactly 5 suggestions, got %d", len(response.Suggestions))
+	}
+	if response.Suggestions[0].Command != "git status --short" || response.Suggestions[0].Weight != 95 {
+		t.Fatalf("unexpected top suggestion: %+v", response.Suggestions[0])
+	}
+	if response.Suggestions[1].Command != "git diff --stat" || response.Suggestions[1].Weight != 82 {
+		t.Fatalf("unexpected second suggestion: %+v", response.Suggestions[1])
+	}
+	if response.Suggestions[4].Weight <= 0 {
+		t.Fatalf("expected fallback suggestion to include positive weight, got %+v", response.Suggestions[4])
 	}
 }
 
@@ -594,6 +640,9 @@ func assertRequestMessages(t *testing.T, requestBody map[string]any, wantScreenT
 	systemContent, _ := systemMessage["content"].(string)
 	if !strings.Contains(strings.ToLower(systemContent), "json") {
 		t.Fatalf("expected json constraint in system prompt, got %q", systemContent)
+	}
+	if !strings.Contains(strings.ToLower(systemContent), "weight") {
+		t.Fatalf("expected weight constraint in system prompt, got %q", systemContent)
 	}
 	userMessage, ok := messages[1].(map[string]any)
 	if !ok {

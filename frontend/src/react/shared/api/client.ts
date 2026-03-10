@@ -7,6 +7,15 @@ import type {
   ApproveAgentRunRequest,
   AppVersionResponse,
   AuthStatusResponse,
+  CopilotAgentSummary,
+  CopilotChatDetail,
+  CopilotChatSummary,
+  CopilotEventEnvelope,
+  CopilotExecuteCommandRequest,
+  CopilotExecuteCommandResponse,
+  CopilotQueryRequest,
+  CopilotSubmitRequest,
+  CopilotSubmitResponse,
   RecentSessionItemResponse,
   CreateAgentRunRequest,
   CreateAssistSuggestionsRequest,
@@ -44,6 +53,11 @@ export interface UploadProgress {
   loaded: number;
   total: number;
   percent: number;
+}
+
+export interface StreamCopilotQueryOptions {
+  signal?: AbortSignal;
+  onEvent: (event: CopilotEventEnvelope) => void;
 }
 
 export interface UploadSessionFileRequest {
@@ -150,6 +164,90 @@ async function request<T>(path: string, init: RequestInit = {}, allowReplay = tr
   }
 
   return (await response.json()) as T;
+}
+
+function decodeSseFrames(source: string): Array<{ data: string }> {
+  const frames = source.split("\n\n");
+  const result: Array<{ data: string }> = [];
+  for (const frame of frames) {
+    const trimmed = frame.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const dataLines = trimmed.split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart());
+    if (dataLines.length === 0) {
+      continue;
+    }
+    result.push({ data: dataLines.join("\n") });
+  }
+  return result;
+}
+
+async function requestStream(
+  path: string,
+  init: RequestInit,
+  { signal, onEvent }: StreamCopilotQueryOptions
+): Promise<void> {
+  const appMode = isAppMode();
+  const headers = new Headers(init.headers ?? undefined);
+  const requestInit: RequestInit = {
+    ...init,
+    headers,
+    credentials: appMode ? "omit" : "include",
+    signal
+  };
+
+  if (appMode) {
+    let accessToken = getAppAccessToken();
+    if (!accessToken) {
+      accessToken = await refreshTokenLocked("missing");
+    }
+    if (accessToken) {
+      headers.set("authorization", `Bearer ${accessToken}`);
+    }
+  }
+
+  const response = await fetch(apiUrl(path), requestInit);
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorMessage(response));
+  }
+  if (!response.body) {
+    throw new ApiError(response.status, "empty stream response");
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      for (const frame of decodeSseFrames(part + "\n\n")) {
+        if (frame.data === "[DONE]") {
+          return;
+        }
+        const parsed = JSON.parse(frame.data) as CopilotEventEnvelope;
+        onEvent(parsed);
+      }
+    }
+    if (done) {
+      break;
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) {
+    for (const frame of decodeSseFrames(tail + "\n\n")) {
+      if (frame.data === "[DONE]") {
+        return;
+      }
+      const parsed = JSON.parse(frame.data) as CopilotEventEnvelope;
+      onEvent(parsed);
+    }
+  }
 }
 
 export const apiClient = {
@@ -359,6 +457,54 @@ export const apiClient = {
 
   abortAgentRun(sessionId: string, runId: string, payload: AbortAgentRunRequest = {}): Promise<AgentRunResponse> {
     return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}/abort`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  listCopilotAgents(sessionId: string): Promise<CopilotAgentSummary[]> {
+    return request<CopilotAgentSummary[]>(`/sessions/${sessionId}/copilot/agents`);
+  },
+
+  listCopilotChats(sessionId: string, agentKey: string, lastRunId?: string): Promise<CopilotChatSummary[]> {
+    const query = new URLSearchParams();
+    if (agentKey.trim()) {
+      query.set("agentKey", agentKey.trim());
+    }
+    if ((lastRunId || "").trim()) {
+      query.set("lastRunId", lastRunId!.trim());
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return request<CopilotChatSummary[]>(`/sessions/${sessionId}/copilot/chats${suffix}`);
+  },
+
+  getCopilotChat(sessionId: string, chatId: string): Promise<CopilotChatDetail> {
+    return request<CopilotChatDetail>(`/sessions/${sessionId}/copilot/chats/${encodeURIComponent(chatId)}`);
+  },
+
+  streamCopilotQuery(sessionId: string, payload: CopilotQueryRequest, options: StreamCopilotQueryOptions): Promise<void> {
+    return requestStream(
+      `/sessions/${sessionId}/copilot/query`,
+      {
+        method: "POST",
+        headers: withContentTypeJson(new Headers()),
+        body: JSON.stringify(payload)
+      },
+      options
+    );
+  },
+
+  submitCopilotTool(sessionId: string, payload: CopilotSubmitRequest): Promise<CopilotSubmitResponse> {
+    return request<CopilotSubmitResponse>(`/sessions/${sessionId}/copilot/submit`, {
+      method: "POST",
+      headers: withContentTypeJson(new Headers()),
+      body: JSON.stringify(payload)
+    });
+  },
+
+  executeCopilotCommand(sessionId: string, payload: CopilotExecuteCommandRequest): Promise<CopilotExecuteCommandResponse> {
+    return request<CopilotExecuteCommandResponse>(`/sessions/${sessionId}/copilot/commands/execute`, {
       method: "POST",
       headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)

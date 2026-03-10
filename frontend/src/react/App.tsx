@@ -691,12 +691,26 @@ export default function App(): JSX.Element {
             summaryError={copilot.summaryError}
             summaryContext={copilot.summaryContext}
             summaryScreenText={copilot.summaryScreenText}
+            agents={copilot.agents}
+            selectedAgentKey={copilot.selectedAgentKey}
+            selectedAgent={copilot.selectedAgent}
             assistQuestion={copilot.assistQuestion}
             assistSuggestions={copilot.assistSuggestions}
             assistCapturedScreenText={copilot.assistCapturedScreenText}
             assistCapturedChars={copilot.assistCapturedChars}
             assistBusy={copilot.assistBusy}
             assistError={copilot.assistError}
+            runnerPrompt={copilot.runnerPrompt}
+            runnerBusy={copilot.runnerBusy}
+            runnerError={copilot.runnerError}
+            runnerHistoryBusy={copilot.runnerHistoryBusy}
+            runnerHistory={copilot.runnerHistory}
+            runnerChatId={copilot.runnerChatId}
+            runnerConversation={copilot.runnerConversation}
+            runnerPlan={copilot.runnerPlan}
+            runnerPendingReview={copilot.runnerPendingReview}
+            runnerCanRun={copilot.runnerCanRun}
+            runnerCapabilityMessage={copilot.runnerCapabilityMessage}
             onTabChange={copilot.setSideTab}
             onRefreshSummary={() => {
               void copilot.refreshSummary();
@@ -707,6 +721,7 @@ export default function App(): JSX.Element {
             onCopySummaryScreen={() => {
               void copyText(copilot.summaryScreenText, "Copied screen text");
             }}
+            onSelectAgent={copilot.selectAgent}
             onAssistQuestionChange={copilot.setAssistQuestion}
             onGenerateAssistSuggestions={() => {
               void copilot.generateAssistSuggestions();
@@ -717,6 +732,26 @@ export default function App(): JSX.Element {
             }}
             onInsertAssistCommand={copilot.insertAssistCommand}
             onExecuteAssistCommand={copilot.executeAssistCommand}
+            onRunnerPromptChange={copilot.setRunnerPrompt}
+            onRefreshRunnerHistory={() => {
+              void copilot.refreshRunnerHistory();
+            }}
+            onSendRunnerMessage={() => {
+              void copilot.sendRunnerMessage();
+            }}
+            onNewRunnerChat={copilot.startNewRunnerChat}
+            onOpenRunnerChat={(chatId) => {
+              void copilot.openRunnerChat(chatId);
+            }}
+            onApproveNextReviewCommand={() => {
+              void copilot.approveNextReviewCommand();
+            }}
+            onApproveAllReviewCommands={() => {
+              void copilot.approveAllReviewCommands();
+            }}
+            onRejectReviewCommands={() => {
+              void copilot.rejectReviewCommands();
+            }}
             onClose={() => setIsCopilotOpen(false)}
           />
         </div>

@@ -243,12 +243,135 @@ export interface AssistSuggestionItem {
   id: string;
   command: string;
   reason: string;
+  weight: number;
 }
 
 export interface AssistSuggestionsResponse {
   capturedScreenText: string;
   capturedChars: number;
   suggestions: AssistSuggestionItem[];
+}
+
+export type CopilotAgentType = "builtin_assist" | "runner_agent";
+
+export interface CopilotAgentIcon {
+  name: string;
+  color: string;
+}
+
+export interface CopilotAgentSummary {
+  key: string;
+  label: string;
+  description: string;
+  type: CopilotAgentType;
+  runnerAgentKey?: string;
+  default: boolean;
+  icon?: CopilotAgentIcon | null;
+}
+
+export interface CopilotChatSummary {
+  chatId: string;
+  chatName: string;
+  agentKey: string;
+  teamId?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastRunId: string;
+  lastRunContent: string;
+  readStatus: number;
+  readAt: number | null;
+}
+
+export interface CopilotReference {
+  id: string;
+  type?: string;
+  name?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  url?: string;
+  sha256?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface CopilotChatDetail {
+  chatId: string;
+  chatName: string;
+  events: CopilotEventEnvelope[];
+  references?: CopilotReference[] | null;
+  rawMessages?: Array<Record<string, unknown>> | null;
+}
+
+export interface CopilotQueryRequest {
+  agentKey: string;
+  requestId?: string;
+  chatId?: string | null;
+  role?: string;
+  message: string;
+  references?: CopilotReference[];
+  params?: Record<string, unknown>;
+  scene?: Record<string, unknown>;
+}
+
+export interface CopilotSubmitRequest {
+  runId: string;
+  toolId: string;
+  params: unknown;
+}
+
+export interface CopilotSubmitResponse {
+  accepted: boolean;
+  status: string;
+  runId: string;
+  toolId: string;
+  detail: string;
+}
+
+export interface CopilotExecuteCommandRequest {
+  command: string;
+  timeoutSeconds?: number;
+}
+
+export interface CopilotExecuteCommandResponse {
+  sessionId: string;
+  command: string;
+  exitCode: number;
+  transcriptDelta: string;
+  outputExcerpt: string;
+  startedAt: string;
+  completedAt: string;
+}
+
+export interface CopilotEventEnvelope {
+  type: string;
+  seq?: number;
+  timestamp?: number;
+  chatId?: string;
+  runId?: string;
+  toolId?: string;
+  toolName?: string;
+  toolKey?: string;
+  toolType?: string;
+  toolTimeout?: number;
+  toolParams?: Record<string, unknown>;
+  planId?: string;
+  plan?: CopilotPlanTask[];
+  delta?: string;
+  text?: string;
+  message?: string;
+  role?: string;
+  contentId?: string;
+  requestId?: string;
+  agentKey?: string;
+  result?: unknown;
+  [key: string]: unknown;
+}
+
+export interface CopilotPlanTask {
+  taskId?: string;
+  title?: string;
+  status?: string;
+  description?: string;
+  [key: string]: unknown;
 }
 
 export type AgentRunStatus =
