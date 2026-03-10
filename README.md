@@ -162,11 +162,20 @@ make local-up
 - `release/backend/term-web-backend`
 - `release/frontend/`
 - `release/.env.example`
+- `release/start.sh`
+- `release/stop.sh`
 - `release/configs/local-public-key.example.pem`
 
 运行发布包前，至少准备 `release/.env`，并在需要本地公钥验签时把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`make local-up` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
+```bash
+cd release
+./start.sh
+./stop.sh
+```
+
+源码仓库内仍兼容旧入口：
 ```bash
 ./scripts/mac/start.sh release
 ./scripts/mac/stop.sh release
@@ -185,5 +194,6 @@ make local-down
 - 如果启用了 App JWT 本地公钥验签，确认 `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 指向的 PEM 文件存在且是合法 RSA 公钥。
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
+- 如果是直接复制 `release/` 到其他目录运行，确认整包一起复制，而不是只拷贝二进制或空目录结构。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
 - 前端代理异常时，确认 `.env` 中的 `BACKEND_HOST`、`BACKEND_PORT` 与后端监听端口一致。

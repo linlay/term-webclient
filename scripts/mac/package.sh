@@ -22,7 +22,8 @@ command -v npm >/dev/null 2>&1 || { echo "[package] npm not found"; exit 1; }
 echo "[package] preparing release directory"
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts" "$OUTPUT_DIR/configs"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts/mac" "$OUTPUT_DIR/scripts/windows" "$OUTPUT_DIR/configs"
+rm -f "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts/windows" "$OUTPUT_DIR/configs"
 
 echo "[package] building backend binary"
 (
@@ -56,9 +57,9 @@ if [[ -d "$ROOT_DIR/configs" ]]; then
   done < <(find "$ROOT_DIR/configs" -maxdepth 1 -type f -name '*.example.pem' | sort)
 fi
 
-cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/scripts/mac/start.sh"
-cp "$SCRIPT_DIR/stop.sh" "$OUTPUT_DIR/scripts/mac/stop.sh"
-chmod +x "$OUTPUT_DIR/backend/term-web-backend" "$OUTPUT_DIR/scripts/mac/start.sh" "$OUTPUT_DIR/scripts/mac/stop.sh"
+cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/start.sh"
+cp "$SCRIPT_DIR/stop.sh" "$OUTPUT_DIR/stop.sh"
+chmod +x "$OUTPUT_DIR/backend/term-web-backend" "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
 
 if [[ -d "$ROOT_DIR/scripts/windows" ]]; then
   while IFS= read -r script_path; do
@@ -68,6 +69,6 @@ fi
 
 echo "[package] done"
 echo "[package] backend binary: $OUTPUT_DIR/backend/term-web-backend"
-echo "[package] scripts: $OUTPUT_DIR/scripts/"
+echo "[package] entrypoints: $OUTPUT_DIR/start.sh , $OUTPUT_DIR/stop.sh"
 echo "[package] example env: $OUTPUT_DIR/.env.example"
 echo "[package] runtime env: $OUTPUT_DIR/.env"

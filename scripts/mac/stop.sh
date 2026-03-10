@@ -2,9 +2,37 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RELEASE_DIR="${1:-$ROOT_DIR/release}"
-[[ "$RELEASE_DIR" = /* ]] || RELEASE_DIR="$ROOT_DIR/$RELEASE_DIR"
+
+resolve_base_dir() {
+  if [[ -d "$SCRIPT_DIR/backend" && -d "$SCRIPT_DIR/frontend" ]]; then
+    printf '%s\n' "$SCRIPT_DIR"
+    return 0
+  fi
+
+  if [[ -d "$SCRIPT_DIR/../../backend" && -d "$SCRIPT_DIR/../../frontend" ]]; then
+    cd "$SCRIPT_DIR/../.." && pwd
+    return 0
+  fi
+
+  echo "[stop] unable to resolve workspace root from script dir: $SCRIPT_DIR" >&2
+  exit 1
+}
+
+resolve_default_release_dir() {
+  local base_dir="$1"
+
+  if [[ "$SCRIPT_DIR" == "$base_dir" ]]; then
+    printf '%s\n' "$base_dir"
+    return 0
+  fi
+
+  printf '%s/release\n' "$base_dir"
+}
+
+BASE_DIR="$(resolve_base_dir)"
+DEFAULT_RELEASE_DIR="$(resolve_default_release_dir "$BASE_DIR")"
+RELEASE_DIR="${1:-$DEFAULT_RELEASE_DIR}"
+[[ "$RELEASE_DIR" = /* ]] || RELEASE_DIR="$BASE_DIR/$RELEASE_DIR"
 RUN_DIR="$RELEASE_DIR/run"
 
 die() {

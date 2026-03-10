@@ -2,10 +2,38 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_ENV="${APP_ENV:-production}"
-RELEASE_DIR="${1:-$ROOT_DIR/release}"
-[[ "$RELEASE_DIR" = /* ]] || RELEASE_DIR="$ROOT_DIR/$RELEASE_DIR"
+
+resolve_base_dir() {
+  if [[ -d "$SCRIPT_DIR/backend" && -d "$SCRIPT_DIR/frontend" ]]; then
+    printf '%s\n' "$SCRIPT_DIR"
+    return 0
+  fi
+
+  if [[ -d "$SCRIPT_DIR/../../backend" && -d "$SCRIPT_DIR/../../frontend" ]]; then
+    cd "$SCRIPT_DIR/../.." && pwd
+    return 0
+  fi
+
+  echo "[start] unable to resolve workspace root from script dir: $SCRIPT_DIR" >&2
+  exit 1
+}
+
+resolve_default_release_dir() {
+  local base_dir="$1"
+
+  if [[ "$SCRIPT_DIR" == "$base_dir" ]]; then
+    printf '%s\n' "$base_dir"
+    return 0
+  fi
+
+  printf '%s/release\n' "$base_dir"
+}
+
+BASE_DIR="$(resolve_base_dir)"
+DEFAULT_RELEASE_DIR="$(resolve_default_release_dir "$BASE_DIR")"
+RELEASE_DIR="${1:-$DEFAULT_RELEASE_DIR}"
+[[ "$RELEASE_DIR" = /* ]] || RELEASE_DIR="$BASE_DIR/$RELEASE_DIR"
 RUN_DIR="$RELEASE_DIR/run"
 LOG_DIR="$RELEASE_DIR/logs"
 BASE_ENV_FILE="$RELEASE_DIR/.env"
@@ -128,4 +156,5 @@ fi
 echo "[start] backend  pid=$backend_pid  http://$BACKEND_HOST:$BACKEND_PORT"
 echo "[start] frontend pid=$frontend_pid http://$FRONTEND_HOST:$FRONTEND_PORT"
 echo "[start] loaded env defaults from $BASE_ENV_FILE"
+echo "[start] release dir: $RELEASE_DIR"
 echo "[start] logs: $BACKEND_LOG_FILE , $FRONTEND_LOG_FILE"
