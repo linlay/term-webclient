@@ -47,7 +47,16 @@ function requireEnvPort(
   return parsed;
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
+  const config = {
+    base: "./",
+    plugins: [react()]
+  };
+
+  if (command !== "serve") {
+    return config;
+  }
+
   const rootDir = path.resolve(process.cwd(), "..");
   const rootEnv = loadEnv(mode, rootDir, "");
   const rootSourceHint = `${rootDir}/.env`;
@@ -59,8 +68,7 @@ export default defineConfig(({ mode }) => {
   const devProxyTarget = `http://${backendHost}:${backendPort}`;
 
   return {
-    base: "./",
-    plugins: [react()],
+    ...config,
     server: {
       host: frontendHost,
       port: frontendPort,

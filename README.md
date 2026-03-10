@@ -17,6 +17,7 @@ npm --prefix frontend ci
 ```
 
 后端首次构建会通过 Go Modules 下载依赖，因此需要可访问的 Go 模块源网络环境。
+开发态前后端都依赖仓库根 `.env`；如果只做发布打包，前端构建阶段不要求源码根 `.env` 存在。
 
 ### 本地启动
 后端：
@@ -150,6 +151,8 @@ docker compose up --build
 make package-mac
 ```
 
+`make package-mac` 只负责生成发布产物，不要求源码根 `.env` 存在。
+
 ### 本机发布态启动
 推荐通过 Make 统一执行“先打包，再启动”：
 ```bash
@@ -157,6 +160,7 @@ make local-up
 ```
 
 `make local-up` 会始终先重新生成默认 `release/` 目录产物，再通过 `scripts/mac/start.sh` 启动发布态前后端服务。
+如果缺少 `release/.env`，失败会发生在启动阶段，而不是前端打包阶段。
 
 打包产物包含：
 - `release/backend/term-web-backend`
