@@ -116,13 +116,13 @@ fi
 
 (
   cd "$RELEASE_DIR"
-  backend_app_args=()
   if [[ -n "${BACKEND_ARGS//[[:space:]]/}" ]]; then
     # shellcheck disable=SC2206
     backend_app_args=($BACKEND_ARGS)
+    nohup "$BACKEND_BINARY" --server.address="$BACKEND_HOST" --server.port="$BACKEND_PORT" "${backend_app_args[@]}" >"$BACKEND_LOG_FILE" 2>&1 &
+  else
+    nohup "$BACKEND_BINARY" --server.address="$BACKEND_HOST" --server.port="$BACKEND_PORT" >"$BACKEND_LOG_FILE" 2>&1 &
   fi
-
-  nohup "$BACKEND_BINARY" --server.address="$BACKEND_HOST" --server.port="$BACKEND_PORT" "${backend_app_args[@]}" >"$BACKEND_LOG_FILE" 2>&1 &
   echo $! >"$BACKEND_PID_FILE"
 )
 
