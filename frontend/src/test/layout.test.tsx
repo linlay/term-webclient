@@ -369,7 +369,6 @@ describe("layout components", () => {
           label: "Terminal Helper",
           description: "Runner assistant",
           type: "runner_agent",
-          runnerAgentKey: "terminalAssistant",
           default: false
         }]}
         selectedAgentKey="terminal-helper"
@@ -378,7 +377,6 @@ describe("layout components", () => {
           label: "Terminal Helper",
           description: "Runner assistant",
           type: "runner_agent",
-          runnerAgentKey: "terminalAssistant",
           default: false
         }}
         assistQuestion=""
@@ -394,7 +392,7 @@ describe("layout components", () => {
         runnerHistory={[{
           chatId: "chat-1",
           chatName: "Chat 1",
-          agentKey: "terminalAssistant",
+          agentKey: "terminal-helper",
           createdAt: 1,
           updatedAt: 2,
           lastRunId: "run-1",

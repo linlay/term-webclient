@@ -264,7 +264,6 @@ export interface CopilotAgentSummary {
   label: string;
   description: string;
   type: CopilotAgentType;
-  runnerAgentKey?: string;
   default: boolean;
   icon?: CopilotAgentIcon | null;
 }

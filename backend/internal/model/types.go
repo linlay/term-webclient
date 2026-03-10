@@ -201,13 +201,12 @@ type CopilotAgentIcon struct {
 }
 
 type CopilotAgentResponse struct {
-	Key            string            `json:"key"`
-	Label          string            `json:"label"`
-	Description    string            `json:"description"`
-	Type           CopilotAgentType  `json:"type"`
-	RunnerAgentKey string            `json:"runnerAgentKey,omitempty"`
-	Default        bool              `json:"default"`
-	Icon           *CopilotAgentIcon `json:"icon,omitempty"`
+	Key         string            `json:"key"`
+	Label       string            `json:"label"`
+	Description string            `json:"description"`
+	Type        CopilotAgentType  `json:"type"`
+	Default     bool              `json:"default"`
+	Icon        *CopilotAgentIcon `json:"icon,omitempty"`
 }
 
 type CopilotChatSummaryResponse struct {

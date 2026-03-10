@@ -78,7 +78,7 @@ type AgentConfig struct {
 
 type CopilotConfig struct {
 	Runner CopilotRunnerConfig  `yaml:"runner"`
-	Agents []CopilotAgentConfig `yaml:"agents"`
+	Agents []CopilotAgentConfig `yaml:"-"`
 }
 
 type CopilotRunnerConfig struct {
@@ -88,13 +88,12 @@ type CopilotRunnerConfig struct {
 }
 
 type CopilotAgentConfig struct {
-	Key            string                 `yaml:"key"`
-	Label          string                 `yaml:"label"`
-	Description    string                 `yaml:"description"`
-	Type           string                 `yaml:"type"`
-	RunnerAgentKey string                 `yaml:"runner-agent-key"`
-	Default        bool                   `yaml:"default"`
-	Icon           CopilotAgentIconConfig `yaml:"icon"`
+	Key         string                 `yaml:"key"`
+	Label       string                 `yaml:"label"`
+	Description string                 `yaml:"description"`
+	Type        string                 `yaml:"type"`
+	Default     bool                   `yaml:"default"`
+	Icon        CopilotAgentIconConfig `yaml:"icon"`
 }
 
 type CopilotAgentIconConfig struct {
@@ -239,19 +238,7 @@ func defaultConfig() *Config {
 			Runner: CopilotRunnerConfig{
 				TimeoutSeconds: 60,
 			},
-			Agents: []CopilotAgentConfig{
-				{
-					Key:         "default-assist",
-					Label:       "Default Assist",
-					Description: "Built-in terminal suggestions powered by assist.",
-					Type:        "builtin_assist",
-					Default:     true,
-					Icon: CopilotAgentIconConfig{
-						Name:  "sparkles",
-						Color: "#2563EB",
-					},
-				},
-			},
+			Agents: []CopilotAgentConfig{defaultBuiltinCopilotAgent()},
 		},
 		Assist: AssistConfig{
 			Enabled:            false,
@@ -309,6 +296,9 @@ func Load() (*Config, error) {
 
 	applyEnvMap(cfg, overrides)
 	applyEnvMap(cfg, envToMap(os.Environ()))
+	if err := loadCopilotAgents(cfg, envBaseDir, effectiveValues); err != nil {
+		return nil, err
+	}
 
 	if err := validate(cfg, envBaseDir); err != nil {
 		return nil, err
@@ -357,6 +347,9 @@ func mergeYAMLBytes(cfg *Config, payload []byte, placeholderValues map[string]st
 		return nil
 	}
 	payload = []byte(expandEnvPlaceholders(string(payload), placeholderValues))
+	if err := rejectLegacyCopilotAgentsConfig(payload, source); err != nil {
+		return err
+	}
 	if err := yaml.Unmarshal(payload, cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", source, err)
 	}
@@ -634,7 +627,6 @@ func validateCopilot(cfg *Config) error {
 		agent.Label = strings.TrimSpace(agent.Label)
 		agent.Description = strings.TrimSpace(agent.Description)
 		agent.Type = strings.TrimSpace(agent.Type)
-		agent.RunnerAgentKey = strings.TrimSpace(agent.RunnerAgentKey)
 		agent.Icon.Name = strings.TrimSpace(agent.Icon.Name)
 		agent.Icon.Color = strings.TrimSpace(agent.Icon.Color)
 
@@ -650,12 +642,8 @@ func validateCopilot(cfg *Config) error {
 		}
 		switch agent.Type {
 		case "builtin_assist":
-			agent.RunnerAgentKey = ""
 		case "runner_agent":
 			hasRunnerAgent = true
-			if agent.RunnerAgentKey == "" {
-				return fmt.Errorf("copilot runner_agent %s requires runner-agent-key", agent.Key)
-			}
 		default:
 			return fmt.Errorf("copilot agent %s has unsupported type: %s", agent.Key, agent.Type)
 		}

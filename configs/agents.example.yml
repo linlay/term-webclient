@@ -1,0 +1,8 @@
+agents:
+  - key: terminal-helper
+    label: Terminal Helper
+    description: Runner-backed terminal assistant.
+    default: true
+    icon:
+      name: wrench
+      color: "#0F766E"

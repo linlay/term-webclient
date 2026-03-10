@@ -42,6 +42,9 @@ func TestLoadUsesEmbeddedDefaultsWithoutExternalConfig(t *testing.T) {
 	if len(cfg.Terminal.CliClients) != 2 {
 		t.Fatalf("expected embedded cli clients, got %d", len(cfg.Terminal.CliClients))
 	}
+	if len(cfg.Copilot.Agents) != 1 || cfg.Copilot.Agents[0].Key != "default-assist" || !cfg.Copilot.Agents[0].Default {
+		t.Fatalf("expected builtin copilot assist as only default agent, got %#v", cfg.Copilot.Agents)
+	}
 }
 
 func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
@@ -82,21 +85,21 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	}
 	yamlContent := "" +
 		"server:\n  port: 22000\n" +
-		"terminal:\n  recent-sessions-per-tool: 9\n" +
-		"copilot:\n" +
-		"  agents:\n" +
-		"    - key: default-assist\n" +
-		"      label: Default Assist\n" +
-		"      description: Built-in suggestions\n" +
-		"      type: builtin_assist\n" +
-		"      default: true\n" +
-		"    - key: terminal-assistant\n" +
-		"      label: Terminal Assistant\n" +
-		"      description: Runner-backed assistant\n" +
-		"      type: runner_agent\n" +
-		"      runner-agent-key: terminalAssistant\n"
+		"terminal:\n  recent-sessions-per-tool: 9\n"
 	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(yamlContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
+	}
+	agentsContent := "" +
+		"agents:\n" +
+		"  - key: terminal-assistant\n" +
+		"    label: Terminal Assistant\n" +
+		"    description: Runner-backed assistant\n" +
+		"    default: true\n" +
+		"    icon:\n" +
+		"      name: wrench\n" +
+		"      color: \"#0F766E\"\n"
+	if err := os.WriteFile(filepath.Join(configsDir, "agents.yml"), []byte(agentsContent), 0o644); err != nil {
+		t.Fatalf("write agents config: %v", err)
 	}
 	writeTestPublicKeyFile(t, filepath.Join(configsDir, "local-public-key.pem"))
 
@@ -134,10 +137,13 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		t.Fatalf("expected copilot runner bearer env override, got %q", cfg.Copilot.Runner.AuthorizationBearer)
 	}
 	if len(cfg.Copilot.Agents) != 2 {
-		t.Fatalf("expected yaml copilot agents, got %d", len(cfg.Copilot.Agents))
+		t.Fatalf("expected builtin + agents.yml copilot agents, got %d", len(cfg.Copilot.Agents))
 	}
-	if cfg.Copilot.Agents[1].RunnerAgentKey != "terminalAssistant" {
-		t.Fatalf("expected runner agent key from yaml, got %q", cfg.Copilot.Agents[1].RunnerAgentKey)
+	if cfg.Copilot.Agents[0].Default {
+		t.Fatalf("expected builtin assist default to yield to runner default, got %#v", cfg.Copilot.Agents)
+	}
+	if cfg.Copilot.Agents[1].Key != "terminal-assistant" || !cfg.Copilot.Agents[1].Default {
+		t.Fatalf("expected runner agent from agents.yml to become default, got %#v", cfg.Copilot.Agents[1])
 	}
 	if !cfg.Auth.Enabled || cfg.Auth.Username != "tester" {
 		t.Fatalf("expected auth env override, got enabled=%v username=%q", cfg.Auth.Enabled, cfg.Auth.Username)
@@ -425,53 +431,39 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 
 func TestLoadFailsWhenCopilotRunnerAgentHasInvalidConfiguration(t *testing.T) {
 	testCases := []struct {
-		name        string
-		envContent  string
-		yamlContent string
-		wantErr     string
+		name       string
+		envContent string
+		agentsYAML string
+		wantErr    string
 	}{
 		{
 			name: "runner agent missing base url",
-			yamlContent: "" +
-				"copilot:\n" +
-				"  runner:\n" +
-				"    base-url: \"\"\n" +
-				"  agents:\n" +
-				"    - key: default-assist\n" +
-				"      type: builtin_assist\n" +
-				"      default: true\n" +
-				"    - key: terminal-assistant\n" +
-				"      type: runner_agent\n" +
-				"      runner-agent-key: terminalAssistant\n",
+			agentsYAML: "" +
+				"agents:\n" +
+				"  - key: terminal-assistant\n" +
+				"    label: Terminal Assistant\n",
 			wantErr: "copilot runner base-url is required when runner_agent is configured",
 		},
 		{
-			name:       "runner agent missing runner key",
+			name:       "runner agent missing label",
 			envContent: "COPILOT_RUNNER_BASE_URL=https://runner.example\n",
-			yamlContent: "" +
-				"copilot:\n" +
-				"  agents:\n" +
-				"    - key: default-assist\n" +
-				"      type: builtin_assist\n" +
-				"      default: true\n" +
-				"    - key: terminal-assistant\n" +
-				"      type: runner_agent\n",
-			wantErr: "copilot runner_agent terminal-assistant requires runner-agent-key",
+			agentsYAML: "" +
+				"agents:\n" +
+				"  - key: terminal-assistant\n",
+			wantErr: "copilot runner agent terminal-assistant requires label",
 		},
 		{
 			name:       "multiple defaults",
 			envContent: "COPILOT_RUNNER_BASE_URL=https://runner.example\n",
-			yamlContent: "" +
-				"copilot:\n" +
-				"  agents:\n" +
-				"    - key: default-assist\n" +
-				"      type: builtin_assist\n" +
-				"      default: true\n" +
-				"    - key: terminal-assistant\n" +
-				"      type: runner_agent\n" +
-				"      default: true\n" +
-				"      runner-agent-key: terminalAssistant\n",
-			wantErr: "copilot requires exactly one default agent",
+			agentsYAML: "" +
+				"agents:\n" +
+				"  - key: terminal-assistant\n" +
+				"    label: Terminal Assistant\n" +
+				"    default: true\n" +
+				"  - key: repo-helper\n" +
+				"    label: Repo Helper\n" +
+				"    default: true\n",
+			wantErr: "copilot runner agents require at most one default agent",
 		},
 	}
 
@@ -486,11 +478,10 @@ func TestLoadFailsWhenCopilotRunnerAgentHasInvalidConfiguration(t *testing.T) {
 			if err := os.MkdirAll(configsDir, 0o755); err != nil {
 				t.Fatalf("mkdir configs dir: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(tc.yamlContent), 0o644); err != nil {
-				t.Fatalf("write config: %v", err)
+			if err := os.WriteFile(filepath.Join(configsDir, "agents.yml"), []byte(tc.agentsYAML), 0o644); err != nil {
+				t.Fatalf("write agents config: %v", err)
 			}
-			envContent := "CONFIG_PATH=../configs/config.dev.yml\n" + tc.envContent
-			if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(envContent), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(tc.envContent), 0o644); err != nil {
 				t.Fatalf("write env: %v", err)
 			}
 
@@ -505,10 +496,86 @@ func TestLoadFailsWhenCopilotRunnerAgentHasInvalidConfiguration(t *testing.T) {
 				t.Fatalf("chdir: %v", err)
 			}
 
-			if _, err := Load(); err == nil || err.Error() != tc.wantErr {
+			_, err = Load()
+			if err == nil {
+				t.Fatalf("expected error %q, got nil", tc.wantErr)
+			}
+			if tc.name == "runner agent missing label" {
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err.Error() != tc.wantErr {
 				t.Fatalf("expected error %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestLoadFailsWhenCopilotAgentsFileIsInvalid(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "agents.yml"), []byte("agents:\n  - key: terminal-assistant\n    label: [\n"), 0o644); err != nil {
+		t.Fatalf("write invalid agents config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("COPILOT_RUNNER_BASE_URL=https://runner.example\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse") {
+		t.Fatalf("expected parse error for invalid agents.yml, got %v", err)
+	}
+}
+
+func TestLoadFailsWhenLegacyCopilotAgentsConfiguredInConfigPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte("copilot:\n  agents:\n    - key: terminal-assistant\n"), 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("CONFIG_PATH=../configs/config.dev.yml\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "uses removed copilot.agents") {
+		t.Fatalf("expected legacy copilot.agents error, got %v", err)
 	}
 }
 

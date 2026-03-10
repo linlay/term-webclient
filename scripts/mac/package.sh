@@ -54,7 +54,7 @@ cp "$ROOT_DIR/.env.example" "$OUTPUT_DIR/.env.example"
 if [[ -d "$ROOT_DIR/configs" ]]; then
   while IFS= read -r config_path; do
     cp "$config_path" "$OUTPUT_DIR/configs/"
-  done < <(find "$ROOT_DIR/configs" -maxdepth 1 -type f -name '*.example.pem' | sort)
+  done < <(find "$ROOT_DIR/configs" -maxdepth 1 -type f \( -name '*.example.pem' -o -name '*.example.yml' \) | sort)
 fi
 
 cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/start.sh"

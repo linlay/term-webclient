@@ -63,15 +63,6 @@ copilot:
     base-url: ""
     timeout-seconds: 60
     authorization-bearer: ""
-  agents:
-    - key: default-assist
-      label: Default Assist
-      description: Built-in terminal suggestions powered by assist.
-      type: builtin_assist
-      default: true
-      icon:
-        name: sparkles
-        color: "#2563EB"
 
 assist:
   enabled: false

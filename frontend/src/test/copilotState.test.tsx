@@ -397,6 +397,38 @@ describe("useCopilotState", () => {
     expect(showNotice).toHaveBeenCalledWith("Command copied", "success", 1800);
   });
 
+  it("prefers the configured runner default agent", async () => {
+    apiClientMock.listCopilotAgents.mockResolvedValue([
+      {
+        key: "default-assist",
+        label: "Default Assist",
+        description: "Local assist suggestions",
+        type: "builtin_assist",
+        default: false
+      },
+      {
+        key: "terminal-helper",
+        label: "Terminal Helper",
+        description: "Runner terminal assistant",
+        type: "runner_agent",
+        default: true
+      }
+    ]);
+
+    render(
+      <Harness
+        activeTab={makeTab()}
+        senderMapRef={{ current: new Map<string, (data: string) => boolean>() }}
+        focusTerminal={vi.fn()}
+        showNotice={vi.fn()}
+      />
+    );
+    await flushAsync();
+
+    expect((container?.querySelector("[data-testid='agent-select']") as HTMLSelectElement).value).toBe("terminal-helper");
+    expect(container?.querySelector("[data-testid='selected-agent']")?.textContent).toBe("runner_agent");
+  });
+
   it("switches agents, loads runner history, and resets chat on new chat", async () => {
     apiClientMock.listCopilotAgents.mockResolvedValue([
       {
@@ -411,7 +443,6 @@ describe("useCopilotState", () => {
         label: "Terminal Helper",
         description: "Runner terminal assistant",
         type: "runner_agent",
-        runnerAgentKey: "terminalAssistant",
         default: false
       }
     ]);
@@ -419,7 +450,7 @@ describe("useCopilotState", () => {
       {
         chatId: "chat-1",
         chatName: "Chat 1",
-        agentKey: "terminalAssistant",
+        agentKey: "terminal-helper",
         createdAt: 1,
         updatedAt: 2,
         lastRunId: "run-1",
@@ -486,7 +517,6 @@ describe("useCopilotState", () => {
         label: "Terminal Helper",
         description: "Runner terminal assistant",
         type: "runner_agent",
-        runnerAgentKey: "terminalAssistant",
         default: false
       }
     ]);
@@ -533,7 +563,6 @@ describe("useCopilotState", () => {
         label: "Terminal Helper",
         description: "Runner terminal assistant",
         type: "runner_agent",
-        runnerAgentKey: "terminalAssistant",
         default: false
       }
     ]);

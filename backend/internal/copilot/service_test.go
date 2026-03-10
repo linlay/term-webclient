@@ -23,7 +23,7 @@ func TestListChatsPrefersRequestAuthorizationHeader(t *testing.T) {
 		if r.URL.Path != "/api/ap/chats" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("agentKey"); got != "terminalAssistant" {
+		if got := r.URL.Query().Get("agentKey"); got != "terminal-assistant" {
 			t.Fatalf("unexpected agentKey query: %s", got)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -32,7 +32,7 @@ func TestListChatsPrefersRequestAuthorizationHeader(t *testing.T) {
 			"data": []map[string]any{{
 				"chatId":         "chat-1",
 				"chatName":       "Chat 1",
-				"agentKey":       "terminalAssistant",
+				"agentKey":       "terminal-assistant",
 				"createdAt":      1,
 				"updatedAt":      2,
 				"lastRunId":      "run-1",
@@ -118,8 +118,8 @@ func TestProxyQueryMapsConfiguredAgentKeyAndStreamsResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProxyQuery returned error: %v", err)
 	}
-	if got := requestBody["agentKey"]; got != "terminalAssistant" {
-		t.Fatalf("expected mapped runner agent key, got %#v", got)
+	if got := requestBody["agentKey"]; got != "terminal-assistant" {
+		t.Fatalf("expected runner agent key passthrough, got %#v", got)
 	}
 	if got := requestBody["stream"]; got != true {
 		t.Fatalf("expected stream=true, got %#v", got)
@@ -228,6 +228,17 @@ func TestProxyQueryRejectsNonShellTabs(t *testing.T) {
 	}
 }
 
+func TestListChatsRejectsUnknownAgentKey(t *testing.T) {
+	svc := newTestService("https://runner.invalid", &stubSessions{
+		exists: true,
+	})
+
+	_, err := svc.ListChats("s1", "missing-agent", "", "")
+	if util.ErrorStatus(err) != http.StatusBadRequest {
+		t.Fatalf("expected bad request for unknown agent key, got %v", err)
+	}
+}
+
 func newTestService(baseURL string, sessions *stubSessions) *Service {
 	cfg := &config.Config{
 		Copilot: config.CopilotConfig{
@@ -243,10 +254,10 @@ func newTestService(baseURL string, sessions *stubSessions) *Service {
 					Default: true,
 				},
 				{
-					Key:            "terminal-assistant",
-					Label:          "Terminal Assistant",
-					Type:           "runner_agent",
-					RunnerAgentKey: "terminalAssistant",
+					Key:     "terminal-assistant",
+					Label:   "Terminal Assistant",
+					Type:    "runner_agent",
+					Default: false,
 				},
 			},
 		},

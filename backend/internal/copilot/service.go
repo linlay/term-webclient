@@ -68,12 +68,11 @@ func (s *Service) ListAgents(sessionID string) ([]model.CopilotAgentResponse, er
 	for _, item := range s.cfg.Copilot.Agents {
 		agentType := model.CopilotAgentType(item.Type)
 		response := model.CopilotAgentResponse{
-			Key:            item.Key,
-			Label:          item.Label,
-			Description:    item.Description,
-			Type:           agentType,
-			RunnerAgentKey: item.RunnerAgentKey,
-			Default:        item.Default,
+			Key:         item.Key,
+			Label:       item.Label,
+			Description: item.Description,
+			Type:        agentType,
+			Default:     item.Default,
 		}
 		if strings.TrimSpace(item.Icon.Name) != "" || strings.TrimSpace(item.Icon.Color) != "" {
 			response.Icon = &model.CopilotAgentIcon{
@@ -96,7 +95,7 @@ func (s *Service) ListChats(sessionID, configuredAgentKey, lastRunID, authHeader
 	}
 
 	query := url.Values{}
-	query.Set("agentKey", agentCfg.RunnerAgentKey)
+	query.Set("agentKey", agentCfg.Key)
 	if strings.TrimSpace(lastRunID) != "" {
 		query.Set("lastRunId", strings.TrimSpace(lastRunID))
 	}
@@ -160,7 +159,7 @@ func (s *Service) ProxyQuery(ctx context.Context, w http.ResponseWriter, session
 	}
 
 	payload := map[string]any{
-		"agentKey": agentCfg.RunnerAgentKey,
+		"agentKey": agentCfg.Key,
 		"message":  strings.TrimSpace(request.Message),
 		"stream":   true,
 	}

@@ -44,8 +44,8 @@ make test-frontend
 ## 3. 配置说明
 - 根目录 `.env.example` 是唯一的环境变量契约；本地真实值写入根目录 `.env`，该文件不提交。
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
-- 只有结构化配置确实超过 `.env` 表达能力时，才使用 `CONFIG_PATH` 指向 `configs/*.yml`。
-- `configs/` 同时用于存放 App JWT 本地公钥 PEM 文件；仓库提供 `configs/local-public-key.example.pem` 作为示例。
+- 只有结构化主配置确实超过 `.env` 表达能力时，才使用 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不再从该 YAML 读取。
+- `configs/` 同时用于存放 App JWT 本地公钥 PEM 文件和 Copilot runner agent 配置；仓库提供 `configs/local-public-key.example.pem` 与 `configs/agents.example.yml` 作为示例。
 - 配置优先级：内置默认值 < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
 - 推荐用法：
@@ -57,6 +57,33 @@ CONFIG_PATH=../configs/config.dev.yml make dev-backend
 # 在 .env 中设置
 CONFIG_PATH=./configs/config.prod.yml
 ```
+
+### Copilot Runner Agents
+- Copilot 内置始终保留一个 builtin assist agent；runner-backed agents 改为从固定文件 `configs/agents.yml` 加载，不依赖 `CONFIG_PATH`。
+- `configs/agents.yml` 的相对路径按 `.env` 所在目录解析；开发态和发布态都统一写在运行根目录下的 `configs/agents.yml`。
+- 文件缺失时系统只显示 builtin assist；文件存在但 YAML 非法、agent key 重复或多个 runner agent 同时 `default: true` 时，后端启动会直接失败。
+- 若 `configs/agents.yml` 中恰好一个 runner agent 标记 `default: true`，它会覆盖 builtin assist 成为默认选择；否则 builtin assist 保持默认。
+
+准备示例：
+```bash
+cp configs/agents.example.yml configs/agents.yml
+```
+
+示例内容：
+```yaml
+agents:
+  - key: terminal-helper
+    label: Terminal Helper
+    description: Runner-backed terminal assistant.
+    default: true
+    icon:
+      name: wrench
+      color: "#0F766E"
+```
+
+- `key` 是必填项，同时作为 term-webclient 内部 agent key 和发送给 `agent-platform-runner` 的 `agentKey`。
+- `label` 是必填项，用于 UI 展示。
+- `description`、`icon.name`、`icon.color` 可选。
 
 ### Web 登录（`/term/`）
 - Web 端登录使用 `AUTH_USERNAME` + `AUTH_PASSWORD_HASH_BCRYPT`。
@@ -114,7 +141,7 @@ ASSIST_MODEL='qwen-plus'
 ASSIST_TIMEOUT_SECONDS=30
 ASSIST_MAX_SCREEN_TEXT_CHARS=500
 ASSIST_DEBUG_LOG=false
-ASSIST_SYSTEM_PROMPT='You are an assistant for a terminal web client. Use the recent terminal or console text and the optional user question to infer the best next shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must contain command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable next steps that directly validate or advance what the recent console output suggests. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field.'
+ASSIST_SYSTEM_PROMPT='You are an assistant for a terminal web client. Based on the most recent terminal or console output, provide the best next-step shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must include command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable commands that directly verify, fix, or advance what the recent console output indicates. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field.'
 ```
 
 - Assist 后端会以流式方式调用 `/chat/completions`，但对前端仍返回最终聚合后的 suggestions JSON。
@@ -144,7 +171,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`。App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 ### 本地打包
 ```bash
@@ -180,9 +207,10 @@ cd release
 - `release/.env.example`
 - `release/start.sh`
 - `release/stop.sh`
+- `release/configs/agents.example.yml`
 - `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并在需要本地公钥验签时把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash
@@ -203,6 +231,7 @@ cd release && ./stop.sh
 - 后端启动失败时，先检查 `.env` 中的端口、认证和 SSH 相关变量是否完整。
 - 如果启用了 Assist，确认 `ASSIST_BASE_URL`、`ASSIST_API_KEY`、`ASSIST_MODEL` 都已配置，且 `ASSIST_BASE_URL` 已包含 `/v1`。
 - 如果启用了 App JWT 本地公钥验签，确认 `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 指向的 PEM 文件存在且是合法 RSA 公钥。
+- 如果启用了 Copilot runner agents，确认 `configs/agents.yml` 存在、YAML 合法，且 `COPILOT_RUNNER_BASE_URL` 已配置。
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
 - 如果是直接复制 `release/` 到其他目录运行，确认整包一起复制，而不是只拷贝二进制或空目录结构。
