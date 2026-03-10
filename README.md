@@ -154,13 +154,25 @@ make package-mac
 `make package-mac` 只负责生成发布产物，不要求源码根 `.env` 存在。
 
 ### 本机发布态启动
-推荐通过 Make 统一执行“先打包，再启动”：
+先生成发布包：
 ```bash
-make local-up
+make package-mac
 ```
 
-`make local-up` 会始终先重新生成默认 `release/` 目录产物，再通过 `scripts/mac/start.sh` 启动发布态前后端服务。
-如果缺少 `release/.env`，失败会发生在启动阶段，而不是前端打包阶段。
+再进入 `release/` 目录准备运行时配置并手工启动：
+```bash
+cd release
+cp .env.example .env
+./start.sh
+```
+
+停止时：
+```bash
+cd release
+./stop.sh
+```
+
+如果缺少 `release/.env`，失败会发生在 `release/start.sh` 启动阶段，而不是前端打包阶段。
 
 打包产物包含：
 - `release/backend/term-web-backend`
@@ -170,7 +182,7 @@ make local-up
 - `release/stop.sh`
 - `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并在需要本地公钥验签时把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`make local-up` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并在需要本地公钥验签时把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash
@@ -179,17 +191,12 @@ cd release
 ./stop.sh
 ```
 
-源码仓库内仍兼容旧入口：
-```bash
-./scripts/mac/start.sh release
-./scripts/mac/stop.sh release
-```
-
 ## 6. 运维
 ### 启停
 ```bash
-make local-up
-make local-down
+make package-mac
+cd release && ./start.sh
+cd release && ./stop.sh
 ```
 
 ### 常见排查
@@ -199,5 +206,6 @@ make local-down
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
 - 如果是直接复制 `release/` 到其他目录运行，确认整包一起复制，而不是只拷贝二进制或空目录结构。
+- 如果你修改了 `release/.env` 或 `release/configs/*`，直接在 `release/` 目录重启，不需要重新回到仓库根执行额外启动命令。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
 - 前端代理异常时，确认 `.env` 中的 `BACKEND_HOST`、`BACKEND_PORT` 与后端监听端口一致。

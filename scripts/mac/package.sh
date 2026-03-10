@@ -23,7 +23,7 @@ echo "[package] preparing release directory"
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts" "$OUTPUT_DIR/configs"
 rm -f "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts/windows" "$OUTPUT_DIR/configs"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/configs"
 
 echo "[package] building backend binary"
 (
@@ -60,12 +60,6 @@ fi
 cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/start.sh"
 cp "$SCRIPT_DIR/stop.sh" "$OUTPUT_DIR/stop.sh"
 chmod +x "$OUTPUT_DIR/backend/term-web-backend" "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
-
-if [[ -d "$ROOT_DIR/scripts/windows" ]]; then
-  while IFS= read -r script_path; do
-    cp "$script_path" "$OUTPUT_DIR/scripts/windows/"
-  done < <(find "$ROOT_DIR/scripts/windows" -maxdepth 1 -type f \( -name '*.ps1' -o -name '*.bat' -o -name '.gitkeep' \) | sort)
-fi
 
 echo "[package] done"
 echo "[package] backend binary: $OUTPUT_DIR/backend/term-web-backend"

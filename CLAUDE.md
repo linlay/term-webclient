@@ -42,7 +42,7 @@
 - 初始化：复制 `.env.example` 为 `.env`，安装前端依赖。
 - 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；需要结构化覆盖时通过 `CONFIG_PATH` 启用 `configs/*.yml`。
 - 校验：Go 侧运行 `make test-backend`；前端运行 `make typecheck-frontend` 和 `make test-frontend`。
-- 打包：执行 `make package-mac` 生成 `release/` 目录；执行 `make local-up` 可自动先打包再通过 `scripts/mac/start.sh` 以发布态启动。
+- 打包：执行 `make package-mac` 生成 `release/` 目录；发布态运行统一在 `release/` 目录手工执行 `./start.sh` 和 `./stop.sh`。
 
 ## 9. 已知约束与注意事项
 - `frontend/vite.config.ts` 本地开发默认从根 `.env` 读取前后端端口，不应再依赖 `frontend/.env`。
