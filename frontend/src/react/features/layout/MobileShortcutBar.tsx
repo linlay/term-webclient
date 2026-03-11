@@ -1,4 +1,5 @@
 import type { SessionType } from "../../shared/api/types";
+import { normalizeToolId } from "../../shared/utils/toolId";
 
 interface ShortcutItem {
   label: string;
@@ -41,7 +42,7 @@ const MOBILE_SHORTCUTS_CODEX_CLAUDE: ShortcutItem[] = [
 ];
 
 export function resolveMobileShortcuts(sessionType: SessionType | null, toolId: string | null): ShortcutItem[] {
-  const normalizedToolId = (toolId || "").trim().toLowerCase();
+  const normalizedToolId = normalizeToolId(toolId);
   if (sessionType === "SSH_SHELL" || normalizedToolId === "ssh" || normalizedToolId === "terminal") {
     return MOBILE_SHORTCUTS_TERMINAL_SSH;
   }

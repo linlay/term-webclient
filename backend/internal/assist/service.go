@@ -1,9 +1,9 @@
 package assist
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,11 +16,12 @@ import (
 	"term-webclient-go/backend/internal/config"
 	"term-webclient-go/backend/internal/model"
 	"term-webclient-go/backend/internal/util"
+	"term-webclient-go/backend/internal/util/httpstream"
 )
 
-const defaultSystemPrompt = "You are an assistant for a terminal web client. Use the recent terminal or console text and the optional user question to infer the best next shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must contain command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable next steps that directly validate or advance what the recent console output suggests. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field."
+const defaultSystemPrompt = "You are an assistant for a terminal web client. Use the recent terminal or console text and the optional user question to infer the best next shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 3 items. Each suggestion must contain command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Every command must be a single-line plain shell command only, without markdown fences, numbering, or explanation text in the command field. reason must be simplified Chinese, very short, and suitable for one-line display."
 const forcedJSONSystemPrompt = "Return valid JSON only. The final answer must be a json object with a top-level suggestions array. Every suggestion object must include command, reason, and weight. Do not include markdown, code fences, or any non-JSON text."
-const assistSuggestionTargetCount = 5
+const assistSuggestionTargetCount = 3
 
 type screenTextProvider interface {
 	GetScreenText(sessionID string) (model.ScreenTextResponse, error)
@@ -48,12 +49,6 @@ type openAIChatMessage struct {
 
 type openAIResponseFormat struct {
 	Type string `json:"type"`
-}
-
-type openAIErrorResponse struct {
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
 }
 
 type openAIChatCompletionsStreamChunk struct {
@@ -283,7 +278,7 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 			s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), "read error response body failed", "")
 			return "", util.NewStatusError(http.StatusBadGateway, "assist model response is invalid", err)
 		}
-		message := extractErrorMessage(response.Status, body)
+		message := httpstream.ExtractErrorMessage(response.StatusCode, body)
 		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), message, string(body))
 		return "", util.NewStatusError(http.StatusBadGateway, "assist model request failed: "+message, nil)
 	}
@@ -293,7 +288,7 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 			s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), "read non-SSE response body failed", "")
 			return "", util.NewStatusError(http.StatusBadGateway, "assist model stream response is invalid", err)
 		}
-		message := fmt.Sprintf("assist model did not return SSE (content-type: %s)", fallbackString(contentType, "(empty)"))
+		message := fmt.Sprintf("assist model did not return SSE (content-type: %s)", util.FallbackString(contentType, "(empty)"))
 		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), message, string(body))
 		return "", util.NewStatusError(http.StatusBadGateway, message, nil)
 	}
@@ -304,7 +299,7 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 	eventCount := 0
 	done := false
 	choiceChunkCount := 0
-	if err := readSSEDataEvents(response.Body, func(payload string) error {
+	if err := httpstream.ReadSSEEvents(response.Body, func(payload string) error {
 		trimmed := strings.TrimSpace(payload)
 		if trimmed == "" {
 			return nil
@@ -327,6 +322,10 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 		builder.WriteString(delta)
 		return nil
 	}); err != nil {
+		var statusErr *util.StatusError
+		if !errors.As(err, &statusErr) {
+			err = util.NewStatusError(http.StatusBadGateway, "assist model stream read failed: "+err.Error(), err)
+		}
 		s.logFailure(sessionID, response.StatusCode, time.Since(startedAt), util.ErrorMessage(err, "assist model stream failed"), "")
 		return "", err
 	}
@@ -345,45 +344,6 @@ func (s *Service) collectStreamContent(sessionID string, response *http.Response
 	s.logDebug(sessionID, "stream completed status=%d duration_ms=%d events=%d content_chars=%d", response.StatusCode, time.Since(startedAt).Milliseconds(), eventCount, utf8.RuneCountInString(content))
 	s.logDebug(sessionID, "response content=%q", content)
 	return content, nil
-}
-
-func readSSEDataEvents(reader io.Reader, onEvent func(payload string) error) error {
-	buffered := bufio.NewReader(reader)
-	dataLines := make([]string, 0, 2)
-
-	flush := func() error {
-		if len(dataLines) == 0 {
-			return nil
-		}
-		payload := strings.Join(dataLines, "\n")
-		dataLines = dataLines[:0]
-		return onEvent(payload)
-	}
-
-	for {
-		line, err := buffered.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return util.NewStatusError(http.StatusBadGateway, "assist model stream read failed: "+err.Error(), err)
-		}
-
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			if flushErr := flush(); flushErr != nil {
-				return flushErr
-			}
-		} else if strings.HasPrefix(line, "data:") {
-			payload := strings.TrimPrefix(line, "data:")
-			payload = strings.TrimPrefix(payload, " ")
-			dataLines = append(dataLines, payload)
-		}
-
-		if err == io.EOF {
-			if flushErr := flush(); flushErr != nil {
-				return flushErr
-			}
-			return nil
-		}
-	}
 }
 
 func extractStreamDelta(payload string) (string, bool, error) {
@@ -410,20 +370,6 @@ func extractStreamDelta(payload string) (string, bool, error) {
 		builder.WriteString(content)
 	}
 	return builder.String(), true, nil
-}
-
-func extractErrorMessage(status string, body []byte) string {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 {
-		return status
-	}
-
-	var decoded openAIErrorResponse
-	if err := json.Unmarshal(trimmed, &decoded); err == nil && decoded.Error != nil && strings.TrimSpace(decoded.Error.Message) != "" {
-		return strings.TrimSpace(decoded.Error.Message)
-	}
-
-	return string(trimmed)
 }
 
 func (s *Service) logRequest(sessionID, method, endpoint string, body []byte, payload openAIChatCompletionsRequest, headers http.Header) {
@@ -565,11 +511,11 @@ func normalizeSuggestions(raw []assistModelSuggestion) []model.AssistSuggestionI
 
 func padSuggestions(suggestions []model.AssistSuggestionItem) []model.AssistSuggestionItem {
 	fallbacks := []model.AssistSuggestionItem{
-		{ID: suggestionID("pwd"), Command: "pwd", Reason: "Confirm the current working directory before taking the next step.", Weight: 60},
-		{ID: suggestionID("ls -la"), Command: "ls -la", Reason: "Inspect the current directory and file metadata.", Weight: 55},
-		{ID: suggestionID("git status --short"), Command: "git status --short", Reason: "Check whether the workspace has pending repository changes.", Weight: 50},
-		{ID: suggestionID("npm test"), Command: "npm test", Reason: "Run the default frontend or Node test command when relevant.", Weight: 45},
-		{ID: suggestionID("go test ./..."), Command: "go test ./...", Reason: "Run the Go test suite when the workspace is a Go project.", Weight: 40},
+		{ID: suggestionID("pwd"), Command: "pwd", Reason: "确认当前目录", Weight: 60},
+		{ID: suggestionID("ls -la"), Command: "ls -la", Reason: "查看文件列表", Weight: 55},
+		{ID: suggestionID("git status --short"), Command: "git status --short", Reason: "检查仓库改动", Weight: 50},
+		{ID: suggestionID("npm test"), Command: "npm test", Reason: "运行默认测试", Weight: 45},
+		{ID: suggestionID("go test ./..."), Command: "go test ./...", Reason: "运行 Go 测试", Weight: 40},
 	}
 	seen := map[string]struct{}{}
 	for _, item := range suggestions {
@@ -638,11 +584,4 @@ func suggestionID(command string) string {
 		return "suggestion"
 	}
 	return result
-}
-
-func fallbackString(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }

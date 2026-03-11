@@ -87,6 +87,9 @@ function Harness({ activeTab, senderMapRef, focusTerminal, showNotice }: Harness
       <button type="button" data-testid="clear" onClick={() => copilot.clearAssistQuestion()}>
         clear
       </button>
+      <button type="button" data-testid="restore" onClick={() => copilot.restoreLastAssistQuestion()}>
+        restore
+      </button>
       <button
         type="button"
         data-testid="copy"
@@ -151,6 +154,7 @@ function Harness({ activeTab, senderMapRef, focusTerminal, showNotice }: Harness
       <div data-testid="assist-error">{copilot.assistError}</div>
       <div data-testid="assist-screen">{copilot.assistCapturedScreenText}</div>
       <div data-testid="assist-suggestions">{copilot.assistSuggestions.map((item) => item.command).join("|")}</div>
+      <div data-testid="assist-last-question">{copilot.lastSubmittedAssistQuestion}</div>
       <div data-testid="runner-error">{copilot.runnerError}</div>
       <div data-testid="runner-chat-id">{copilot.runnerChatId || ""}</div>
       <div data-testid="runner-history">{copilot.runnerHistory.map((item) => item.chatId).join("|")}</div>
@@ -353,6 +357,8 @@ describe("useCopilotState", () => {
     expect(sender).toHaveBeenNthCalledWith(2, "git status --short\r");
     expect(focusTerminal).toHaveBeenCalledWith("tab-1");
     expect(showNotice).toHaveBeenCalledTimes(2);
+    expect(question.value).toBe("");
+    expect(container?.querySelector("[data-testid='assist-last-question']")?.textContent).toBe("What should I do next?");
   });
 
   it("supports clearing the question and copying a command", async () => {
@@ -395,6 +401,44 @@ describe("useCopilotState", () => {
 
     expect(clipboardWriteText).toHaveBeenCalledWith("git status --short");
     expect(showNotice).toHaveBeenCalledWith("Command copied", "success", 1800);
+    expect(question.value).toBe("");
+  });
+
+  it("restores the last submitted non-empty question", async () => {
+    apiClientMock.createAssistSuggestions.mockResolvedValue({
+      capturedScreenText: "modified: frontend/src/react/App.tsx",
+      capturedChars: 34,
+      suggestions: [
+        { id: "one", command: "git status --short", reason: "检查改动", weight: 96 }
+      ]
+    });
+
+    render(
+      <Harness
+        activeTab={makeTab()}
+        senderMapRef={{ current: new Map<string, (data: string) => boolean>() }}
+        focusTerminal={vi.fn()}
+        showNotice={vi.fn()}
+      />
+    );
+    await flushAsync();
+
+    const question = container?.querySelector("[data-testid='question']") as HTMLTextAreaElement;
+    await act(async () => {
+      setTextareaValue(question, "Need a command");
+    });
+    await act(async () => {
+      (container?.querySelector("[data-testid='generate']") as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      setTextareaValue(question, "");
+    });
+    act(() => {
+      (container?.querySelector("[data-testid='restore']") as HTMLButtonElement).click();
+    });
+
+    expect(question.value).toBe("Need a command");
+    expect(container?.querySelector("[data-testid='assist-last-question']")?.textContent).toBe("Need a command");
   });
 
   it("prefers the configured runner default agent", async () => {

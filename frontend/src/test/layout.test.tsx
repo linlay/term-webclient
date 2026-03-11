@@ -7,6 +7,7 @@ import { TabBar, canRebuildTab } from "../react/features/layout/TabBar";
 import { TabContextMenu } from "../react/features/layout/TabContextMenu";
 import { CloseTabConfirmModal } from "../react/features/layout/CloseTabConfirmModal";
 import type { TerminalTab } from "../react/features/tabs/useTabsStore";
+import type { CopilotSidebarProps } from "../react/features/layout/CopilotSidebar";
 
 function makeTab(partial: Partial<TerminalTab> = {}): TerminalTab {
   return {
@@ -53,6 +54,100 @@ function render(node: JSX.Element): void {
   act(() => {
     root?.render(node);
   });
+}
+
+type CopilotSidebarOverrides =
+  Omit<Partial<CopilotSidebarProps>, "summary" | "assist" | "runner"> & {
+    summary?: Partial<CopilotSidebarProps["summary"]>;
+    assist?: Partial<CopilotSidebarProps["assist"]>;
+    runner?: Partial<CopilotSidebarProps["runner"]>;
+  };
+
+function makeCopilotSidebarProps(overrides: CopilotSidebarOverrides = {}): CopilotSidebarProps {
+  const { summary: summaryOverride, assist: assistOverride, runner: runnerOverride, ...restOverrides } = overrides;
+  const summary: CopilotSidebarProps["summary"] = {
+    loading: false,
+    error: "",
+    context: "",
+    screenText: "",
+    onRefresh: vi.fn(),
+    onCopyContext: vi.fn(),
+    onCopyScreen: vi.fn(),
+    ...summaryOverride
+  };
+
+  const assist: CopilotSidebarProps["assist"] = {
+    sessionId: "s1",
+    selectedAgentKey: "default-assist",
+    question: "",
+    suggestions: [],
+    capturedScreenText: "",
+    capturedChars: 0,
+    busy: false,
+    error: "",
+    hasLastSubmittedQuestion: false,
+    onQuestionChange: vi.fn(),
+    onGenerateSuggestions: vi.fn(),
+    onClearQuestion: vi.fn(),
+    onRestoreLastQuestion: vi.fn(),
+    onCopyCommand: vi.fn(),
+    onInsertCommand: vi.fn(),
+    onExecuteCommand: vi.fn(),
+    ...assistOverride
+  };
+
+  const runner: CopilotSidebarProps["runner"] = {
+    selectedAgent: null,
+    prompt: "",
+    busy: false,
+    error: "",
+    historyBusy: false,
+    history: [],
+    chatId: null,
+    conversation: [],
+    plan: [],
+    pendingReview: null,
+    canRun: true,
+    capabilityMessage: "Runner agents require a shell or SSH terminal tab.",
+    onPromptChange: vi.fn(),
+    onRefreshHistory: vi.fn(),
+    onSendMessage: vi.fn(),
+    onNewChat: vi.fn(),
+    onOpenChat: vi.fn(),
+    onApproveNext: vi.fn(),
+    onApproveAll: vi.fn(),
+    onReject: vi.fn(),
+    ...runnerOverride
+  };
+
+  return {
+    open: true,
+    isMobile: false,
+    sideTab: "agent",
+    sessionId: "s1",
+    agents: [{
+      key: "default-assist",
+      label: "Default Assist",
+      description: "Local suggestions",
+      type: "builtin_assist",
+      default: true
+    }],
+    selectedAgentKey: "default-assist",
+    selectedAgent: {
+      key: "default-assist",
+      label: "Default Assist",
+      description: "Local suggestions",
+      type: "builtin_assist",
+      default: true
+    },
+    summary,
+    assist,
+    runner,
+    onTabChange: vi.fn(),
+    onSelectAgent: vi.fn(),
+    onClose: vi.fn(),
+    ...restOverrides
+  };
 }
 
 describe("layout components", () => {
@@ -234,91 +329,91 @@ describe("layout components", () => {
   it("renders Copilot sidebar as mobile sheet with builtin assist agent", () => {
     const onGenerateAssistSuggestions = vi.fn();
     const onClearAssistQuestion = vi.fn();
+    const onRestoreLastAssistQuestion = vi.fn();
     const onCopyAssistCommand = vi.fn();
     const onInsertAssistCommand = vi.fn();
     const onExecuteAssistCommand = vi.fn();
-    render(
-      <CopilotSidebar
-        open={true}
-        isMobile={true}
-        sideTab="agent"
-        sessionId="s1"
-        summaryLoading={false}
-        summaryError=""
-        summaryContext=""
-        summaryScreenText="git status"
-        agents={[{
-          key: "default-assist",
-          label: "Default Assist",
-          description: "Local suggestions",
-          type: "builtin_assist",
-          default: true
-        }]}
-        selectedAgentKey="default-assist"
-        selectedAgent={{
-          key: "default-assist",
-          label: "Default Assist",
-          description: "Local suggestions",
-          type: "builtin_assist",
-          default: true
-        }}
-        assistQuestion="How to inspect?"
-        assistSuggestions={[{
+    const baseProps = makeCopilotSidebarProps({
+      open: true,
+      isMobile: true,
+      sideTab: "agent" as const,
+      summary: {
+        screenText: "git status"
+      },
+      assist: {
+        question: "How to inspect?",
+        suggestions: [
+        {
           id: "git-status-short",
           command: "git status --short",
-          reason: "Check repo state.",
+          reason: "检查仓库状态",
           weight: 92
-        }]}
-        assistCapturedScreenText="modified: app.tsx"
-        assistCapturedChars={17}
-        assistBusy={false}
-        assistError=""
-        runnerPrompt=""
-        runnerBusy={false}
-        runnerError=""
-        runnerHistoryBusy={false}
-        runnerHistory={[]}
-        runnerChatId={null}
-        runnerConversation={[]}
-        runnerPlan={[]}
-        runnerPendingReview={null}
-        runnerCanRun={true}
-        runnerCapabilityMessage="Runner agents require a shell or SSH terminal tab."
-        onTabChange={vi.fn()}
-        onRefreshSummary={vi.fn()}
-        onCopySummaryContext={vi.fn()}
-        onCopySummaryScreen={vi.fn()}
-        onSelectAgent={vi.fn()}
-        onAssistQuestionChange={vi.fn()}
-        onGenerateAssistSuggestions={onGenerateAssistSuggestions}
-        onClearAssistQuestion={onClearAssistQuestion}
-        onCopyAssistCommand={onCopyAssistCommand}
-        onInsertAssistCommand={onInsertAssistCommand}
-        onExecuteAssistCommand={onExecuteAssistCommand}
-        onRunnerPromptChange={vi.fn()}
-        onRefreshRunnerHistory={vi.fn()}
-        onSendRunnerMessage={vi.fn()}
-        onNewRunnerChat={vi.fn()}
-        onOpenRunnerChat={vi.fn()}
-        onApproveNextReviewCommand={vi.fn()}
-        onApproveAllReviewCommands={vi.fn()}
-        onRejectReviewCommands={vi.fn()}
-        onClose={vi.fn()}
-      />
+        },
+        {
+          id: "git-diff-stat",
+          command: "git diff --stat",
+          reason: "查看改动摘要",
+          weight: 84
+        },
+        {
+          id: "pwd",
+          command: "pwd",
+          reason: "确认当前目录",
+          weight: 70
+        },
+        {
+          id: "ls-la",
+          command: "ls -la",
+          reason: "查看文件列表",
+          weight: 60
+        }
+      ],
+        capturedScreenText: "modified: app.tsx",
+        capturedChars: 17,
+        hasLastSubmittedQuestion: false,
+        onGenerateSuggestions: onGenerateAssistSuggestions,
+        onClearQuestion: onClearAssistQuestion,
+        onRestoreLastQuestion: onRestoreLastAssistQuestion,
+        onCopyCommand: onCopyAssistCommand,
+        onInsertCommand: onInsertAssistCommand,
+        onExecuteCommand: onExecuteAssistCommand
+      }
+    });
+
+    render(
+      <CopilotSidebar {...baseProps} />
     );
 
     const sidebar = container?.querySelector("[data-testid='copilot-sidebar']");
     expect(sidebar).toHaveClass("mobile-sheet");
     expect(container?.textContent).toContain("Agent");
+    expect(container?.textContent).toContain("Summary");
     expect(container?.textContent).toContain("git status --short");
     expect(container?.textContent).toContain("Weight 92");
+    expect(container?.textContent).not.toContain("Session:");
+    expect(container?.textContent).not.toContain("Builtin Assist");
+    expect(container?.textContent).not.toContain("Local suggestions");
     expect(container?.querySelector("[data-testid='assist-screen-text']")).toBeNull();
     expect((container?.querySelector("#assistQuestionInput") as HTMLTextAreaElement | null)?.rows).toBe(2);
+    expect((container?.querySelector("#copilotAgentSelect") as HTMLSelectElement | null)?.value).toBe("default-assist");
+
+    const suggestionCards = container?.querySelectorAll(".assist-suggestion-card") ?? [];
+    expect(suggestionCards.length).toBe(3);
+    expect(container?.textContent).not.toContain("ls -la");
+    expect((Array.from(container?.querySelectorAll(".assist-generate-actions button") ?? []).find(
+      (button) => button.textContent === "上一条"
+    ) as HTMLButtonElement | undefined)?.disabled).toBe(true);
 
     act(() => {
       (container?.querySelector("[data-testid='assist-screen-toggle']") as HTMLButtonElement).click();
     });
+    expect(container?.querySelector("[data-testid='assist-screen-popover']")).not.toBeNull();
     expect(container?.querySelector("[data-testid='assist-screen-text']")).not.toBeNull();
+
+    act(() => {
+      root?.render(<CopilotSidebar {...baseProps} sideTab="summary" />);
+    });
+    expect(container?.querySelector("[data-testid='assist-screen-popover']")).toBeNull();
 
     act(() => {
       const question = container?.querySelector("#assistQuestionInput");
@@ -330,11 +425,24 @@ describe("layout components", () => {
     });
     expect(onGenerateAssistSuggestions).toHaveBeenCalledTimes(0);
 
+    act(() => {
+      root?.render(
+        <CopilotSidebar
+          {...baseProps}
+          assist={{ ...baseProps.assist, hasLastSubmittedQuestion: true }}
+        />
+      );
+    });
+
     const actionButtons = container?.querySelectorAll(".assist-suggestion-actions button") ?? [];
-    expect(actionButtons.length).toBe(3);
+    expect(actionButtons.length).toBe(9);
+    expect((container?.querySelectorAll(".assist-suggestion-card")[0] as HTMLElement | undefined)?.querySelectorAll("button").length).toBe(3);
 
     act(() => {
-      (Array.from(container?.querySelectorAll(".agent-actions-row button") ?? []).find(
+      (Array.from(container?.querySelectorAll(".assist-generate-actions button") ?? []).find(
+        (button) => button.textContent === "上一条"
+      ) as HTMLButtonElement | undefined)?.click();
+      (Array.from(container?.querySelectorAll(".assist-generate-actions button") ?? []).find(
         (button) => button.textContent === "清空"
       ) as HTMLButtonElement | undefined)?.click();
       (actionButtons[0] as HTMLButtonElement).click();
@@ -342,6 +450,7 @@ describe("layout components", () => {
       (actionButtons[2] as HTMLButtonElement).click();
     });
     expect(onClearAssistQuestion).toHaveBeenCalledTimes(1);
+    expect(onRestoreLastAssistQuestion).toHaveBeenCalledTimes(1);
     expect(onCopyAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onInsertAssistCommand).toHaveBeenCalledWith("git status --short");
     expect(onExecuteAssistCommand).toHaveBeenCalledWith("git status --short");
@@ -356,40 +465,32 @@ describe("layout components", () => {
 
     render(
       <CopilotSidebar
-        open={true}
-        isMobile={false}
-        sideTab="agent"
-        sessionId="s1"
-        summaryLoading={false}
-        summaryError=""
-        summaryContext=""
-        summaryScreenText=""
-        agents={[{
+        {...makeCopilotSidebarProps({
+          agents: [{
           key: "terminal-helper",
           label: "Terminal Helper",
           description: "Runner assistant",
           type: "runner_agent",
           default: false
-        }]}
-        selectedAgentKey="terminal-helper"
-        selectedAgent={{
+        }],
+          selectedAgentKey: "terminal-helper",
+          selectedAgent: {
           key: "terminal-helper",
           label: "Terminal Helper",
           description: "Runner assistant",
           type: "runner_agent",
           default: false
-        }}
-        assistQuestion=""
-        assistSuggestions={[]}
-        assistCapturedScreenText=""
-        assistCapturedChars={0}
-        assistBusy={false}
-        assistError=""
-        runnerPrompt="Inspect repo"
-        runnerBusy={false}
-        runnerError=""
-        runnerHistoryBusy={false}
-        runnerHistory={[{
+          },
+          runner: {
+            selectedAgent: {
+              key: "terminal-helper",
+              label: "Terminal Helper",
+              description: "Runner assistant",
+              type: "runner_agent",
+              default: false
+            },
+            prompt: "Inspect repo",
+            history: [{
           chatId: "chat-1",
           chatName: "Chat 1",
           agentKey: "terminal-helper",
@@ -399,16 +500,16 @@ describe("layout components", () => {
           lastRunContent: "Inspect repository",
           readStatus: 1,
           readAt: null
-        }]}
-        runnerChatId="chat-1"
-        runnerConversation={[
+        }],
+            chatId: "chat-1",
+            conversation: [
           { id: "user-1", role: "user", text: "Inspect repository" },
           { id: "assistant-1", role: "assistant", text: "Plan ready." }
-        ]}
-        runnerPlan={[
+        ],
+            plan: [
           { taskId: "t1", title: "Inspect repo", status: "in_progress" }
-        ]}
-        runnerPendingReview={{
+        ],
+            pendingReview: {
           runId: "run-1",
           toolId: "tool-1",
           title: "Review commands",
@@ -429,29 +530,14 @@ describe("layout components", () => {
             startedAt: null,
             completedAt: null
           }]
-        }}
-        runnerCanRun={true}
-        runnerCapabilityMessage="Runner agents require a shell or SSH terminal tab."
-        onTabChange={vi.fn()}
-        onRefreshSummary={vi.fn()}
-        onCopySummaryContext={vi.fn()}
-        onCopySummaryScreen={vi.fn()}
-        onSelectAgent={vi.fn()}
-        onAssistQuestionChange={vi.fn()}
-        onGenerateAssistSuggestions={vi.fn()}
-        onClearAssistQuestion={vi.fn()}
-        onCopyAssistCommand={vi.fn()}
-        onInsertAssistCommand={vi.fn()}
-        onExecuteAssistCommand={vi.fn()}
-        onRunnerPromptChange={vi.fn()}
-        onRefreshRunnerHistory={vi.fn()}
-        onSendRunnerMessage={vi.fn()}
-        onNewRunnerChat={onNewRunnerChat}
-        onOpenRunnerChat={onOpenRunnerChat}
-        onApproveNextReviewCommand={onApproveNextReviewCommand}
-        onApproveAllReviewCommands={onApproveAllReviewCommands}
-        onRejectReviewCommands={onRejectReviewCommands}
-        onClose={vi.fn()}
+            },
+            onNewChat: onNewRunnerChat,
+            onOpenChat: onOpenRunnerChat,
+            onApproveNext: onApproveNextReviewCommand,
+            onApproveAll: onApproveAllReviewCommands,
+            onReject: onRejectReviewCommands
+          }
+        })}
       />
     );
 

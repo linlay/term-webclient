@@ -12,7 +12,7 @@
 ## 3. 架构设计
 - `frontend/server.js` 提供静态资源服务，并将 `/term/api`、`/appterm/api`、`/term/ws`、`/appterm/ws` 代理到 Go 后端。
 - Go 后端在 `backend/cmd/server` 启动，核心能力拆分到 `internal/auth`、`internal/session`、`internal/ssh`、`internal/files`、`internal/workdir`、`internal/workspace` 等模块。
-- 配置分两层：内置默认 YAML 位于 `backend/internal/config/application.yml`；外部结构化主配置通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 固定从 `configs/agents.yml` 读取；最终再由 `.env` 和系统环境变量覆盖。
+- 配置分两层：内置默认 YAML 位于 `backend/internal/config/application.yml`；外部结构化主配置通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 固定从 `configs/agents.yml` 读取；Assist 固定从 `configs/assist.yml` 读取；最终再由 `.env` 和系统环境变量覆盖。
 
 ## 4. 目录结构
 - `backend/`: Go 服务代码、模块声明和 Dockerfile
@@ -39,7 +39,7 @@
 - 根 `Makefile` 是推荐命令入口；根 `package.json` scripts 保留给 Node 生态和历史兼容。
 
 ## 8. 开发流程
-- 初始化：复制 `.env.example` 为 `.env`，安装前端依赖。
+- 初始化：复制 `.env.example` 为 `.env`，安装前端依赖；如需 Assist，再复制 `configs/assist.example.yml` 为 `configs/assist.yml`。
 - 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；需要结构化主配置覆盖时通过 `CONFIG_PATH` 启用 `configs/*.yml`；需要 runner agents 时创建 `configs/agents.yml`。
 - 校验：Go 侧运行 `make test-backend`；前端运行 `make typecheck-frontend` 和 `make test-frontend`。
 - 打包：执行 `make package-mac` 生成 `release/` 目录；发布态运行统一在 `release/` 目录手工执行 `./start.sh` 和 `./stop.sh`。

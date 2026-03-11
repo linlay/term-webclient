@@ -73,12 +73,7 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		"APP_AUTH_ISSUER=https://issuer.example\n" +
 		"APP_AUTH_AUDIENCE=appterm\n" +
 		"ASSIST_ENABLED=true\n" +
-		"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
 		"ASSIST_API_KEY=test-assist-key\n" +
-		"ASSIST_MODEL=qwen-plus\n" +
-		"ASSIST_TIMEOUT_SECONDS=45\n" +
-		"ASSIST_MAX_SCREEN_TEXT_CHARS=900\n" +
-		"ASSIST_DEBUG_LOG=true\n" +
 		"ASSIST_SYSTEM_PROMPT=Return JSON only.\n"
 	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(envContent), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
@@ -88,6 +83,18 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		"terminal:\n  recent-sessions-per-tool: 9\n"
 	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(yamlContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
+	}
+	assistContent := "" +
+		"assist:\n" +
+		"  enabled: true\n" +
+		"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+		"  api-key: ${ASSIST_API_KEY:}\n" +
+		"  model: qwen-plus\n" +
+		"  timeout-seconds: 45\n" +
+		"  max-screen-text-chars: 900\n" +
+		"  debug-log: true\n"
+	if err := os.WriteFile(filepath.Join(configsDir, "assist.yml"), []byte(assistContent), 0o644); err != nil {
+		t.Fatalf("write assist config: %v", err)
 	}
 	agentsContent := "" +
 		"agents:\n" +
@@ -360,33 +367,37 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 	testCases := []struct {
 		name        string
 		envContent  string
-		yamlContent string
+		assistYAML  string
 		wantErr     string
 	}{
 		{
 			name: "missing base url",
 			envContent: "" +
-				"CONFIG_PATH=../configs/config.dev.yml\n" +
 				"ASSIST_ENABLED=true\n" +
 				"ASSIST_API_KEY=test-assist-key\n" +
 				"ASSIST_MODEL=qwen-plus\n",
-			yamlContent: "assist:\n  base-url: \"\"\n",
+			assistYAML: "assist:\n  enabled: true\n  base-url: \"\"\n  api-key: ${ASSIST_API_KEY:}\n  model: ${ASSIST_MODEL:}\n",
 			wantErr:     "assist base-url is required when assist is enabled",
 		},
 		{
 			name: "missing api key",
-			envContent: "" +
-				"ASSIST_ENABLED=true\n" +
-				"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
-				"ASSIST_MODEL=qwen-plus\n",
+			envContent: "",
+			assistYAML: "" +
+				"assist:\n" +
+				"  enabled: true\n" +
+				"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+				"  model: qwen-plus\n",
 			wantErr: "assist api-key is required when assist is enabled",
 		},
 		{
 			name: "missing model",
 			envContent: "" +
-				"ASSIST_ENABLED=true\n" +
-				"ASSIST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
 				"ASSIST_API_KEY=test-assist-key\n",
+			assistYAML: "" +
+				"assist:\n" +
+				"  enabled: true\n" +
+				"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+				"  api-key: ${ASSIST_API_KEY:}\n",
 			wantErr: "assist model is required when assist is enabled",
 		},
 	}
@@ -399,12 +410,12 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 			if err := os.MkdirAll(backendDir, 0o755); err != nil {
 				t.Fatalf("mkdir backend dir: %v", err)
 			}
-			if tc.yamlContent != "" {
+			if tc.assistYAML != "" {
 				if err := os.MkdirAll(configsDir, 0o755); err != nil {
 					t.Fatalf("mkdir configs dir: %v", err)
 				}
-				if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(tc.yamlContent), 0o644); err != nil {
-					t.Fatalf("write config: %v", err)
+				if err := os.WriteFile(filepath.Join(configsDir, "assist.yml"), []byte(tc.assistYAML), 0o644); err != nil {
+					t.Fatalf("write assist config: %v", err)
 				}
 			}
 			if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(tc.envContent), 0o644); err != nil {

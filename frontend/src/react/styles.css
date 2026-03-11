@@ -1060,6 +1060,7 @@ textarea {
 .agent-title {
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .agent-header {
@@ -1067,6 +1068,14 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.agent-header-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
 }
 
 .copilot-close-btn {
@@ -1081,13 +1090,46 @@ textarea {
 }
 
 .copilot-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .copilot-tab {
   border-color: var(--copilot-tab-border);
+  padding: 4px 9px;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.copilot-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.copilot-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.copilot-inline-label {
+  width: 42px;
+  flex: 0 0 42px;
+  margin: 0;
+}
+
+.copilot-inline-field select,
+.copilot-inline-field .field-label {
+  min-width: 0;
+}
+
+.copilot-agent-select-wrap select {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .copilot-tab.active {
@@ -1095,19 +1137,44 @@ textarea {
   background: var(--copilot-tab-active-bg);
 }
 
-.copilot-panel {
-  display: grid;
-  gap: 8px;
-}
-
 .copilot-agent-select-wrap {
   display: grid;
   gap: 6px;
 }
 
-.copilot-agent-meta {
+.copilot-question-header {
+  justify-content: space-between;
+}
+
+.assist-screen-anchor {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.assist-inline-btn {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.assist-screen-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 4;
+  width: min(320px, calc(100vw - 48px));
+  border: 1px solid var(--agent-step-border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2);
   display: grid;
   gap: 6px;
+}
+
+.assist-screen-meta {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .copilot-agent-chip-row {
@@ -1149,18 +1216,18 @@ textarea {
   justify-self: center;
 }
 
-.agent-session {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .agent-actions-row {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .agent-actions-row .primary-btn {
   margin-right: auto;
+}
+
+.assist-generate-actions {
+  justify-content: flex-end;
 }
 
 .agent-run-status {
@@ -1370,28 +1437,15 @@ textarea {
   gap: 8px;
 }
 
-.assist-screen-toggle-row {
-  display: flex;
-}
-
-.assist-screen-toggle {
-  justify-self: start;
-}
-
 .assist-suggestion-card {
   border: 1px solid var(--agent-step-border);
   border-radius: 10px;
   padding: 8px 10px;
   background: var(--agent-step-bg);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  display: block;
 }
 
 .assist-suggestion-main {
-  min-width: 0;
-  flex: 1;
   display: grid;
   gap: 4px;
 }
@@ -1399,6 +1453,9 @@ textarea {
 .assist-suggestion-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
 }
 
 .assist-suggestion-weight {
@@ -1415,8 +1472,11 @@ textarea {
 }
 
 .assist-suggestion-command {
-  white-space: pre-wrap;
-  word-break: break-word;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
 }
 
@@ -1424,27 +1484,27 @@ textarea {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assist-suggestion-actions {
-  display: grid;
-  grid-template-columns: auto auto;
+  display: flex;
+  align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
-  align-items: start;
-  justify-content: end;
 }
 
 .assist-suggestion-actions button {
-  min-width: 48px;
-  padding: 5px 8px;
+  min-width: 0;
+  padding: 3px 8px;
   font-size: 11px;
+  min-height: 24px;
 }
 
-.assist-suggestion-actions .assist-icon-btn {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+.assist-icon-btn {
+  width: 24px;
+  min-width: 24px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -1453,15 +1513,14 @@ textarea {
   font-size: 0;
 }
 
-.assist-suggestion-actions .assist-icon-btn svg {
+.assist-icon-btn svg {
   display: block;
   width: 13px;
   height: 13px;
 }
 
-.assist-suggestion-actions .primary-btn {
-  grid-column: 1 / -1;
-  justify-self: stretch;
+.assist-text-btn {
+  white-space: nowrap;
 }
 
 .react-login-screen {

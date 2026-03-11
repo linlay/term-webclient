@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -18,6 +17,7 @@ import (
 	"term-webclient-go/backend/internal/model"
 	"term-webclient-go/backend/internal/session"
 	"term-webclient-go/backend/internal/util"
+	"term-webclient-go/backend/internal/util/httpstream"
 )
 
 const (
@@ -209,39 +209,24 @@ func (s *Service) ProxyQuery(ctx context.Context, w http.ResponseWriter, session
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		payload, _ := io.ReadAll(response.Body)
-		message := runnerErrorMessage(response.StatusCode, payload)
+		message := httpstream.ExtractErrorMessage(response.StatusCode, payload)
 		return util.NewStatusError(http.StatusBadGateway, message, nil)
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		_, _ = io.Copy(w, response.Body)
-		return nil
-	}
-
-	buffer := make([]byte, 2048)
-	for {
-		read, readErr := response.Body.Read(buffer)
-		if read > 0 {
-			if _, err := w.Write(buffer[:read]); err != nil {
-				return util.NewStatusError(http.StatusBadGateway, "write runner query stream failed", err)
-			}
-			flusher.Flush()
-		}
-		if readErr == nil {
-			continue
-		}
-		if readErr == io.EOF {
+	httpstream.WriteSSEHeaders(w)
+	if err := httpstream.ProxySSEStream(w, response.Body); err != nil {
+		if err == io.EOF {
 			return nil
 		}
-		return util.NewStatusError(http.StatusBadGateway, "read runner query stream failed", readErr)
+		if _, ok := err.(*util.StatusError); ok {
+			return err
+		}
+		if strings.Contains(err.Error(), "write") {
+			return util.NewStatusError(http.StatusBadGateway, "write runner query stream failed", err)
+		}
+		return util.NewStatusError(http.StatusBadGateway, "read runner query stream failed", err)
 	}
+	return nil
 }
 
 func (s *Service) ExecuteCommand(sessionID string, request model.CopilotExecuteCommandRequest) (model.CopilotExecuteCommandResponse, error) {
@@ -329,7 +314,7 @@ func (s *Service) doJSON(method, path string, query url.Values, body any, authHe
 		return util.NewStatusError(http.StatusBadGateway, "read runner response failed", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return util.NewStatusError(http.StatusBadGateway, runnerErrorMessage(response.StatusCode, payload), nil)
+		return util.NewStatusError(http.StatusBadGateway, httpstream.ExtractErrorMessage(response.StatusCode, payload), nil)
 	}
 
 	var envelope runnerEnvelope
@@ -428,7 +413,7 @@ func (s *Service) requireRunnableSession(sessionID string) (*session.Session, er
 	case model.SessionTypeSSHShell:
 		return activeSession, nil
 	case model.SessionTypeLocalPTY:
-		switch normalizeToolID(activeSession.ToolID) {
+		switch util.NormalizeToolID(activeSession.ToolID) {
 		case "terminal", "ssh":
 			return activeSession, nil
 		default:
@@ -521,28 +506,6 @@ func extractCommandCompletion(transcript, marker string) (string, int, bool) {
 	return trimmed, exitCode, true
 }
 
-func runnerErrorMessage(status int, payload []byte) string {
-	trimmed := strings.TrimSpace(string(payload))
-	if trimmed == "" {
-		return fmt.Sprintf("runner request failed with status %d", status)
-	}
-	var envelope runnerEnvelope
-	if err := json.Unmarshal(payload, &envelope); err == nil && strings.TrimSpace(envelope.Msg) != "" {
-		return strings.TrimSpace(envelope.Msg)
-	}
-	var errorPayload struct {
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(payload, &errorPayload); err == nil && strings.TrimSpace(errorPayload.Error) != "" {
-		return strings.TrimSpace(errorPayload.Error)
-	}
-	return fmt.Sprintf("runner request failed with status %d", status)
-}
-
-func normalizeToolID(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
 func tailRunes(value string, limit int) string {
 	if limit <= 0 {
 		return ""
@@ -554,7 +517,7 @@ func tailRunes(value string, limit int) string {
 	return string(runes[len(runes)-limit:])
 }
 
-var commandMarkerPattern = regexp.MustCompile(`__TWC_COPILOT_EXIT_[A-Za-z0-9]+__`)
+var commandMarkerPattern = regexp.MustCompile(`__TWC_COPILOT_EXIT_[A-Za-z0-9-]+__`)
 
 func ExtractCommandMarker(value string) string {
 	return commandMarkerPattern.FindString(value)

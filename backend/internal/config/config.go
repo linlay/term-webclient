@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ var embeddedDefaults []byte
 
 var envPlaceholderPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]*))?\}`)
 
+const assistConfigRelativePath = "configs/assist.yml"
+
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Terminal TerminalConfig `yaml:"terminal"`
@@ -32,8 +35,8 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Address string `yaml:"address"`
-	Port    int    `yaml:"port"`
+	Address string `yaml:"address" env:"BACKEND_HOST"`
+	Port    int    `yaml:"port" env:"BACKEND_PORT"`
 }
 
 type TerminalConfig struct {
@@ -50,8 +53,8 @@ type TerminalConfig struct {
 	SessionEventMaxEntries int               `yaml:"session-event-max-entries"`
 	CommandFrameMaxEntries int               `yaml:"command-frame-max-entries"`
 	TranscriptMaxChars     int               `yaml:"transcript-max-chars"`
-	RecentSessionsFile     string            `yaml:"recent-sessions-file"`
-	RecentSessionsPerTool  int               `yaml:"recent-sessions-per-tool"`
+	RecentSessionsFile     string            `yaml:"recent-sessions-file" env:"TERMINAL_RECENT_SESSIONS_FILE"`
+	RecentSessionsPerTool  int               `yaml:"recent-sessions-per-tool" env:"TERMINAL_RECENT_SESSIONS_PER_TOOL"`
 	CliClients             []CLIClientConfig `yaml:"cli-clients"`
 	Agent                  AgentConfig       `yaml:"agent"`
 	SSH                    SSHConfig         `yaml:"ssh"`
@@ -82,9 +85,9 @@ type CopilotConfig struct {
 }
 
 type CopilotRunnerConfig struct {
-	BaseURL             string `yaml:"base-url"`
-	TimeoutSeconds      int    `yaml:"timeout-seconds"`
-	AuthorizationBearer string `yaml:"authorization-bearer"`
+	BaseURL             string `yaml:"base-url" env:"COPILOT_RUNNER_BASE_URL"`
+	TimeoutSeconds      int    `yaml:"timeout-seconds" env:"COPILOT_RUNNER_TIMEOUT_SECONDS"`
+	AuthorizationBearer string `yaml:"authorization-bearer" env:"COPILOT_RUNNER_AUTHORIZATION_BEARER"`
 }
 
 type CopilotAgentConfig struct {
@@ -109,13 +112,13 @@ type SSHConfig struct {
 	ConnectionIdleTTLSeconds  int    `yaml:"connection-idle-ttl-seconds"`
 	ExecDefaultTimeoutSeconds int    `yaml:"exec-default-timeout-seconds"`
 	ExecMaxOutputBytes        int    `yaml:"exec-max-output-bytes"`
-	CredentialsFile           string `yaml:"credentials-file"`
+	CredentialsFile           string `yaml:"credentials-file" env:"TERMINAL_SSH_CREDENTIALS_FILE"`
 	KnownHostsFile            string `yaml:"known-hosts-file"`
-	MasterKey                 string `yaml:"master-key"`
+	MasterKey                 string `yaml:"master-key" env:"TERMINAL_SSH_MASTER_KEY"`
 }
 
 type FilesConfig struct {
-	Enabled                  bool     `yaml:"enabled"`
+	Enabled                  bool     `yaml:"enabled" env:"TERMINAL_FILES_ENABLED"`
 	MaxUploadFileBytes       int64    `yaml:"max-upload-file-bytes"`
 	MaxUploadRequestBytes    int64    `yaml:"max-upload-request-bytes"`
 	MaxDownloadArchiveBytes  int64    `yaml:"max-download-archive-bytes"`
@@ -126,41 +129,41 @@ type FilesConfig struct {
 }
 
 type AssistConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	BaseURL            string `yaml:"base-url"`
-	APIKey             string `yaml:"api-key"`
-	Model              string `yaml:"model"`
-	TimeoutSeconds     int    `yaml:"timeout-seconds"`
-	MaxScreenTextChars int    `yaml:"max-screen-text-chars"`
-	DebugLog           bool   `yaml:"debug-log"`
-	SystemPrompt       string `yaml:"system-prompt"`
+	Enabled            bool   `yaml:"enabled" env:"ASSIST_ENABLED"`
+	BaseURL            string `yaml:"base-url" env:"ASSIST_BASE_URL"`
+	APIKey             string `yaml:"api-key" env:"ASSIST_API_KEY"`
+	Model              string `yaml:"model" env:"ASSIST_MODEL"`
+	TimeoutSeconds     int    `yaml:"timeout-seconds" env:"ASSIST_TIMEOUT_SECONDS"`
+	MaxScreenTextChars int    `yaml:"max-screen-text-chars" env:"ASSIST_MAX_SCREEN_TEXT_CHARS"`
+	DebugLog           bool   `yaml:"debug-log" env:"ASSIST_DEBUG_LOG"`
+	SystemPrompt       string `yaml:"system-prompt" env:"ASSIST_SYSTEM_PROMPT"`
 }
 
 type AuthConfig struct {
-	Enabled                     bool   `yaml:"enabled"`
-	Username                    string `yaml:"username"`
-	PasswordHashBcrypt          string `yaml:"password-hash-bcrypt"`
-	SessionTTLSeconds           int    `yaml:"session-ttl-seconds"`
-	LoginRateLimitEnabled       bool   `yaml:"login-rate-limit-enabled"`
-	LoginRateLimitWindowSeconds int    `yaml:"login-rate-limit-window-seconds"`
-	LoginRateLimitMaxAttempts   int    `yaml:"login-rate-limit-max-attempts"`
+	Enabled                     bool   `yaml:"enabled" env:"AUTH_ENABLED"`
+	Username                    string `yaml:"username" env:"AUTH_USERNAME"`
+	PasswordHashBcrypt          string `yaml:"password-hash-bcrypt" env:"AUTH_PASSWORD_HASH_BCRYPT"`
+	SessionTTLSeconds           int    `yaml:"session-ttl-seconds" env:"AUTH_SESSION_TTL_SECONDS"`
+	LoginRateLimitEnabled       bool   `yaml:"login-rate-limit-enabled" env:"AUTH_LOGIN_RATE_LIMIT_ENABLED"`
+	LoginRateLimitWindowSeconds int    `yaml:"login-rate-limit-window-seconds" env:"AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS"`
+	LoginRateLimitMaxAttempts   int    `yaml:"login-rate-limit-max-attempts" env:"AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS"`
 }
 
 type AppAuthConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	LocalPublicKeyFile string `yaml:"local-public-key-file"`
-	JWKSURI            string `yaml:"jwks-uri"`
-	Issuer             string `yaml:"issuer"`
-	JWKSCacheSeconds   int    `yaml:"jwks-cache-seconds"`
-	Audience           string `yaml:"audience"`
-	ClockSkewSeconds   int    `yaml:"clock-skew-seconds"`
+	Enabled            bool   `yaml:"enabled" env:"APP_AUTH_ENABLED"`
+	LocalPublicKeyFile string `yaml:"local-public-key-file" env:"APP_AUTH_LOCAL_PUBLIC_KEY_FILE"`
+	JWKSURI            string `yaml:"jwks-uri" env:"APP_AUTH_JWKS_URI"`
+	Issuer             string `yaml:"issuer" env:"APP_AUTH_ISSUER"`
+	JWKSCacheSeconds   int    `yaml:"jwks-cache-seconds" env:"APP_AUTH_JWKS_CACHE_SECONDS"`
+	Audience           string `yaml:"audience" env:"APP_AUTH_AUDIENCE"`
+	ClockSkewSeconds   int    `yaml:"clock-skew-seconds" env:"APP_AUTH_CLOCK_SKEW_SECONDS"`
 }
 
 type AppMetaConfig struct {
 	Name      string `yaml:"name"`
 	Version   string `yaml:"version"`
-	GitSHA    string `yaml:"git-sha"`
-	BuildTime string `yaml:"build-time"`
+	GitSHA    string `yaml:"git-sha" env:"APP_GIT_SHA"`
+	BuildTime string `yaml:"build-time" env:"APP_BUILD_TIME"`
 }
 
 func defaultConfig() *Config {
@@ -293,9 +296,12 @@ func Load() (*Config, error) {
 			return nil, err
 		}
 	}
+	if err := mergeYAMLFile(cfg, resolveRuntimeConfigPath(assistConfigRelativePath, envBaseDir), effectiveValues, false); err != nil {
+		return nil, err
+	}
 
-	applyEnvMap(cfg, overrides)
-	applyEnvMap(cfg, envToMap(os.Environ()))
+	applyEnvMapFromTags(cfg, overrides)
+	applyEnvMapFromTags(cfg, envToMap(os.Environ()))
 	if err := loadCopilotAgents(cfg, envBaseDir, effectiveValues); err != nil {
 		return nil, err
 	}
@@ -450,130 +456,56 @@ func envToMap(items []string) map[string]string {
 	return result
 }
 
-func applyEnvMap(cfg *Config, values map[string]string) {
+func applyEnvMapFromTags(cfg *Config, values map[string]string) {
 	if len(values) == 0 {
 		return
 	}
-
-	cfg.Server.Address = getenvMap(values, "BACKEND_HOST", cfg.Server.Address)
-	cfg.Server.Port = getenvIntMap(values, "BACKEND_PORT", cfg.Server.Port)
-
-	cfg.Terminal.RecentSessionsFile = getenvMap(values, "TERMINAL_RECENT_SESSIONS_FILE", cfg.Terminal.RecentSessionsFile)
-	cfg.Terminal.RecentSessionsPerTool = getenvIntMap(values, "TERMINAL_RECENT_SESSIONS_PER_TOOL", cfg.Terminal.RecentSessionsPerTool)
-	cfg.Terminal.Files.Enabled = getenvBoolMap(values, "TERMINAL_FILES_ENABLED", cfg.Terminal.Files.Enabled)
-	cfg.Terminal.SSH.CredentialsFile = getenvMap(values, "TERMINAL_SSH_CREDENTIALS_FILE", cfg.Terminal.SSH.CredentialsFile)
-	cfg.Terminal.SSH.MasterKey = getenvMap(values, "TERMINAL_SSH_MASTER_KEY", cfg.Terminal.SSH.MasterKey)
-
-	cfg.Copilot.Runner.BaseURL = getenvMap(values, "COPILOT_RUNNER_BASE_URL", cfg.Copilot.Runner.BaseURL)
-	cfg.Copilot.Runner.TimeoutSeconds = getenvIntMap(values, "COPILOT_RUNNER_TIMEOUT_SECONDS", cfg.Copilot.Runner.TimeoutSeconds)
-	cfg.Copilot.Runner.AuthorizationBearer = getenvMap(values, "COPILOT_RUNNER_AUTHORIZATION_BEARER", cfg.Copilot.Runner.AuthorizationBearer)
-
-	cfg.Auth.Enabled = getenvBoolMap(values, "AUTH_ENABLED", cfg.Auth.Enabled)
-	cfg.Auth.Username = getenvMap(values, "AUTH_USERNAME", cfg.Auth.Username)
-	cfg.Auth.PasswordHashBcrypt = getenvMap(values, "AUTH_PASSWORD_HASH_BCRYPT", cfg.Auth.PasswordHashBcrypt)
-	cfg.Auth.SessionTTLSeconds = getenvIntMap(values, "AUTH_SESSION_TTL_SECONDS", cfg.Auth.SessionTTLSeconds)
-	cfg.Auth.LoginRateLimitEnabled = getenvBoolMap(values, "AUTH_LOGIN_RATE_LIMIT_ENABLED", cfg.Auth.LoginRateLimitEnabled)
-	cfg.Auth.LoginRateLimitWindowSeconds = getenvIntMap(values, "AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS", cfg.Auth.LoginRateLimitWindowSeconds)
-	cfg.Auth.LoginRateLimitMaxAttempts = getenvIntMap(values, "AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS", cfg.Auth.LoginRateLimitMaxAttempts)
-
-	cfg.AppAuth.Enabled = getenvBoolMap(values, "APP_AUTH_ENABLED", cfg.AppAuth.Enabled)
-	cfg.AppAuth.LocalPublicKeyFile = getenvMap(values, "APP_AUTH_LOCAL_PUBLIC_KEY_FILE", cfg.AppAuth.LocalPublicKeyFile)
-	cfg.AppAuth.JWKSURI = getenvMap(values, "APP_AUTH_JWKS_URI", cfg.AppAuth.JWKSURI)
-	cfg.AppAuth.Issuer = getenvMap(values, "APP_AUTH_ISSUER", cfg.AppAuth.Issuer)
-	cfg.AppAuth.JWKSCacheSeconds = getenvIntMap(values, "APP_AUTH_JWKS_CACHE_SECONDS", cfg.AppAuth.JWKSCacheSeconds)
-	cfg.AppAuth.Audience = getenvMap(values, "APP_AUTH_AUDIENCE", cfg.AppAuth.Audience)
-	cfg.AppAuth.ClockSkewSeconds = getenvIntMap(values, "APP_AUTH_CLOCK_SKEW_SECONDS", cfg.AppAuth.ClockSkewSeconds)
-
-	cfg.Assist.Enabled = getenvBoolMap(values, "ASSIST_ENABLED", cfg.Assist.Enabled)
-	cfg.Assist.BaseURL = getenvMap(values, "ASSIST_BASE_URL", cfg.Assist.BaseURL)
-	cfg.Assist.APIKey = getenvMap(values, "ASSIST_API_KEY", cfg.Assist.APIKey)
-	cfg.Assist.Model = getenvMap(values, "ASSIST_MODEL", cfg.Assist.Model)
-	cfg.Assist.TimeoutSeconds = getenvIntMap(values, "ASSIST_TIMEOUT_SECONDS", cfg.Assist.TimeoutSeconds)
-	cfg.Assist.MaxScreenTextChars = getenvIntMap(values, "ASSIST_MAX_SCREEN_TEXT_CHARS", cfg.Assist.MaxScreenTextChars)
-	cfg.Assist.DebugLog = getenvBoolMap(values, "ASSIST_DEBUG_LOG", cfg.Assist.DebugLog)
-	cfg.Assist.SystemPrompt = getenvMap(values, "ASSIST_SYSTEM_PROMPT", cfg.Assist.SystemPrompt)
-
-	cfg.App.GitSHA = getenvMap(values, "APP_GIT_SHA", cfg.App.GitSHA)
-	cfg.App.BuildTime = getenvMap(values, "APP_BUILD_TIME", cfg.App.BuildTime)
+	applyEnvValues(reflect.ValueOf(cfg), values)
 }
 
 func validate(cfg *Config, envBaseDir string) error {
 	if strings.TrimSpace(cfg.Server.Address) == "" {
-		cfg.Server.Address = "127.0.0.1"
+		return fmt.Errorf("backend host must not be blank")
 	}
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("invalid backend port: %d", cfg.Server.Port)
 	}
-	if cfg.Terminal.WorkdirBrowseRoot == "" {
-		home, _ := os.UserHomeDir()
-		cfg.Terminal.WorkdirBrowseRoot = home
+	if strings.TrimSpace(cfg.Terminal.WorkdirBrowseRoot) == "" {
+		return fmt.Errorf("terminal workdir-browse-root must not be blank")
 	}
-	if cfg.Terminal.MaxCols <= 0 {
-		cfg.Terminal.MaxCols = 500
+	if cfg.Terminal.MaxCols <= 0 || cfg.Terminal.MaxRows <= 0 {
+		return fmt.Errorf("terminal max rows and cols must be positive")
 	}
-	if cfg.Terminal.MaxRows <= 0 {
-		cfg.Terminal.MaxRows = 200
+	if cfg.Terminal.DetachedSessionTTL <= 0 || cfg.Terminal.RingBufferMaxBytes <= 0 || cfg.Terminal.RingBufferMaxChunks <= 0 {
+		return fmt.Errorf("terminal buffer and ttl settings must be positive")
 	}
-	if cfg.Terminal.DetachedSessionTTL <= 0 {
-		cfg.Terminal.DetachedSessionTTL = 3600
-	}
-	if cfg.Terminal.RingBufferMaxBytes <= 0 {
-		cfg.Terminal.RingBufferMaxBytes = 4 * 1024 * 1024
-	}
-	if cfg.Terminal.RingBufferMaxChunks <= 0 {
-		cfg.Terminal.RingBufferMaxChunks = 4096
-	}
-	if cfg.Terminal.SessionEventMaxEntries <= 0 {
-		cfg.Terminal.SessionEventMaxEntries = 2048
-	}
-	if cfg.Terminal.CommandFrameMaxEntries <= 0 {
-		cfg.Terminal.CommandFrameMaxEntries = 256
-	}
-	if cfg.Terminal.TranscriptMaxChars <= 0 {
-		cfg.Terminal.TranscriptMaxChars = 200000
+	if cfg.Terminal.SessionEventMaxEntries <= 0 || cfg.Terminal.CommandFrameMaxEntries <= 0 || cfg.Terminal.TranscriptMaxChars <= 0 {
+		return fmt.Errorf("terminal context and transcript limits must be positive")
 	}
 	if cfg.Terminal.RecentSessionsPerTool <= 0 {
-		cfg.Terminal.RecentSessionsPerTool = 5
+		return fmt.Errorf("terminal recent sessions per tool must be positive")
 	}
-	if cfg.Terminal.Agent.StepTimeoutSeconds <= 0 {
-		cfg.Terminal.Agent.StepTimeoutSeconds = 15
-	}
-	if cfg.Terminal.Agent.MaxStepResultChars <= 0 {
-		cfg.Terminal.Agent.MaxStepResultChars = 8000
-	}
-	if cfg.Terminal.Agent.MaxContextPackBytes <= 0 {
-		cfg.Terminal.Agent.MaxContextPackBytes = 256 * 1024
+	if cfg.Terminal.Agent.StepTimeoutSeconds <= 0 || cfg.Terminal.Agent.MaxStepResultChars <= 0 || cfg.Terminal.Agent.MaxContextPackBytes <= 0 {
+		return fmt.Errorf("terminal agent limits must be positive")
 	}
 	if cfg.Copilot.Runner.TimeoutSeconds <= 0 {
-		cfg.Copilot.Runner.TimeoutSeconds = 60
+		return fmt.Errorf("copilot runner timeout must be positive")
 	}
-	if cfg.Terminal.SSH.DefaultPort <= 0 {
-		cfg.Terminal.SSH.DefaultPort = 22
+	if cfg.Terminal.SSH.DefaultPort <= 0 || strings.TrimSpace(cfg.Terminal.SSH.DefaultTerm) == "" {
+		return fmt.Errorf("ssh defaults must be configured")
 	}
-	if cfg.Terminal.SSH.DefaultTerm == "" {
-		cfg.Terminal.SSH.DefaultTerm = "xterm-256color"
-	}
-	if cfg.Terminal.SSH.ConnectTimeoutMillis <= 0 {
-		cfg.Terminal.SSH.ConnectTimeoutMillis = 10000
-	}
-	if cfg.Terminal.SSH.ExecDefaultTimeoutSeconds <= 0 {
-		cfg.Terminal.SSH.ExecDefaultTimeoutSeconds = 120
-	}
-	if cfg.Terminal.SSH.ExecMaxOutputBytes <= 0 {
-		cfg.Terminal.SSH.ExecMaxOutputBytes = 1024 * 1024
+	if cfg.Terminal.SSH.ConnectTimeoutMillis <= 0 || cfg.Terminal.SSH.ExecDefaultTimeoutSeconds <= 0 || cfg.Terminal.SSH.ExecMaxOutputBytes <= 0 {
+		return fmt.Errorf("ssh timeouts and limits must be positive")
 	}
 	if cfg.Terminal.Files.DownloadTicketTTLSeconds <= 0 {
-		cfg.Terminal.Files.DownloadTicketTTLSeconds = 60
+		return fmt.Errorf("file download ticket ttl must be positive")
 	}
 	if cfg.Auth.SessionTTLSeconds <= 0 {
-		cfg.Auth.SessionTTLSeconds = 43200
+		return fmt.Errorf("auth session ttl must be positive")
 	}
 	cfg.Auth.PasswordHashBcrypt = trimEnvQuotes(cfg.Auth.PasswordHashBcrypt)
-	if cfg.Auth.LoginRateLimitWindowSeconds <= 0 {
-		cfg.Auth.LoginRateLimitWindowSeconds = 60
-	}
-	if cfg.Auth.LoginRateLimitMaxAttempts <= 0 {
-		cfg.Auth.LoginRateLimitMaxAttempts = 10
+	if cfg.Auth.LoginRateLimitWindowSeconds <= 0 || cfg.Auth.LoginRateLimitMaxAttempts <= 0 {
+		return fmt.Errorf("auth login rate limit settings must be positive")
 	}
 	if strings.TrimSpace(cfg.AppAuth.LocalPublicKeyFile) != "" {
 		if resolvedPath, err := resolveLocalPublicKeyFile(cfg.AppAuth.LocalPublicKeyFile, envBaseDir); err != nil {
@@ -585,16 +517,13 @@ func validate(cfg *Config, envBaseDir string) error {
 		}
 	}
 	if cfg.AppAuth.JWKSCacheSeconds <= 0 {
-		cfg.AppAuth.JWKSCacheSeconds = 300
+		return fmt.Errorf("app auth jwks cache seconds must be positive")
 	}
 	if cfg.AppAuth.ClockSkewSeconds < 0 {
-		cfg.AppAuth.ClockSkewSeconds = 30
+		return fmt.Errorf("app auth clock skew seconds must be zero or positive")
 	}
-	if cfg.Assist.TimeoutSeconds <= 0 {
-		cfg.Assist.TimeoutSeconds = 30
-	}
-	if cfg.Assist.MaxScreenTextChars <= 0 {
-		cfg.Assist.MaxScreenTextChars = 500
+	if cfg.Assist.TimeoutSeconds <= 0 || cfg.Assist.MaxScreenTextChars <= 0 {
+		return fmt.Errorf("assist timeout and screen text limits must be positive")
 	}
 	if cfg.Assist.Enabled {
 		if strings.TrimSpace(cfg.Assist.BaseURL) == "" {
@@ -611,6 +540,63 @@ func validate(cfg *Config, envBaseDir string) error {
 		return err
 	}
 	return nil
+}
+
+func applyEnvValues(target reflect.Value, values map[string]string) {
+	if !target.IsValid() {
+		return
+	}
+	if target.Kind() == reflect.Pointer {
+		if target.IsNil() {
+			return
+		}
+		target = target.Elem()
+	}
+	if target.Kind() != reflect.Struct {
+		return
+	}
+	targetType := target.Type()
+	for index := 0; index < target.NumField(); index++ {
+		fieldValue := target.Field(index)
+		fieldType := targetType.Field(index)
+		if !fieldValue.CanSet() {
+			continue
+		}
+		if envKey := strings.TrimSpace(fieldType.Tag.Get("env")); envKey != "" {
+			applyTaggedEnvValue(fieldValue, envKey, values)
+		}
+		switch fieldValue.Kind() {
+		case reflect.Pointer:
+			if !fieldValue.IsNil() {
+				applyEnvValues(fieldValue, values)
+			}
+		case reflect.Struct:
+			applyEnvValues(fieldValue.Addr(), values)
+		}
+	}
+}
+
+func applyTaggedEnvValue(target reflect.Value, envKey string, values map[string]string) {
+	raw, ok := values[envKey]
+	if !ok || strings.TrimSpace(raw) == "" {
+		return
+	}
+	switch target.Kind() {
+	case reflect.String:
+		target.SetString(strings.TrimSpace(raw))
+	case reflect.Bool:
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "1", "true", "yes", "on":
+			target.SetBool(true)
+		case "0", "false", "no", "off":
+			target.SetBool(false)
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err == nil {
+			target.SetInt(parsed)
+		}
+	}
 }
 
 func validateCopilot(cfg *Config) error {

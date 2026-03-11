@@ -69,11 +69,36 @@ export interface UploadSessionFileRequest {
 
 let tokenRefreshPromise: Promise<string | null> | null = null;
 
-function withContentTypeJson(headers: Headers): Headers {
-  if (!headers.has("content-type")) {
+function shouldSetJsonContentType(method: string | undefined, headers: Headers, body: BodyInit | null | undefined): boolean {
+  if ((method || "GET").toUpperCase() !== "POST") {
+    return false;
+  }
+  if (!body || body instanceof FormData) {
+    return false;
+  }
+  return !headers.has("content-type");
+}
+
+function applyJsonContentType(headers: Headers, method: string | undefined, body: BodyInit | null | undefined): void {
+  if (shouldSetJsonContentType(method, headers, body)) {
     headers.set("content-type", "application/json");
   }
-  return headers;
+}
+
+export function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    const normalized = typeof value === "number" ? String(value) : value.trim();
+    if (!normalized) {
+      return;
+    }
+    query.set(key, normalized);
+  });
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
 }
 
 async function parseErrorMessage(response: Response): Promise<string> {
@@ -135,6 +160,7 @@ async function request<T>(path: string, init: RequestInit = {}, allowReplay = tr
     headers,
     credentials: appMode ? "omit" : "include"
   };
+  applyJsonContentType(headers, requestInit.method, requestInit.body);
 
   if (appMode) {
     let accessToken = getAppAccessToken();
@@ -198,6 +224,7 @@ async function requestStream(
     credentials: appMode ? "omit" : "include",
     signal
   };
+  applyJsonContentType(headers, requestInit.method, requestInit.body);
 
   if (appMode) {
     let accessToken = getAppAccessToken();
@@ -258,7 +285,6 @@ export const apiClient = {
   login(payload: LoginRequest): Promise<AuthStatusResponse> {
     return request<AuthStatusResponse>("/auth/login", {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -270,7 +296,6 @@ export const apiClient = {
   createSession(payload: CreateSessionRequest): Promise<CreateSessionResponse> {
     return request<CreateSessionResponse>("/sessions", {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -280,8 +305,7 @@ export const apiClient = {
   },
 
   listRecentSessions(toolId: string): Promise<RecentSessionItemResponse[]> {
-    const query = new URLSearchParams({ toolId: (toolId || "").trim() });
-    return request<RecentSessionItemResponse[]>(`/sessions/recent?${query.toString()}`);
+    return request<RecentSessionItemResponse[]>(`/sessions/recent${buildQuery({ toolId })}`);
   },
 
   closeSession(sessionId: string): Promise<void> {
@@ -299,7 +323,6 @@ export const apiClient = {
   createSshCredential(payload: CreateSshCredentialRequest): Promise<SshCredentialSummaryResponse> {
     return request<SshCredentialSummaryResponse>("/ssh/credentials", {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -315,24 +338,20 @@ export const apiClient = {
   },
 
   getWorkdirTree(path?: string): Promise<WorkdirBrowseResponse> {
-    if (path && path.trim()) {
-      const query = new URLSearchParams({ path: path.trim() });
-      return request<WorkdirBrowseResponse>(`/workdirTree?${query.toString()}`);
-    }
-    return request<WorkdirBrowseResponse>("/workdirTree");
+    return request<WorkdirBrowseResponse>(`/workdirTree${buildQuery({ path })}`);
   },
 
   getSessionSnapshot(sessionId: string, afterSeq: number): Promise<SessionSnapshotResponse> {
-    const query = new URLSearchParams({ afterSeq: String(Math.max(0, Math.floor(afterSeq))) });
-    return request<SessionSnapshotResponse>(`/sessions/${sessionId}/snapshot?${query.toString()}`);
+    return request<SessionSnapshotResponse>(`/sessions/${sessionId}/snapshot${buildQuery({
+      afterSeq: Math.max(0, Math.floor(afterSeq))
+    })}`);
   },
 
   getSessionContext(sessionId: string, commandLimit = 120, eventLimit = 300): Promise<SessionContextResponse> {
-    const query = new URLSearchParams({
-      commandLimit: String(commandLimit),
-      eventLimit: String(eventLimit)
-    });
-    return request<SessionContextResponse>(`/sessions/${sessionId}/context?${query.toString()}`);
+    return request<SessionContextResponse>(`/sessions/${sessionId}/context${buildQuery({
+      commandLimit,
+      eventLimit
+    })}`);
   },
 
   getSessionScreenText(sessionId: string): Promise<ScreenTextResponse> {
@@ -340,17 +359,12 @@ export const apiClient = {
   },
 
   getSessionFileTree(sessionId: string, path?: string): Promise<FileTreeResponse> {
-    if (path && path.trim()) {
-      const query = new URLSearchParams({ path: path.trim() });
-      return request<FileTreeResponse>(`/sessions/${sessionId}/files/tree?${query.toString()}`);
-    }
-    return request<FileTreeResponse>(`/sessions/${sessionId}/files/tree`);
+    return request<FileTreeResponse>(`/sessions/${sessionId}/files/tree${buildQuery({ path })}`);
   },
 
   createSessionFileMkdir(sessionId: string, payload: FileMkdirRequest): Promise<FileMkdirResponse> {
     return request<FileMkdirResponse>(`/sessions/${sessionId}/files/mkdir`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -358,7 +372,6 @@ export const apiClient = {
   createSessionDownloadTicket(sessionId: string, payload: FileDownloadTicketRequest): Promise<FileDownloadTicketResponse> {
     return request<FileDownloadTicketResponse>(`/sessions/${sessionId}/files/download-ticket`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -430,7 +443,6 @@ export const apiClient = {
   createAssistSuggestions(sessionId: string, payload: CreateAssistSuggestionsRequest = {}): Promise<AssistSuggestionsResponse> {
     return request<AssistSuggestionsResponse>(`/sessions/${sessionId}/assist/suggestions`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -438,7 +450,6 @@ export const apiClient = {
   createAgentRun(sessionId: string, payload: CreateAgentRunRequest): Promise<AgentRunResponse> {
     return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -450,7 +461,6 @@ export const apiClient = {
   approveAgentRun(sessionId: string, runId: string, payload: ApproveAgentRunRequest = {}): Promise<AgentRunResponse> {
     return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}/approve`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -458,7 +468,6 @@ export const apiClient = {
   abortAgentRun(sessionId: string, runId: string, payload: AbortAgentRunRequest = {}): Promise<AgentRunResponse> {
     return request<AgentRunResponse>(`/sessions/${sessionId}/agent/runs/${runId}/abort`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -468,15 +477,10 @@ export const apiClient = {
   },
 
   listCopilotChats(sessionId: string, agentKey: string, lastRunId?: string): Promise<CopilotChatSummary[]> {
-    const query = new URLSearchParams();
-    if (agentKey.trim()) {
-      query.set("agentKey", agentKey.trim());
-    }
-    if ((lastRunId || "").trim()) {
-      query.set("lastRunId", lastRunId!.trim());
-    }
-    const suffix = query.toString() ? `?${query.toString()}` : "";
-    return request<CopilotChatSummary[]>(`/sessions/${sessionId}/copilot/chats${suffix}`);
+    return request<CopilotChatSummary[]>(`/sessions/${sessionId}/copilot/chats${buildQuery({
+      agentKey,
+      lastRunId
+    })}`);
   },
 
   getCopilotChat(sessionId: string, chatId: string): Promise<CopilotChatDetail> {
@@ -488,7 +492,6 @@ export const apiClient = {
       `/sessions/${sessionId}/copilot/query`,
       {
         method: "POST",
-        headers: withContentTypeJson(new Headers()),
         body: JSON.stringify(payload)
       },
       options
@@ -498,7 +501,6 @@ export const apiClient = {
   submitCopilotTool(sessionId: string, payload: CopilotSubmitRequest): Promise<CopilotSubmitResponse> {
     return request<CopilotSubmitResponse>(`/sessions/${sessionId}/copilot/submit`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },
@@ -506,7 +508,6 @@ export const apiClient = {
   executeCopilotCommand(sessionId: string, payload: CopilotExecuteCommandRequest): Promise<CopilotExecuteCommandResponse> {
     return request<CopilotExecuteCommandResponse>(`/sessions/${sessionId}/copilot/commands/execute`, {
       method: "POST",
-      headers: withContentTypeJson(new Headers()),
       body: JSON.stringify(payload)
     });
   },

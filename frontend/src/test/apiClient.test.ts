@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiClient, ApiError } from "../react/shared/api/client";
+import { apiClient, ApiError, buildQuery } from "../react/shared/api/client";
 
 function mockJsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -48,6 +48,16 @@ describe("apiClient", () => {
     await apiClient.getWorkdirTree("/tmp/my folder");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/workdirTree?path=%2Ftmp%2Fmy+folder");
+  });
+
+  it("builds query strings while skipping empty values", () => {
+    expect(buildQuery({
+      path: "/tmp/my folder",
+      empty: "   ",
+      count: 12,
+      missing: undefined,
+      nullable: null
+    })).toBe("?path=%2Ftmp%2Fmy+folder&count=12");
   });
 
   it("requests snapshot with afterSeq", async () => {
@@ -121,6 +131,14 @@ describe("apiClient", () => {
     await apiClient.createAssistSuggestions("s1", { question: "What next?" });
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/s1/assist/suggestions");
     expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+    expect(new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get("content-type")).toBe("application/json");
+  });
+
+  it("does not append blank query values to recent sessions requests", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockJsonResponse([]));
+
+    await apiClient.listRecentSessions("   ");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/sessions/recent");
   });
 
   it("requests session file tree with encoded path", async () => {

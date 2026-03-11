@@ -785,56 +785,74 @@ func (g *sftpGateway) resolvePath(input string, directory bool) (string, error) 
 }
 
 func resolveLocalConflictPath(targetDir, fileName string, policy model.UploadConflictPolicy) (string, error) {
-	if policy == "" {
-		policy = model.UploadConflictPolicyOverwrite
-	}
-	desiredPath := filepath.Join(targetDir, fileName)
-	switch policy {
-	case model.UploadConflictPolicyOverwrite:
-		return desiredPath, nil
-	case model.UploadConflictPolicyReject:
-		if _, err := os.Stat(desiredPath); err == nil {
-			return "", util.NewStatusError(http.StatusBadRequest, "file already exists", nil)
-		}
-		return desiredPath, nil
-	case model.UploadConflictPolicyRename:
-		if _, err := os.Stat(desiredPath); os.IsNotExist(err) {
-			return desiredPath, nil
-		}
-		base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-		ext := filepath.Ext(fileName)
-		for idx := 1; idx < 1000; idx++ {
-			candidate := filepath.Join(targetDir, fmt.Sprintf("%s (%d)%s", base, idx, ext))
-			if _, err := os.Stat(candidate); os.IsNotExist(err) {
-				return candidate, nil
-			}
-		}
-	}
-	return "", util.NewStatusError(http.StatusBadRequest, "unable to resolve upload target", nil)
+	return resolveConflictPath(
+		targetDir,
+		fileName,
+		policy,
+		func(candidate string) (bool, error) {
+			_, err := os.Stat(candidate)
+			return err == nil, nil
+		},
+		filepath.Join,
+		filepath.Ext,
+	)
 }
 
 func resolveRemoteConflictPath(client *sftp.Client, targetDir, fileName string, policy model.UploadConflictPolicy) (string, error) {
+	return resolveConflictPath(
+		targetDir,
+		fileName,
+		policy,
+		func(candidate string) (bool, error) {
+			_, err := client.Stat(candidate)
+			return err == nil, nil
+		},
+		path.Join,
+		path.Ext,
+	)
+}
+
+func resolveConflictPath(
+	targetDir,
+	fileName string,
+	policy model.UploadConflictPolicy,
+	existsFn func(string) (bool, error),
+	joinFn func(elem ...string) string,
+	extFn func(string) string,
+) (string, error) {
 	if policy == "" {
 		policy = model.UploadConflictPolicyOverwrite
 	}
-	desiredPath := path.Join(targetDir, fileName)
+	desiredPath := joinFn(targetDir, fileName)
 	switch policy {
 	case model.UploadConflictPolicyOverwrite:
 		return desiredPath, nil
 	case model.UploadConflictPolicyReject:
-		if _, err := client.Stat(desiredPath); err == nil {
+		exists, err := existsFn(desiredPath)
+		if err != nil {
+			return "", err
+		}
+		if exists {
 			return "", util.NewStatusError(http.StatusBadRequest, "file already exists", nil)
 		}
 		return desiredPath, nil
 	case model.UploadConflictPolicyRename:
-		if _, err := client.Stat(desiredPath); err != nil {
+		exists, err := existsFn(desiredPath)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
 			return desiredPath, nil
 		}
-		base := strings.TrimSuffix(fileName, path.Ext(fileName))
-		ext := path.Ext(fileName)
+		base := strings.TrimSuffix(fileName, extFn(fileName))
+		ext := extFn(fileName)
 		for idx := 1; idx < 1000; idx++ {
-			candidate := path.Join(targetDir, fmt.Sprintf("%s (%d)%s", base, idx, ext))
-			if _, err := client.Stat(candidate); err != nil {
+			candidate := joinFn(targetDir, fmt.Sprintf("%s (%d)%s", base, idx, ext))
+			exists, err := existsFn(candidate)
+			if err != nil {
+				return "", err
+			}
+			if !exists {
 				return candidate, nil
 			}
 		}

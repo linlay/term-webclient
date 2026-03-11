@@ -25,7 +25,7 @@ func (s stubScreenTextProvider) GetScreenText(sessionID string) (model.ScreenTex
 	return s.response, s.err
 }
 
-func TestCreateSuggestionsTruncatesRecentScreenTextAndPadsToFive(t *testing.T) {
+func TestCreateSuggestionsTruncatesRecentScreenTextAndPadsToThree(t *testing.T) {
 	var requestBody map[string]any
 	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"git status --short\",\"reason\":\"Check repo state.\"}"}}]}`)
@@ -57,8 +57,8 @@ func TestCreateSuggestionsTruncatesRecentScreenTextAndPadsToFive(t *testing.T) {
 	if response.CapturedChars != 500 {
 		t.Fatalf("expected captured chars to be 500, got %d", response.CapturedChars)
 	}
-	if len(response.Suggestions) != 5 {
-		t.Fatalf("expected exactly 5 suggestions, got %d", len(response.Suggestions))
+	if len(response.Suggestions) != 3 {
+		t.Fatalf("expected exactly 3 suggestions, got %d", len(response.Suggestions))
 	}
 	if response.Suggestions[0].Weight < response.Suggestions[1].Weight {
 		t.Fatalf("expected suggestions to be sorted by weight desc, got %+v", response.Suggestions)
@@ -118,6 +118,12 @@ func TestCreateSuggestionsCustomSystemPromptStillAppendsJSONInstruction(t *testi
 	if !strings.Contains(strings.ToLower(content), "weight") {
 		t.Fatalf("expected weight constraint in system prompt, got %q", content)
 	}
+	if !strings.Contains(content, "exactly 3 items") {
+		t.Fatalf("expected 3-item constraint in system prompt, got %q", content)
+	}
+	if !strings.Contains(strings.ToLower(content), "simplified chinese") {
+		t.Fatalf("expected simplified chinese reason constraint in system prompt, got %q", content)
+	}
 }
 
 func TestCreateSuggestionsAllowsEmptyQuestionAndUsesModelResponse(t *testing.T) {
@@ -154,7 +160,7 @@ func TestCreateSuggestionsAllowsEmptyQuestionAndUsesModelResponse(t *testing.T) 
 	}
 }
 
-func TestCreateSuggestionsPadsToFiveAndRanksByWeight(t *testing.T) {
+func TestCreateSuggestionsPadsToThreeAndRanksByWeight(t *testing.T) {
 	server := newAssistStreamServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeSSEData(t, w, `{"choices":[{"delta":{"content":"{\"suggestions\":[{\"command\":\"git diff --stat\",\"reason\":\"Inspect the current diff summary.\",\"weight\":82},{\"command\":\"git status --short\",\"reason\":\"Check whether files are modified.\",\"weight\":95},{\"command\":\"git diff --stat\",\"reason\":\"Duplicate with lower weight.\",\"weight\":20}]}"}}]}`)
 		writeSSEDone(t, w)
@@ -180,8 +186,8 @@ func TestCreateSuggestionsPadsToFiveAndRanksByWeight(t *testing.T) {
 		t.Fatalf("CreateSuggestions returned error: %v", err)
 	}
 
-	if len(response.Suggestions) != 5 {
-		t.Fatalf("expected exactly 5 suggestions, got %d", len(response.Suggestions))
+	if len(response.Suggestions) != 3 {
+		t.Fatalf("expected exactly 3 suggestions, got %d", len(response.Suggestions))
 	}
 	if response.Suggestions[0].Command != "git status --short" || response.Suggestions[0].Weight != 95 {
 		t.Fatalf("unexpected top suggestion: %+v", response.Suggestions[0])
@@ -189,8 +195,8 @@ func TestCreateSuggestionsPadsToFiveAndRanksByWeight(t *testing.T) {
 	if response.Suggestions[1].Command != "git diff --stat" || response.Suggestions[1].Weight != 82 {
 		t.Fatalf("unexpected second suggestion: %+v", response.Suggestions[1])
 	}
-	if response.Suggestions[4].Weight <= 0 {
-		t.Fatalf("expected fallback suggestion to include positive weight, got %+v", response.Suggestions[4])
+	if response.Suggestions[2].Weight <= 0 {
+		t.Fatalf("expected fallback suggestion to include positive weight, got %+v", response.Suggestions[2])
 	}
 }
 

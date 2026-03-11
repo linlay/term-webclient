@@ -1,0 +1,9 @@
+assist:
+  enabled: true
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api-key: ${ASSIST_API_KEY:}
+  model: qwen-plus
+  timeout-seconds: 30
+  max-screen-text-chars: 2000
+  debug-log: false
+  system-prompt: "You are an assistant for a terminal web client. Based on the most recent terminal or console output, provide the best next-step shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 3 items. Each suggestion must include command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable commands that directly verify, fix, or advance what the recent console output indicates. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field."

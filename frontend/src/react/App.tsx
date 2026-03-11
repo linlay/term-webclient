@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "./shared/api/client";
 import { isAppMode } from "./shared/config/env";
-import {
-  buildRouteSearch,
-  parseRouteIntent,
-  shouldSyncRouteSessionFromActive,
-  writeRouteSearch,
-  type RouteIntentPatch
-} from "./shared/routing/routeIntent";
-import { generateId } from "./shared/utils/id";
 import { useViewportHeight } from "./shared/hooks/useViewportHeight";
 import { useNotice } from "./shared/hooks/useNotice";
 import { useCopilotState } from "./shared/hooks/useCopilotState";
 import { useMobileScroll } from "./shared/hooks/useMobileScroll";
+import { useRouteSync } from "./shared/hooks/useRouteSync";
+import { useTabManager } from "./shared/hooks/useTabManager";
 import { applyThemeMode, persistThemeMode, resolveThemeMode, type ThemeMode } from "./shared/theme/theme";
+import { normalizeToolId, isShellCapableTab } from "./shared/utils/toolId";
+import { generateId } from "./shared/utils/id";
 import { LoginForm } from "./features/auth/LoginForm";
 import { isUnauthorizedError, useAuthStatus, useLogout } from "./features/auth/useAuth";
-import { TerminalPane, type TerminalPaneHandle } from "./features/terminal/TerminalPane";
+import { TerminalPane } from "./features/terminal/TerminalPane";
 import { useTabsStore } from "./features/tabs/useTabsStore";
 import { CopilotSidebar } from "./features/layout/CopilotSidebar";
 import { MobileShortcutBar } from "./features/layout/MobileShortcutBar";
@@ -39,20 +35,17 @@ function canUseFilesForTab(tab: TerminalTab | null): boolean {
   if (!tab) {
     return false;
   }
-  const normalizedToolId = (tab.toolId || "").trim().toLowerCase();
+  const toolId = normalizeToolId(tab.toolId);
   if (
-    normalizedToolId === "codex" ||
-    normalizedToolId === "claude" ||
-    normalizedToolId === "claude code" ||
-    normalizedToolId === "claude-code" ||
-    normalizedToolId === "claude_code"
+    toolId === "codex" ||
+    toolId === "claude" ||
+    toolId === "claude code" ||
+    toolId === "claude-code" ||
+    toolId === "claude_code"
   ) {
     return false;
   }
-  if (tab.sessionType === "SSH_SHELL") {
-    return true;
-  }
-  return normalizedToolId === "ssh" || normalizedToolId === "terminal";
+  return isShellCapableTab(tab);
 }
 
 export default function App(): JSX.Element {
@@ -71,16 +64,11 @@ export default function App(): JSX.Element {
   const setTabExitCode = useTabsStore((state) => state.setTabExitCode);
   const replaceTabSession = useTabsStore((state) => state.replaceTabSession);
 
-  const senderMapRef = useRef(new Map<string, (data: string) => boolean>());
-  const terminalHandleMapRef = useRef(new Map<string, TerminalPaneHandle>());
   const hydratedSessionsRef = useRef(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const [routeIntent, setRouteIntent] = useState(() => parseRouteIntent(window.location.search));
-  const [isNewWindowOpen, setIsNewWindowOpen] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
-  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [mobileTabManagerOpen, setMobileTabManagerOpen] = useState(false);
   const [mobileFilesOpen, setMobileFilesOpen] = useState(false);
   const [desktopFilesOpen, setDesktopFilesOpen] = useState(false);
@@ -101,12 +89,32 @@ export default function App(): JSX.Element {
   );
   const canUseFiles = useMemo(() => canUseFilesForTab(activeTab), [activeTab]);
 
+  const closeSession = useMutation({
+    mutationFn: (sessionId: string) => apiClient.closeSession(sessionId)
+  });
+
+  const tabManager = useTabManager({
+    tabs,
+    activeTab,
+    removeTab,
+    replaceTabSession,
+    setTabStatus,
+    setTabLost,
+    setTabExitCode,
+    closeSession: (sessionId) => closeSession.mutateAsync(sessionId),
+    showNotice
+  });
+
+  const routeSync = useRouteSync({
+    tabs,
+    activeTabId,
+    setActiveTab
+  });
+
   const copilot = useCopilotState({
     activeTab,
-    senderMapRef,
-    focusTerminal: (localId) => {
-      terminalHandleMapRef.current.get(localId)?.focus();
-    },
+    senderMapRef: tabManager.senderMapRef,
+    focusTerminal: tabManager.focusTerminal,
     showNotice
   });
   const isCopilotOpen = copilot.isCopilotOpen;
@@ -115,74 +123,13 @@ export default function App(): JSX.Element {
   const { showScrollBottomFab, mobileShortcutsExpanded, setMobileShortcutsExpanded } = useMobileScroll({
     isMobile,
     activeTabId,
-    terminalHandleMapRef
-  });
-
-  const closeSession = useMutation({
-    mutationFn: (sessionId: string) => apiClient.closeSession(sessionId)
+    terminalHandleMapRef: tabManager.terminalHandleMapRef
   });
 
   const contextTab = useMemo(
     () => (tabContextMenu ? tabs.find((tab) => tab.localId === tabContextMenu.tabId) ?? null : null),
     [tabContextMenu, tabs]
   );
-
-  const handleTabStatusChange = useCallback((localId: string, status: "connecting" | "connected" | "disconnected" | "exited" | "error") => {
-    setTabStatus(localId, status);
-  }, [setTabStatus]);
-
-  const handleTabLostChange = useCallback((localId: string, lost: boolean) => {
-    setTabLost(localId, lost);
-  }, [setTabLost]);
-
-  const handleTabExitCodeChange = useCallback((localId: string, exitCode: string) => {
-    setTabExitCode(localId, exitCode);
-  }, [setTabExitCode]);
-
-  const handleRegisterInputSender = useCallback((localId: string, sender: ((data: string) => boolean) | null) => {
-    if (!sender) {
-      senderMapRef.current.delete(localId);
-      return;
-    }
-    senderMapRef.current.set(localId, sender);
-  }, []);
-
-  const handleTerminalReady = useCallback((localId: string, handle: TerminalPaneHandle | null) => {
-    if (!handle) {
-      terminalHandleMapRef.current.delete(localId);
-      return;
-    }
-    terminalHandleMapRef.current.set(localId, handle);
-  }, []);
-
-  const applyRoutePatch = useCallback((patch: RouteIntentPatch, mode: "replace" | "push" = "replace") => {
-    const currentSearch = window.location.search;
-    const nextSearch = buildRouteSearch(currentSearch, patch);
-    if (nextSearch !== currentSearch) {
-      writeRouteSearch(patch, mode);
-    }
-    setRouteIntent(parseRouteIntent(nextSearch));
-    return nextSearch;
-  }, []);
-
-  const selectTabAndSyncRoute = useCallback((localId: string) => {
-    const selectedTab = tabs.find((tab) => tab.localId === localId);
-    if (!selectedTab) {
-      return;
-    }
-    setActiveTab(localId);
-    applyRoutePatch({ sessionId: selectedTab.sessionId }, "replace");
-  }, [applyRoutePatch, setActiveTab, tabs]);
-
-  const openNewWindowFromUi = useCallback(() => {
-    applyRoutePatch({ openNewSession: true });
-    setIsNewWindowOpen(true);
-  }, [applyRoutePatch]);
-
-  const closeNewWindow = useCallback(() => {
-    applyRoutePatch({ openNewSession: null, openNonce: null });
-    setIsNewWindowOpen(false);
-  }, [applyRoutePatch]);
 
   const listSessionsQuery = useQuery({
     queryKey: ["sessions", authQuery.data?.authenticated, appMode],
@@ -217,45 +164,6 @@ export default function App(): JSX.Element {
     setTabs(loaded);
     hydratedSessionsRef.current = true;
   }, [listSessionsQuery.data, setTabs]);
-
-  useEffect(() => {
-    const onPopState = () => {
-      setRouteIntent(parseRouteIntent(window.location.search));
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!routeIntent.sessionId) {
-      return;
-    }
-    const matchedTab = tabs.find((tab) => tab.sessionId === routeIntent.sessionId);
-    if (!matchedTab) {
-      return;
-    }
-    if (matchedTab.localId === activeTabId) {
-      return;
-    }
-    setActiveTab(matchedTab.localId);
-  }, [activeTabId, routeIntent.sessionId, setActiveTab, tabs]);
-
-  useEffect(() => {
-    setIsNewWindowOpen(routeIntent.openNewSession);
-  }, [routeIntent.openNewSession]);
-
-  useEffect(() => {
-    const activeSessionId = activeTab?.sessionId;
-    if (!activeSessionId) {
-      return;
-    }
-    if (!shouldSyncRouteSessionFromActive(activeSessionId, routeIntent.sessionId, tabs.map((tab) => tab.sessionId))) {
-      return;
-    }
-    applyRoutePatch({ sessionId: activeSessionId }, "replace");
-  }, [activeTab?.sessionId, applyRoutePatch, routeIntent.sessionId, tabs]);
 
   useEffect(() => {
     const onResize = () => {
@@ -324,16 +232,16 @@ export default function App(): JSX.Element {
       if (event.key !== "Escape") {
         return;
       }
-      if (pendingCloseTabId) {
-        cancelCloseTab();
+      if (tabManager.pendingCloseTabId) {
+        tabManager.cancelCloseTab();
         return;
       }
       if (tabContextMenu) {
         setTabContextMenu(null);
         return;
       }
-      if (isNewWindowOpen) {
-        closeNewWindow();
+      if (routeSync.isNewWindowOpen) {
+        routeSync.closeNewWindow();
         return;
       }
       if (mobileTabManagerOpen) {
@@ -352,7 +260,16 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener("keydown", onEscape);
     };
-  }, [closeNewWindow, isCopilotOpen, isMobile, isNewWindowOpen, mobileFilesOpen, mobileTabManagerOpen, pendingCloseTabId, setIsCopilotOpen, tabContextMenu]);
+  }, [
+    isCopilotOpen,
+    isMobile,
+    mobileFilesOpen,
+    mobileTabManagerOpen,
+    routeSync,
+    setIsCopilotOpen,
+    tabContextMenu,
+    tabManager
+  ]);
 
   async function copyText(value: string, successNotice: string): Promise<void> {
     if (!value.trim()) {
@@ -363,121 +280,6 @@ export default function App(): JSX.Element {
       showNotice(successNotice, "success", 1800);
     } catch {
       showNotice("Copy failed in this browser context", "warn", 2400);
-    }
-  }
-
-  async function closeTab(localId: string): Promise<void> {
-    const tab = tabs.find((item) => item.localId === localId);
-    if (!tab) {
-      return;
-    }
-    try {
-      await closeSession.mutateAsync(tab.sessionId);
-    } catch {
-      // backend may already close this session
-    }
-    senderMapRef.current.delete(localId);
-    terminalHandleMapRef.current.delete(localId);
-    removeTab(localId);
-  }
-
-  function isTabSessionActive(tab: TerminalTab): boolean {
-    return (tab.status === "connecting" || tab.status === "connected") && !tab.lost;
-  }
-
-  function requestCloseTab(localId: string): void {
-    const tab = tabs.find((item) => item.localId === localId);
-    if (!tab) {
-      return;
-    }
-    if (isTabSessionActive(tab)) {
-      setPendingCloseTabId(localId);
-    } else {
-      void closeTab(localId);
-    }
-  }
-
-  function confirmCloseTab(): void {
-    if (pendingCloseTabId) {
-      void closeTab(pendingCloseTabId);
-    }
-    setPendingCloseTabId(null);
-  }
-
-  function cancelCloseTab(): void {
-    setPendingCloseTabId(null);
-  }
-
-  async function rebuildTab(localId: string): Promise<void> {
-    const tab = tabs.find((item) => item.localId === localId);
-    if (!tab || !tab.createRequest) {
-      showNotice("Rebuild unavailable for restored tab", "warn", 2800);
-      return;
-    }
-
-    setTabStatus(localId, "connecting");
-    setTabLost(localId, false);
-    setTabExitCode(localId, "-");
-
-    try {
-      const response = await apiClient.createSession(tab.createRequest);
-      try {
-        await apiClient.closeSession(tab.sessionId);
-      } catch {
-        // ignore old session close failure
-      }
-      replaceTabSession(localId, {
-        sessionId: response.sessionId,
-        wsUrl: response.wsUrl,
-        clientId: generateId(),
-        createRequest: tab.createRequest
-      });
-      showNotice(`Rebuilt ${tab.title}`, "success", 2200);
-    } catch (error) {
-      setTabStatus(localId, "error");
-      showNotice(error instanceof Error ? error.message : "Failed to rebuild session", "error", 3200);
-    }
-  }
-
-  function sendMobileShortcut(sequence: string): void {
-    if (!activeTab) {
-      showNotice("No active tab", "warn");
-      return;
-    }
-    const sender = senderMapRef.current.get(activeTab.localId);
-    if (!sender) {
-      showNotice("Active terminal is not ready", "warn");
-      return;
-    }
-    const ok = sender(sequence);
-    if (!ok) {
-      showNotice("Terminal is not connected", "warn");
-      return;
-    }
-    terminalHandleMapRef.current.get(activeTab.localId)?.focus();
-  }
-
-  async function pasteToActiveTerminal(): Promise<void> {
-    if (!activeTab) {
-      showNotice("No active tab", "warn");
-      return;
-    }
-    try {
-      if (!navigator.clipboard?.readText) {
-        throw new Error("Clipboard API unavailable");
-      }
-      const text = await navigator.clipboard.readText();
-      if (!text) {
-        return;
-      }
-      const sender = senderMapRef.current.get(activeTab.localId);
-      if (!sender || !sender(text)) {
-        showNotice("Terminal is not connected", "warn");
-        return;
-      }
-      terminalHandleMapRef.current.get(activeTab.localId)?.focus();
-    } catch {
-      showNotice("Paste failed in this browser context", "warn");
     }
   }
 
@@ -521,11 +323,9 @@ export default function App(): JSX.Element {
             <TabBar
               tabs={tabs}
               activeTabId={activeTabId}
-              onSelectTab={selectTabAndSyncRoute}
-              onCloseTab={(tabId) => {
-                requestCloseTab(tabId);
-              }}
-              onOpenNewWindow={openNewWindowFromUi}
+              onSelectTab={routeSync.selectTabAndSyncRoute}
+              onCloseTab={tabManager.requestCloseTab}
+              onOpenNewWindow={routeSync.openNewWindowFromUi}
               onOpenContextMenu={(payload: TabContextPayload) => {
                 setTabContextMenu(payload);
               }}
@@ -631,11 +431,11 @@ export default function App(): JSX.Element {
                   tab={tab}
                   isActive={tab.localId === activeTabId}
                   themeMode={themeMode}
-                  onStatusChange={handleTabStatusChange}
-                  onLostChange={handleTabLostChange}
-                  onExitCodeChange={handleTabExitCodeChange}
-                  onRegisterInputSender={handleRegisterInputSender}
-                  onTerminalReady={handleTerminalReady}
+                  onStatusChange={tabManager.handleTabStatusChange}
+                  onLostChange={tabManager.handleTabLostChange}
+                  onExitCodeChange={tabManager.handleTabExitCodeChange}
+                  onRegisterInputSender={tabManager.handleRegisterInputSender}
+                  onTerminalReady={tabManager.handleTerminalReady}
                 />
               </div>
             ))}
@@ -648,9 +448,9 @@ export default function App(): JSX.Element {
                   expanded={mobileShortcutsExpanded}
                   onToggle={() => setMobileShortcutsExpanded((prev) => !prev)}
                   onCollapse={() => setMobileShortcutsExpanded(false)}
-                  onSend={sendMobileShortcut}
+                  onSend={tabManager.sendMobileShortcut}
                   onPaste={() => {
-                    void pasteToActiveTerminal();
+                    void tabManager.pasteToActiveTerminal();
                   }}
                 />
                 <button
@@ -660,7 +460,7 @@ export default function App(): JSX.Element {
                     if (!activeTab) {
                       return;
                     }
-                    const handle = terminalHandleMapRef.current.get(activeTab.localId);
+                    const handle = tabManager.terminalHandleMapRef.current.get(activeTab.localId);
                     if (!handle) {
                       return;
                     }
@@ -687,71 +487,82 @@ export default function App(): JSX.Element {
             isMobile={isMobile}
             sideTab={copilot.sideTab}
             sessionId={activeTab?.sessionId ?? null}
-            summaryLoading={copilot.summaryLoading}
-            summaryError={copilot.summaryError}
-            summaryContext={copilot.summaryContext}
-            summaryScreenText={copilot.summaryScreenText}
             agents={copilot.agents}
             selectedAgentKey={copilot.selectedAgentKey}
             selectedAgent={copilot.selectedAgent}
-            assistQuestion={copilot.assistQuestion}
-            assistSuggestions={copilot.assistSuggestions}
-            assistCapturedScreenText={copilot.assistCapturedScreenText}
-            assistCapturedChars={copilot.assistCapturedChars}
-            assistBusy={copilot.assistBusy}
-            assistError={copilot.assistError}
-            runnerPrompt={copilot.runnerPrompt}
-            runnerBusy={copilot.runnerBusy}
-            runnerError={copilot.runnerError}
-            runnerHistoryBusy={copilot.runnerHistoryBusy}
-            runnerHistory={copilot.runnerHistory}
-            runnerChatId={copilot.runnerChatId}
-            runnerConversation={copilot.runnerConversation}
-            runnerPlan={copilot.runnerPlan}
-            runnerPendingReview={copilot.runnerPendingReview}
-            runnerCanRun={copilot.runnerCanRun}
-            runnerCapabilityMessage={copilot.runnerCapabilityMessage}
+            summary={{
+              loading: copilot.summaryLoading,
+              error: copilot.summaryError,
+              context: copilot.summaryContext,
+              screenText: copilot.summaryScreenText,
+              onRefresh: () => {
+                void copilot.refreshSummary();
+              },
+              onCopyContext: () => {
+                void copyText(copilot.summaryContext, "Copied context JSON");
+              },
+              onCopyScreen: () => {
+                void copyText(copilot.summaryScreenText, "Copied screen text");
+              }
+            }}
+            assist={{
+              sessionId: activeTab?.sessionId ?? null,
+              selectedAgentKey: copilot.selectedAgentKey,
+              question: copilot.assistQuestion,
+              suggestions: copilot.assistSuggestions,
+              capturedScreenText: copilot.assistCapturedScreenText,
+              capturedChars: copilot.assistCapturedChars,
+              busy: copilot.assistBusy,
+              error: copilot.assistError,
+              hasLastSubmittedQuestion: Boolean(copilot.lastSubmittedAssistQuestion),
+              onQuestionChange: copilot.setAssistQuestion,
+              onGenerateSuggestions: () => {
+                void copilot.generateAssistSuggestions();
+              },
+              onClearQuestion: copilot.clearAssistQuestion,
+              onRestoreLastQuestion: copilot.restoreLastAssistQuestion,
+              onCopyCommand: (command) => {
+                void copilot.copyAssistCommand(command);
+              },
+              onInsertCommand: copilot.insertAssistCommand,
+              onExecuteCommand: copilot.executeAssistCommand
+            }}
+            runner={{
+              selectedAgent: copilot.selectedAgent,
+              prompt: copilot.runnerPrompt,
+              busy: copilot.runnerBusy,
+              error: copilot.runnerError,
+              historyBusy: copilot.runnerHistoryBusy,
+              history: copilot.runnerHistory,
+              chatId: copilot.runnerChatId,
+              conversation: copilot.runnerConversation,
+              plan: copilot.runnerPlan,
+              pendingReview: copilot.runnerPendingReview,
+              canRun: copilot.runnerCanRun,
+              capabilityMessage: copilot.runnerCapabilityMessage,
+              onPromptChange: copilot.setRunnerPrompt,
+              onRefreshHistory: () => {
+                void copilot.refreshRunnerHistory();
+              },
+              onSendMessage: () => {
+                void copilot.sendRunnerMessage();
+              },
+              onNewChat: copilot.startNewRunnerChat,
+              onOpenChat: (chatId) => {
+                void copilot.openRunnerChat(chatId);
+              },
+              onApproveNext: () => {
+                void copilot.approveNextReviewCommand();
+              },
+              onApproveAll: () => {
+                void copilot.approveAllReviewCommands();
+              },
+              onReject: () => {
+                void copilot.rejectReviewCommands();
+              }
+            }}
             onTabChange={copilot.setSideTab}
-            onRefreshSummary={() => {
-              void copilot.refreshSummary();
-            }}
-            onCopySummaryContext={() => {
-              void copyText(copilot.summaryContext, "Copied context JSON");
-            }}
-            onCopySummaryScreen={() => {
-              void copyText(copilot.summaryScreenText, "Copied screen text");
-            }}
             onSelectAgent={copilot.selectAgent}
-            onAssistQuestionChange={copilot.setAssistQuestion}
-            onGenerateAssistSuggestions={() => {
-              void copilot.generateAssistSuggestions();
-            }}
-            onClearAssistQuestion={copilot.clearAssistQuestion}
-            onCopyAssistCommand={(command) => {
-              void copilot.copyAssistCommand(command);
-            }}
-            onInsertAssistCommand={copilot.insertAssistCommand}
-            onExecuteAssistCommand={copilot.executeAssistCommand}
-            onRunnerPromptChange={copilot.setRunnerPrompt}
-            onRefreshRunnerHistory={() => {
-              void copilot.refreshRunnerHistory();
-            }}
-            onSendRunnerMessage={() => {
-              void copilot.sendRunnerMessage();
-            }}
-            onNewRunnerChat={copilot.startNewRunnerChat}
-            onOpenRunnerChat={(chatId) => {
-              void copilot.openRunnerChat(chatId);
-            }}
-            onApproveNextReviewCommand={() => {
-              void copilot.approveNextReviewCommand();
-            }}
-            onApproveAllReviewCommands={() => {
-              void copilot.approveAllReviewCommands();
-            }}
-            onRejectReviewCommands={() => {
-              void copilot.rejectReviewCommands();
-            }}
             onClose={() => setIsCopilotOpen(false)}
           />
         </div>
@@ -766,9 +577,9 @@ export default function App(): JSX.Element {
           open={mobileTabManagerOpen}
           tabs={tabs}
           activeTabId={activeTabId}
-          onSelectTab={selectTabAndSyncRoute}
-          onCloseTab={requestCloseTab}
-          onOpenNewWindow={openNewWindowFromUi}
+          onSelectTab={routeSync.selectTabAndSyncRoute}
+          onCloseTab={tabManager.requestCloseTab}
+          onOpenNewWindow={routeSync.openNewWindowFromUi}
           onClose={() => setMobileTabManagerOpen(false)}
         />
       )}
@@ -786,8 +597,8 @@ export default function App(): JSX.Element {
       {notice && <div className={`notice ${notice.type}`}>{notice.message}</div>}
 
       <NewWindowModal
-        open={isNewWindowOpen}
-        onClose={closeNewWindow}
+        open={routeSync.isNewWindowOpen}
+        onClose={routeSync.closeNewWindow}
         onCreated={(payload: NewSessionCreatedPayload) => {
           addTab({
             sessionId: payload.sessionId,
@@ -801,12 +612,12 @@ export default function App(): JSX.Element {
             sshCredentialId: payload.sshCredentialId,
             createRequest: payload.createRequest
           });
-          applyRoutePatch({
+          routeSync.applyRoutePatch({
             sessionId: payload.sessionId,
             openNewSession: null,
             openNonce: null
           });
-          setIsNewWindowOpen(false);
+          routeSync.setIsNewWindowOpen(false);
         }}
       />
 
@@ -820,8 +631,8 @@ export default function App(): JSX.Element {
             return;
           }
           setTabContextMenu(null);
-          selectTabAndSyncRoute(contextTab.localId);
-          void rebuildTab(contextTab.localId);
+          routeSync.selectTabAndSyncRoute(contextTab.localId);
+          void tabManager.rebuildTab(contextTab.localId);
         }}
         onCloseTab={() => {
           if (!contextTab) {
@@ -829,15 +640,15 @@ export default function App(): JSX.Element {
             return;
           }
           setTabContextMenu(null);
-          requestCloseTab(contextTab.localId);
+          tabManager.requestCloseTab(contextTab.localId);
         }}
       />
 
       <CloseTabConfirmModal
-        open={pendingCloseTabId !== null}
-        tabTitle={tabs.find((t) => t.localId === pendingCloseTabId)?.title ?? ""}
-        onConfirm={confirmCloseTab}
-        onCancel={cancelCloseTab}
+        open={tabManager.pendingCloseTabId !== null}
+        tabTitle={tabs.find((t) => t.localId === tabManager.pendingCloseTabId)?.title ?? ""}
+        onConfirm={tabManager.confirmCloseTab}
+        onCancel={tabManager.cancelCloseTab}
       />
     </>
   );

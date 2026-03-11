@@ -129,25 +129,19 @@ APP_AUTH_AUDIENCE='appterm'
 ### Assist / LLM
 - 当前仓库只支持单一 `assist.*` 配置，不兼容旧版 `agent.providers.*` 多提供方结构。
 - 当前示例默认对接阿里云百炼 OpenAI 兼容接口。
-- 推荐把真实 `ASSIST_API_KEY` 放在根目录 `.env`，结构化 YAML 只保留非敏感项或引用 `${ASSIST_API_KEY:}`。
+- Assist 固定从 `configs/assist.yml` 读取；请先复制 `configs/assist.example.yml` 为 `configs/assist.yml`。
+- 推荐把真实 `ASSIST_API_KEY` 放在根目录 `.env`，`configs/assist.yml` 只保留非敏感项或引用 `${ASSIST_API_KEY:}`。
 - `ASSIST_BASE_URL` 建议直接使用百炼兼容模式根地址，例如北京地域 `https://dashscope.aliyuncs.com/compatible-mode/v1`；后端会在其后拼接 `/chat/completions`。
 
 推荐 `.env`：
 ```bash
-ASSIST_ENABLED=true
-ASSIST_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
 ASSIST_API_KEY='<your-api-key>'
-ASSIST_MODEL='qwen-plus'
-ASSIST_TIMEOUT_SECONDS=30
-ASSIST_MAX_SCREEN_TEXT_CHARS=500
-ASSIST_DEBUG_LOG=false
-ASSIST_SYSTEM_PROMPT='You are an assistant for a terminal web client. Based on the most recent terminal or console output, provide the best next-step shell commands. Return strict JSON with a top-level object containing a suggestions array of exactly 5 items. Each suggestion must include command, reason, and weight. weight must be an integer from 0 to 100, and suggestions must be ordered from highest weight to lowest weight. Prefer concise, actionable commands that directly verify, fix, or advance what the recent console output indicates. Commands must be plain shell commands only, without markdown fences, numbering, or explanation text in the command field.'
 ```
 
 - Assist 后端会以流式方式调用 `/chat/completions`，但对前端仍返回最终聚合后的 suggestions JSON。
 - `ASSIST_DEBUG_LOG=true` 时，后端会把发给模型的完整原始请求 JSON、脱敏后的请求头、响应状态/响应头、SSE 排障信息和聚合后的响应内容写到服务日志；该开关只适合本地排障，日志会包含 recent screen text。
 
-如果你更适合把非敏感项放进 YAML：
+推荐 `configs/assist.yml`：
 ```yaml
 assist:
   enabled: true
@@ -171,7 +165,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`。App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 ### 本地打包
 ```bash
@@ -210,7 +204,7 @@ cd release
 - `release/configs/agents.example.yml`
 - `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash

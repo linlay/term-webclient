@@ -12,6 +12,7 @@ import (
 
 	"term-webclient-go/backend/internal/config"
 	"term-webclient-go/backend/internal/model"
+	"term-webclient-go/backend/internal/util"
 )
 
 type RecentSessionRecord struct {
@@ -35,6 +36,8 @@ type RecentStore struct {
 	limit int
 }
 
+type sshCredentialIDsLoader func() ([]string, error)
+
 func NewRecentStore(cfg config.TerminalConfig) *RecentStore {
 	return &RecentStore{
 		path:  cfg.RecentSessionsFile,
@@ -43,13 +46,16 @@ func NewRecentStore(cfg config.TerminalConfig) *RecentStore {
 }
 
 func (s *RecentStore) Record(toolID, title string, sessionType model.SessionType, workdir string, request model.CreateSessionRequest) error {
-	normalizedToolID := normalizeToolID(toolID)
+	normalizedToolID := util.NormalizeToolID(toolID)
+	if normalizedToolID == "" {
+		normalizedToolID = "terminal"
+	}
 	record := RecentSessionRecord{
 		Fingerprint: fingerprintRequest(request),
 		ToolID:      normalizedToolID,
-		Title:       fallbackString(title, normalizedToolID),
+		Title:       util.FallbackString(title, normalizedToolID),
 		SessionType: model.NormalizeSessionType(sessionType),
-		Workdir:     fallbackString(workdir, "."),
+		Workdir:     util.FallbackString(workdir, "."),
 		LastUsedAt:  time.Now().UTC(),
 		Request:     cloneRequest(request),
 	}
@@ -76,6 +82,24 @@ func (s *RecentStore) Record(toolID, title string, sessionType model.SessionType
 	return s.persist(file)
 }
 
+func (s *RecentStore) RecordCreateRequest(request model.CreateSessionRequest, sessionType model.SessionType, params createParams) error {
+	recentRequest := request
+	recentRequest.SessionType = sessionType
+	recentRequest.ToolID = util.FallbackString(request.ToolID, params.ToolID)
+	recentRequest.TabTitle = util.FallbackString(request.TabTitle, params.Title)
+	recentRequest.Workdir = params.Workdir
+	if sessionType == model.SessionTypeSSHShell && params.ResolvedSSH != nil {
+		if recentRequest.SSH == nil {
+			recentRequest.SSH = &model.SshSessionRequest{}
+		}
+		recentRequest.SSH.CredentialID = params.ResolvedSSH.CredentialID
+		if recentRequest.SSH.Term == "" {
+			recentRequest.SSH.Term = params.ResolvedSSH.Term
+		}
+	}
+	return s.Record(recentRequest.ToolID, recentRequest.TabTitle, sessionType, recentRequest.Workdir, recentRequest)
+}
+
 func (s *RecentStore) ListByTool(toolID string) ([]RecentSessionRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,7 +107,11 @@ func (s *RecentStore) ListByTool(toolID string) ([]RecentSessionRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	records := file.RecordsByTool[normalizeToolID(toolID)]
+	normalizedToolID := util.NormalizeToolID(toolID)
+	if normalizedToolID == "" {
+		normalizedToolID = "terminal"
+	}
+	records := file.RecordsByTool[normalizedToolID]
 	return append([]RecentSessionRecord(nil), records...), nil
 }
 
@@ -95,7 +123,10 @@ func (s *RecentStore) ReplaceToolRecords(toolID string, records []RecentSessionR
 	if err != nil {
 		return err
 	}
-	normalizedToolID := normalizeToolID(toolID)
+	normalizedToolID := util.NormalizeToolID(toolID)
+	if normalizedToolID == "" {
+		normalizedToolID = "terminal"
+	}
 	if len(records) == 0 {
 		delete(file.RecordsByTool, normalizedToolID)
 		return s.persist(file)
@@ -106,6 +137,41 @@ func (s *RecentStore) ReplaceToolRecords(toolID string, records []RecentSessionR
 	}
 	file.RecordsByTool[normalizedToolID] = next
 	return s.persist(file)
+}
+
+func (s *RecentStore) ListResponsesByTool(toolID string, loadSSHCredentialIDs sshCredentialIDsLoader) ([]model.RecentSessionItemResponse, error) {
+	records, err := s.ListByTool(toolID)
+	if err != nil {
+		return nil, err
+	}
+
+	if util.NormalizeToolID(toolID) == "ssh" && loadSSHCredentialIDs != nil {
+		credentialIDs, err := loadSSHCredentialIDs()
+		if err == nil {
+			allowed := make(map[string]struct{}, len(credentialIDs))
+			for _, credentialID := range credentialIDs {
+				allowed[strings.TrimSpace(credentialID)] = struct{}{}
+			}
+			filtered := filterRecentSSHRecords(records, allowed)
+			if len(filtered) != len(records) {
+				_ = s.ReplaceToolRecords(toolID, filtered)
+			}
+			records = filtered
+		}
+	}
+
+	result := make([]model.RecentSessionItemResponse, 0, len(records))
+	for _, item := range records {
+		result = append(result, model.RecentSessionItemResponse{
+			ToolID:      item.ToolID,
+			Title:       item.Title,
+			SessionType: item.SessionType,
+			Workdir:     item.Workdir,
+			LastUsedAt:  item.LastUsedAt,
+			Request:     item.Request,
+		})
+	}
+	return result, nil
 }
 
 func (s *RecentStore) load() (*recentSessionFile, error) {
@@ -167,4 +233,18 @@ func cloneRequest(request model.CreateSessionRequest) model.CreateSessionRequest
 	var cloned model.CreateSessionRequest
 	_ = json.Unmarshal(payload, &cloned)
 	return cloned
+}
+
+func filterRecentSSHRecords(records []RecentSessionRecord, allowed map[string]struct{}) []RecentSessionRecord {
+	filtered := make([]RecentSessionRecord, 0, len(records))
+	for _, record := range records {
+		if record.Request.SSH == nil || strings.TrimSpace(record.Request.SSH.CredentialID) == "" {
+			continue
+		}
+		if _, ok := allowed[strings.TrimSpace(record.Request.SSH.CredentialID)]; !ok {
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+	return filtered
 }

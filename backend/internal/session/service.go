@@ -33,6 +33,11 @@ type Service struct {
 	sessions map[string]*Session
 }
 
+type RuntimeFactory struct {
+	cfg        *config.Config
+	sshManager *sshsvc.Manager
+}
+
 type Session struct {
 	SessionID       string
 	Title           string
@@ -77,10 +82,17 @@ func NewService(cfg *config.Config, sshManager *sshsvc.Manager) *Service {
 	}
 }
 
+func NewRuntimeFactory(cfg *config.Config, sshManager *sshsvc.Manager) *RuntimeFactory {
+	return &RuntimeFactory{
+		cfg:        cfg,
+		sshManager: sshManager,
+	}
+}
+
 func (s *Service) CreateSession(request model.CreateSessionRequest) (model.CreateSessionResponse, error) {
 	sessionType := model.NormalizeSessionType(request.SessionType)
 	sessionID := util.NewID()
-	params, runtime, err := s.normalizeAndCreateRuntime(request, sessionType)
+	params, runtime, err := NewRuntimeFactory(s.cfg, s.sshManager).CreateRuntime(request, sessionType)
 	if err != nil {
 		return model.CreateSessionResponse{}, err
 	}
@@ -108,7 +120,7 @@ func (s *Service) CreateSession(request model.CreateSessionRequest) (model.Creat
 	s.mu.Unlock()
 
 	s.startReadLoop(session)
-	s.recordRecentSession(request, sessionType, params)
+	_ = s.recentStore.RecordCreateRequest(request, sessionType, params)
 
 	return model.CreateSessionResponse{
 		SessionID: sessionID,
@@ -155,47 +167,7 @@ func (s *Service) ListSessions() []model.SessionTabViewResponse {
 }
 
 func (s *Service) ListRecentSessions(toolID string) ([]model.RecentSessionItemResponse, error) {
-	records, err := s.recentStore.ListByTool(toolID)
-	if err != nil {
-		return nil, err
-	}
-
-	if strings.EqualFold(normalizeToolID(toolID), "ssh") {
-		credentialIDs, err := s.sshManager.ListCredentialIDs()
-		if err == nil {
-			allowed := make(map[string]struct{}, len(credentialIDs))
-			for _, credentialID := range credentialIDs {
-				allowed[credentialID] = struct{}{}
-			}
-			filtered := make([]RecentSessionRecord, 0, len(records))
-			for _, record := range records {
-				if record.Request.SSH == nil || strings.TrimSpace(record.Request.SSH.CredentialID) == "" {
-					continue
-				}
-				if _, ok := allowed[strings.TrimSpace(record.Request.SSH.CredentialID)]; !ok {
-					continue
-				}
-				filtered = append(filtered, record)
-			}
-			if len(filtered) != len(records) {
-				_ = s.recentStore.ReplaceToolRecords(toolID, filtered)
-			}
-			records = filtered
-		}
-	}
-
-	result := make([]model.RecentSessionItemResponse, 0, len(records))
-	for _, item := range records {
-		result = append(result, model.RecentSessionItemResponse{
-			ToolID:      item.ToolID,
-			Title:       item.Title,
-			SessionType: item.SessionType,
-			Workdir:     item.Workdir,
-			LastUsedAt:  item.LastUsedAt,
-			Request:     item.Request,
-		})
-	}
-	return result, nil
+	return s.recentStore.ListResponsesByTool(toolID, s.sshManager.ListCredentialIDs)
 }
 
 func (s *Service) GetSnapshot(sessionID string, afterSeq int64) (model.SessionSnapshotResponse, error) {
@@ -413,7 +385,7 @@ func (s *Service) Close() error {
 	return nil
 }
 
-func (s *Service) normalizeAndCreateRuntime(request model.CreateSessionRequest, sessionType model.SessionType) (createParams, termruntime.Runtime, error) {
+func (f *RuntimeFactory) CreateRuntime(request model.CreateSessionRequest, sessionType model.SessionType) (createParams, termruntime.Runtime, error) {
 	cols := 120
 	rows := 30
 	if request.Cols != nil {
@@ -422,14 +394,14 @@ func (s *Service) normalizeAndCreateRuntime(request model.CreateSessionRequest, 
 	if request.Rows != nil {
 		rows = *request.Rows
 	}
-	if cols <= 0 || rows <= 0 || cols > s.cfg.Terminal.MaxCols || rows > s.cfg.Terminal.MaxRows {
+	if cols <= 0 || rows <= 0 || cols > f.cfg.Terminal.MaxCols || rows > f.cfg.Terminal.MaxRows {
 		return createParams{}, nil, util.NewStatusError(http.StatusBadRequest, "terminal size is invalid", nil)
 	}
 
 	if sessionType == model.SessionTypeSSHShell {
-		title := fallbackString(request.TabTitle, "ssh")
-		toolID := fallbackString(request.ToolID, "ssh")
-		runtime, rootPath, resolved, err := s.sshManager.OpenShell(request.SSH, request.Workdir, cols, rows)
+		title := util.FallbackString(request.TabTitle, "ssh")
+		toolID := util.FallbackString(request.ToolID, "ssh")
+		runtime, rootPath, resolved, err := f.sshManager.OpenShell(request.SSH, request.Workdir, cols, rows)
 		if err != nil {
 			return createParams{}, nil, err
 		}
@@ -449,18 +421,18 @@ func (s *Service) normalizeAndCreateRuntime(request model.CreateSessionRequest, 
 	}
 
 	if strings.TrimSpace(request.ClientID) != "" {
-		return s.normalizeCLISession(request, cols, rows)
+		return f.normalizeCLISession(request, cols, rows)
 	}
 
-	command := fallbackString(request.Command, s.cfg.Terminal.DefaultCommand)
+	command := util.FallbackString(request.Command, f.cfg.Terminal.DefaultCommand)
 	if command == "" {
 		return createParams{}, nil, util.NewStatusError(http.StatusBadRequest, "command must not be blank", nil)
 	}
 	args := request.Args
 	if args == nil {
-		args = append([]string(nil), s.cfg.Terminal.DefaultArgs...)
+		args = append([]string(nil), f.cfg.Terminal.DefaultArgs...)
 	}
-	workdir := fallbackString(request.Workdir, s.cfg.Terminal.DefaultWorkdir)
+	workdir := util.FallbackString(request.Workdir, f.cfg.Terminal.DefaultWorkdir)
 	if err := validateLocalWorkdir(workdir); err != nil {
 		return createParams{}, nil, err
 	}
@@ -483,17 +455,17 @@ func (s *Service) normalizeAndCreateRuntime(request model.CreateSessionRequest, 
 		Workdir:      workdir,
 		Cols:         cols,
 		Rows:         rows,
-		Title:        fallbackString(request.TabTitle, command),
-		ToolID:       fallbackString(request.ToolID, "terminal"),
+		Title:        util.FallbackString(request.TabTitle, command),
+		ToolID:       util.FallbackString(request.ToolID, "terminal"),
 		FileRootPath: absWorkdir(workdir),
 	}, runtime, nil
 }
 
-func (s *Service) normalizeCLISession(request model.CreateSessionRequest, cols, rows int) (createParams, termruntime.Runtime, error) {
+func (f *RuntimeFactory) normalizeCLISession(request model.CreateSessionRequest, cols, rows int) (createParams, termruntime.Runtime, error) {
 	clientID := strings.TrimSpace(request.ClientID)
 	var client *config.CLIClientConfig
-	for idx := range s.cfg.Terminal.CliClients {
-		item := &s.cfg.Terminal.CliClients[idx]
+	for idx := range f.cfg.Terminal.CliClients {
+		item := &f.cfg.Terminal.CliClients[idx]
 		if strings.TrimSpace(item.ID) == clientID {
 			client = item
 			break
@@ -508,7 +480,7 @@ func (s *Service) normalizeCLISession(request model.CreateSessionRequest, cols, 
 	}
 	workdir := request.Workdir
 	if strings.TrimSpace(workdir) == "" {
-		workdir = fallbackString(client.Workdir, s.cfg.Terminal.DefaultWorkdir)
+		workdir = util.FallbackString(client.Workdir, f.cfg.Terminal.DefaultWorkdir)
 	}
 	if err := validateLocalWorkdir(workdir); err != nil {
 		return createParams{}, nil, err
@@ -526,7 +498,7 @@ func (s *Service) normalizeCLISession(request model.CreateSessionRequest, cols, 
 
 	fullCommand := append([]string{command}, client.Args...)
 	if preCommands := trimNonEmpty(client.PreCommands); len(preCommands) > 0 {
-		shell := fallbackString(client.Shell, "/bin/zsh")
+		shell := util.FallbackString(client.Shell, "/bin/zsh")
 		script := strings.Join(preCommands, "; ") + "; exec " + shellJoin(fullCommand)
 		fullCommand = []string{shell, "-lc", script}
 	}
@@ -534,15 +506,15 @@ func (s *Service) normalizeCLISession(request model.CreateSessionRequest, cols, 
 	if err != nil {
 		return createParams{}, nil, util.NewStatusError(http.StatusBadRequest, "Failed to start terminal runtime", err)
 	}
-	defaultTitle := fallbackString(client.Label, clientID)
+	defaultTitle := util.FallbackString(client.Label, clientID)
 	return createParams{
 		Command:      fullCommand,
 		Env:          env,
 		Workdir:      workdir,
 		Cols:         cols,
 		Rows:         rows,
-		Title:        fallbackString(request.TabTitle, defaultTitle),
-		ToolID:       fallbackString(request.ToolID, clientID),
+		Title:        util.FallbackString(request.TabTitle, defaultTitle),
+		ToolID:       util.FallbackString(request.ToolID, clientID),
 		FileRootPath: absWorkdir(workdir),
 	}, runtime, nil
 }
@@ -714,26 +686,6 @@ func (s *Service) closeInternal(session *Session, reason string, sendExit bool, 
 	_ = reason
 }
 
-func (s *Service) recordRecentSession(request model.CreateSessionRequest, sessionType model.SessionType, params createParams) {
-	recentRequest := request
-	recentRequest.SessionType = sessionType
-	recentRequest.ToolID = fallbackString(request.ToolID, params.ToolID)
-	recentRequest.TabTitle = fallbackString(request.TabTitle, params.Title)
-	recentRequest.Workdir = params.Workdir
-	if sessionType == model.SessionTypeSSHShell && params.ResolvedSSH != nil {
-		if recentRequest.SSH == nil {
-			recentRequest.SSH = &model.SshSessionRequest{}
-		}
-		recentRequest.SSH.CredentialID = params.ResolvedSSH.CredentialID
-		if recentRequest.SSH.Term == "" {
-			recentRequest.SSH.Term = params.ResolvedSSH.Term
-		}
-	}
-	if err := s.recentStore.Record(recentRequest.ToolID, recentRequest.TabTitle, sessionType, recentRequest.Workdir, recentRequest); err != nil {
-		return
-	}
-}
-
 func validateLocalWorkdir(workdir string) error {
 	info, err := os.Stat(workdir)
 	if err != nil {
@@ -751,13 +703,6 @@ func absWorkdir(workdir string) string {
 		return workdir
 	}
 	return filepath.Clean(absolute)
-}
-
-func fallbackString(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return strings.TrimSpace(value)
 }
 
 func currentEnvMap() map[string]string {
@@ -789,11 +734,4 @@ func shellJoin(command []string) string {
 		parts = append(parts, "'"+strings.ReplaceAll(item, "'", "'\"'\"'")+"'")
 	}
 	return strings.Join(parts, " ")
-}
-
-func normalizeToolID(toolID string) string {
-	if strings.TrimSpace(toolID) == "" {
-		return "terminal"
-	}
-	return strings.TrimSpace(toolID)
 }
