@@ -27,5 +27,10 @@ frontend/.env
 release/
 data/
 logs/
+configs/generated/*
+!configs/generated/.gitkeep
+configs/mounts/*.json
+!configs/mounts/*.example.json
 configs/*.yml
 !configs/*.example.yml
+!configs/config.docker-host.yml

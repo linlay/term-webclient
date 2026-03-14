@@ -177,7 +177,7 @@ describe("NewSessionForm recent + ssh title", () => {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       tabTitle: "/tmp",
-      command: "/bin/zsh",
+      command: "bash",
       args: ["-l"],
       workdir: "/tmp"
     });

@@ -1,0 +1,6 @@
+{
+  "name": "project-b",
+  "hostPath": "/Users/you/Project/project-b",
+  "readOnly": false,
+  "kind": "directory"
+}

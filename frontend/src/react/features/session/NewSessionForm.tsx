@@ -124,6 +124,8 @@ function formatRecentSessionLabel(item: RecentSessionItemResponse): string {
 }
 
 const ROOT_WORKDIR_LOADING_KEY = "__root__";
+const DEFAULT_TERMINAL_COMMAND = "bash";
+const DEFAULT_TERMINAL_ARGS = "-l";
 
 interface VisibleWorkdirEntry {
   depth: number;
@@ -136,8 +138,8 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [terminalClientsError, setTerminalClientsError] = useState("");
 
   const [title, setTitle] = useState("");
-  const [command, setCommand] = useState("/bin/zsh");
-  const [args, setArgs] = useState("-l");
+  const [command, setCommand] = useState(DEFAULT_TERMINAL_COMMAND);
+  const [args, setArgs] = useState(DEFAULT_TERMINAL_ARGS);
   const [workdir, setWorkdir] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -240,10 +242,10 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   useEffect(() => {
     if (toolId === "terminal") {
       if (!command.trim()) {
-        setCommand("/bin/zsh");
+        setCommand(DEFAULT_TERMINAL_COMMAND);
       }
       if (!args.trim()) {
-        setArgs("-l");
+        setArgs(DEFAULT_TERMINAL_ARGS);
       }
       return;
     }
@@ -531,7 +533,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         sessionType: "LOCAL_PTY",
         toolId: "terminal",
         tabTitle: titleText || (workdir.trim() || workdirTree?.currentPath || "."),
-        command: command.trim() || "/bin/zsh",
+        command: command.trim() || DEFAULT_TERMINAL_COMMAND,
         args: parsedArgs,
         workdir: workdir.trim() || workdirTree?.currentPath || "."
       };
@@ -755,7 +757,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
                 id="new-session-command"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
-                placeholder="/bin/zsh"
+                placeholder={DEFAULT_TERMINAL_COMMAND}
               />
 
               <label className="field-label" htmlFor="new-session-args">Args</label>

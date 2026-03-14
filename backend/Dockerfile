@@ -16,10 +16,11 @@ RUN GOCACHE=/tmp/go-build GOFLAGS=-mod=mod GOPROXY=$GOPROXY GOSUMDB=$GOSUMDB go 
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bash ca-certificates tzdata \
+  && apt-get install -y --no-install-recommends bash ca-certificates docker.io tzdata \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+RUN mkdir -p /app/data /workspace
 COPY --from=build /out/term-web-backend /app/term-web-backend
 
 ENV BACKEND_HOST=0.0.0.0

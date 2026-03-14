@@ -44,18 +44,41 @@ make test-frontend
 ## 3. 配置说明
 - 根目录 `.env.example` 是唯一的环境变量契约；本地真实值写入根目录 `.env`，该文件不提交。
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
-- 只有结构化主配置确实超过 `.env` 表达能力时，才使用 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不再从该 YAML 读取。
-- `configs/` 同时用于存放 App JWT 本地公钥 PEM 文件和 Copilot runner agent 配置；仓库提供 `configs/local-public-key.example.pem` 与 `configs/agents.example.yml` 作为示例。
-- 配置优先级：内置默认值 < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
+- 外部结构化主配置默认从 `configs/application.yml` 自动读取；只有需要切换到其他 YAML 时，才通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不再从该 YAML 读取。
+- `configs/` 同时用于存放默认主配置、App JWT 本地公钥 PEM 文件和 Copilot runner agent 配置；仓库提供 `configs/application.example.yml`、`configs/local-public-key.example.pem` 与 `configs/agents.example.yml` 作为示例。
+- 配置优先级：内置默认值 < `configs/application.yml` < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
 - 推荐用法：
 ```bash
-# 后端本地开发（从 backend/ 目录启动）
-CONFIG_PATH=../configs/config.dev.yml make dev-backend
+# 准备默认外层结构化配置
+cp configs/application.example.yml configs/application.yml
 
-# Docker / 发布包（从仓库根或 release 根启动）
-# 在 .env 中设置
-CONFIG_PATH=./configs/config.prod.yml
+# 后端本地开发（从 backend/ 目录启动，默认自动读取 ../configs/application.yml）
+make dev-backend
+
+# Docker Compose 固定使用容器专用配置
+# 宿主机挂载定义写在 configs/mounts/*.json
+# make docker-up
+
+# 发布包（从 release 根启动；如需改用其他 YAML，再在 .env 中设置）
+# CONFIG_PATH=./configs/config.prod.yml
+```
+
+CLI client 如需单独代理，请在 `configs/application.yml` 的 `terminal.cli-clients[].env` 中显式声明；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。
+
+示例：
+```yaml
+terminal:
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env:
+        http_proxy: http://127.0.0.1:8001
+        https_proxy: http://127.0.0.1:8001
+      shell: /bin/zsh
 ```
 
 ### Copilot Runner Agents
@@ -162,10 +185,30 @@ assist:
 ### Docker Compose
 ```bash
 cp .env.example .env
-docker compose up --build
+cp configs/mounts/project-a.example.json configs/mounts/project-a.json
+cp configs/mounts/docker-sock.example.json configs/mounts/docker-sock.json
+make docker-up
 ```
 
-`docker-compose.yml` 仅用于本地双服务编排。如需结构化后端覆盖项，请自行创建 `configs/*.yml`，并在 `.env` 中设置 `CONFIG_PATH=./configs/your-config.yml`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。默认外层主配置是 `configs/application.yml`；容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+
+挂载 JSON 固定字段：
+```json
+{
+  "name": "project-a",
+  "hostPath": "/Users/you/Project/project-a",
+  "readOnly": false,
+  "kind": "directory"
+}
+```
+
+- `name` 决定容器内目录名，最终挂载点始终是 `/workspace/<name>`。
+- `hostPath` 必须是宿主机绝对路径。
+- `readOnly` 可选，默认 `false`。
+- `kind` 可选，默认 `directory`；如果要控制宿主机 Docker，请额外提供一个 `kind=socket` 的 JSON，挂载 `/var/run/docker.sock`。
+- 生成后的 override 文件位于 `configs/generated/docker-compose.mounts.yml`，不手工维护。
+
+容器内终端执行 `docker ps`、`docker start`、`docker stop`、`docker logs` 时，实际操作的是宿主机 Docker daemon；文件浏览从 `/workspace` 开始，而单个会话的文件根取决于你创建会话时选择的具体工作目录。
 
 ### 本地打包
 ```bash
@@ -201,10 +244,11 @@ cd release
 - `release/.env.example`
 - `release/start.sh`
 - `release/stop.sh`
+- `release/configs/application.example.yml`
 - `release/configs/agents.example.yml`
 - `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/application.example.yml` 复制为 `release/configs/application.yml`、把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash
@@ -231,4 +275,6 @@ cd release && ./stop.sh
 - 如果是直接复制 `release/` 到其他目录运行，确认整包一起复制，而不是只拷贝二进制或空目录结构。
 - 如果你修改了 `release/.env` 或 `release/configs/*`，直接在 `release/` 目录重启，不需要重新回到仓库根执行额外启动命令。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
+- Docker 场景下，先运行 `make docker-generate-mounts` 或 `make docker-up`，确认 `configs/generated/docker-compose.mounts.yml` 已生成。
+- Docker 场景下，确认 `configs/mounts/*.json` 中的 `hostPath` 都是存在的宿主机绝对路径。
 - 前端代理异常时，确认 `.env` 中的 `BACKEND_HOST`、`BACKEND_PORT` 与后端监听端口一致。

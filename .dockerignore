@@ -9,3 +9,4 @@ logs
 run
 data
 backend/data
+configs/generated

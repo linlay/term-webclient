@@ -21,7 +21,7 @@ function makeTab(partial: Partial<TerminalTab> = {}): TerminalTab {
     workdir: ".",
     fileRootPath: ".",
     sshCredentialId: null,
-    createRequest: { sessionType: "LOCAL_PTY", toolId: "terminal", command: "/bin/zsh", args: [] },
+    createRequest: { sessionType: "LOCAL_PTY", toolId: "terminal", command: "bash", args: [] },
     agentRunId: null,
     lost: false,
     exitCode: "-",

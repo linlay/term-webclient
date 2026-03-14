@@ -1,0 +1,35 @@
+# User-editable structured config loaded automatically from `configs/application.yml`.
+# Copy this file to `configs/application.yml`, then adjust only the entries you need.
+
+terminal:
+  default-workdir: .
+  cli-clients:
+    - id: codex
+      label: Codex
+      command: codex
+      args: []
+      workdir: .
+      env: {}
+      shell: /bin/zsh
+    - id: claude
+      label: Claude Code
+      command: claude
+      args: []
+      workdir: .
+      env: {}
+      shell: /bin/zsh
+
+# To give a specific CLI client a proxy, declare it explicitly instead of relying
+# on the backend process environment.
+#
+# terminal:
+#   cli-clients:
+#     - id: codex
+#       label: Codex
+#       command: codex
+#       args: []
+#       workdir: .
+#       env:
+#         http_proxy: http://127.0.0.1:8001
+#         https_proxy: http://127.0.0.1:8001
+#       shell: /bin/zsh

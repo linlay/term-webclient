@@ -47,6 +47,65 @@ func TestLoadUsesEmbeddedDefaultsWithoutExternalConfig(t *testing.T) {
 	}
 }
 
+func TestLoadAppliesRuntimeApplicationConfigWithoutConfigPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("BACKEND_PORT=11937\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	runtimeConfig := "" +
+		"server:\n  port: 22000\n" +
+		"terminal:\n" +
+		"  recent-sessions-per-tool: 9\n" +
+		"  cli-clients:\n" +
+		"    - id: codex\n" +
+		"      label: Codex\n" +
+		"      command: codex\n" +
+		"      args: []\n" +
+		"      workdir: .\n" +
+		"      env:\n" +
+		"        https_proxy: http://127.0.0.1:8001\n" +
+		"      shell: /bin/zsh\n"
+	if err := os.WriteFile(filepath.Join(configsDir, "application.yml"), []byte(runtimeConfig), 0o644); err != nil {
+		t.Fatalf("write runtime config: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Server.Port != 11937 {
+		t.Fatalf("expected env override port 11937, got %d", cfg.Server.Port)
+	}
+	if cfg.Terminal.RecentSessionsPerTool != 9 {
+		t.Fatalf("expected runtime application config to override recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
+	}
+	if len(cfg.Terminal.CliClients) != 1 {
+		t.Fatalf("expected runtime application config cli clients, got %d", len(cfg.Terminal.CliClients))
+	}
+	if cfg.Terminal.CliClients[0].Env["https_proxy"] != "http://127.0.0.1:8001" {
+		t.Fatalf("expected runtime application config cli env override, got %#v", cfg.Terminal.CliClients[0].Env)
+	}
+}
+
 func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	repoRoot := t.TempDir()
 	backendDir := filepath.Join(repoRoot, "backend")
@@ -78,10 +137,15 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(envContent), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
 	}
-	yamlContent := "" +
+	runtimeConfigContent := "" +
+		"terminal:\n  recent-sessions-per-tool: 7\n"
+	if err := os.WriteFile(filepath.Join(configsDir, "application.yml"), []byte(runtimeConfigContent), 0o644); err != nil {
+		t.Fatalf("write runtime application config: %v", err)
+	}
+	configPathContent := "" +
 		"server:\n  port: 22000\n" +
 		"terminal:\n  recent-sessions-per-tool: 9\n"
-	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(yamlContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(configPathContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	assistContent := "" +
@@ -129,7 +193,7 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		t.Fatalf("expected env override port 11937, got %d", cfg.Server.Port)
 	}
 	if cfg.Terminal.RecentSessionsPerTool != 9 {
-		t.Fatalf("expected yaml override for recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
+		t.Fatalf("expected CONFIG_PATH override for recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
 	}
 	if !cfg.Terminal.Files.Enabled {
 		t.Fatal("expected env override to enable files")
@@ -188,6 +252,39 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	}
 	if cfg.Assist.SystemPrompt != "Return JSON only." {
 		t.Fatalf("expected assist system prompt env override, got %q", cfg.Assist.SystemPrompt)
+	}
+}
+
+func TestLoadFailsWhenRuntimeApplicationConfigInvalid(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("BACKEND_PORT=11937\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "application.yml"), []byte("terminal:\n\tcli-clients: true\n"), 0o644); err != nil {
+		t.Fatalf("write invalid runtime config: %v", err)
+	}
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse") {
+		t.Fatalf("expected parse error for invalid runtime application config, got %v", err)
 	}
 }
 
@@ -365,10 +462,10 @@ func TestLoadFailsWhenLocalPublicKeyFileInvalid(t *testing.T) {
 
 func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 	testCases := []struct {
-		name        string
-		envContent  string
-		assistYAML  string
-		wantErr     string
+		name       string
+		envContent string
+		assistYAML string
+		wantErr    string
 	}{
 		{
 			name: "missing base url",
@@ -377,10 +474,10 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 				"ASSIST_API_KEY=test-assist-key\n" +
 				"ASSIST_MODEL=qwen-plus\n",
 			assistYAML: "assist:\n  enabled: true\n  base-url: \"\"\n  api-key: ${ASSIST_API_KEY:}\n  model: ${ASSIST_MODEL:}\n",
-			wantErr:     "assist base-url is required when assist is enabled",
+			wantErr:    "assist base-url is required when assist is enabled",
 		},
 		{
-			name: "missing api key",
+			name:       "missing api key",
 			envContent: "",
 			assistYAML: "" +
 				"assist:\n" +

@@ -1,0 +1,5 @@
+{
+  "name": "docker-sock",
+  "hostPath": "/var/run/docker.sock",
+  "kind": "socket"
+}

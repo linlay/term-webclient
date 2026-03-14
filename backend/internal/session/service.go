@@ -24,6 +24,29 @@ import (
 
 var ansiEscapePattern = regexp.MustCompile(`\x1B\[[;?0-9]*[ -/]*[@-~]`)
 
+var localSessionAllowedEnvKeys = map[string]struct{}{
+	"HOME":          {},
+	"LANG":          {},
+	"LOGNAME":       {},
+	"PATH":          {},
+	"SHELL":         {},
+	"SSH_AUTH_SOCK": {},
+	"TERM":          {},
+	"TMPDIR":        {},
+	"USER":          {},
+}
+
+var localSessionBlockedEnvKeys = map[string]struct{}{
+	"ALL_PROXY":   {},
+	"HTTP_PROXY":  {},
+	"HTTPS_PROXY": {},
+	"NO_PROXY":    {},
+	"all_proxy":   {},
+	"http_proxy":  {},
+	"https_proxy": {},
+	"no_proxy":    {},
+}
+
 type Service struct {
 	cfg         *config.Config
 	sshManager  *sshsvc.Manager
@@ -436,13 +459,7 @@ func (f *RuntimeFactory) CreateRuntime(request model.CreateSessionRequest, sessi
 	if err := validateLocalWorkdir(workdir); err != nil {
 		return createParams{}, nil, err
 	}
-	env := currentEnvMap()
-	for key, value := range request.Env {
-		env[key] = value
-	}
-	if _, ok := env["TERM"]; !ok {
-		env["TERM"] = "xterm-256color"
-	}
+	env := buildLocalSessionEnv(request.Env)
 
 	fullCommand := append([]string{command}, args...)
 	runtime, err := termruntime.StartLocal(fullCommand, env, workdir, cols, rows)
@@ -485,16 +502,7 @@ func (f *RuntimeFactory) normalizeCLISession(request model.CreateSessionRequest,
 	if err := validateLocalWorkdir(workdir); err != nil {
 		return createParams{}, nil, err
 	}
-	env := currentEnvMap()
-	for key, value := range client.Env {
-		env[key] = value
-	}
-	for key, value := range request.Env {
-		env[key] = value
-	}
-	if _, ok := env["TERM"]; !ok {
-		env["TERM"] = "xterm-256color"
-	}
+	env := buildCLIClientSessionEnv(client.Env, request.Env)
 
 	fullCommand := append([]string{command}, client.Args...)
 	if preCommands := trimNonEmpty(client.PreCommands); len(preCommands) > 0 {
@@ -705,14 +713,46 @@ func absWorkdir(workdir string) string {
 	return filepath.Clean(absolute)
 }
 
-func currentEnvMap() map[string]string {
+func buildLocalSessionEnv(overrides map[string]string) map[string]string {
+	result := localSessionBaseEnv()
+	for key, value := range overrides {
+		result[key] = value
+	}
+	if _, ok := result["TERM"]; !ok {
+		result["TERM"] = "xterm-256color"
+	}
+	return result
+}
+
+func buildCLIClientSessionEnv(clientEnv, requestEnv map[string]string) map[string]string {
+	result := localSessionBaseEnv()
+	for key, value := range clientEnv {
+		result[key] = value
+	}
+	for key, value := range requestEnv {
+		result[key] = value
+	}
+	if _, ok := result["TERM"]; !ok {
+		result["TERM"] = "xterm-256color"
+	}
+	return result
+}
+
+func localSessionBaseEnv() map[string]string {
 	result := map[string]string{}
 	for _, entry := range os.Environ() {
 		idx := strings.Index(entry, "=")
 		if idx <= 0 {
 			continue
 		}
-		result[entry[:idx]] = entry[idx+1:]
+		key := entry[:idx]
+		if _, blocked := localSessionBlockedEnvKeys[key]; blocked {
+			continue
+		}
+		if _, allowed := localSessionAllowedEnvKeys[key]; !allowed && !strings.HasPrefix(key, "LC_") {
+			continue
+		}
+		result[key] = entry[idx+1:]
 	}
 	return result
 }

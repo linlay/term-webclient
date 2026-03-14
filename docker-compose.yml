@@ -11,8 +11,7 @@ services:
     environment:
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: 11937
-    ports:
-      - "${BACKEND_PORT:-11937}:11937"
+      CONFIG_PATH: ./configs/config.docker-host.yml
     volumes:
       - ./data:/app/data
       - ./configs:/app/configs:ro
@@ -25,11 +24,11 @@ services:
       - backend
     environment:
       HOST: 0.0.0.0
-      PORT: ${FRONTEND_PORT:-11947}
+      PORT: 11947
       FRONTEND_HOST: 0.0.0.0
-      FRONTEND_PORT: ${FRONTEND_PORT:-11947}
+      FRONTEND_PORT: 11947
       BACKEND_HOST: backend
       BACKEND_PORT: 11937
       BACKEND_ORIGIN: http://backend:11937
     ports:
-      - "${FRONTEND_PORT:-11947}:11947"
+      - "11947:11947"

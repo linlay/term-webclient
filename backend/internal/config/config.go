@@ -22,7 +22,10 @@ var embeddedDefaults []byte
 
 var envPlaceholderPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]*))?\}`)
 
-const assistConfigRelativePath = "configs/assist.yml"
+const (
+	applicationConfigRelativePath = "configs/application.yml"
+	assistConfigRelativePath      = "configs/assist.yml"
+)
 
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
@@ -291,9 +294,20 @@ func Load() (*Config, error) {
 	if err := mergeYAMLBytes(cfg, embeddedDefaults, effectiveValues, "embedded application.yml"); err != nil {
 		return nil, err
 	}
-	if configPath := strings.TrimSpace(effectiveValues["CONFIG_PATH"]); configPath != "" {
+	runtimeApplicationConfigPath := resolveRuntimeConfigPath(applicationConfigRelativePath, envBaseDir)
+	configPath := strings.TrimSpace(effectiveValues["CONFIG_PATH"])
+	if configPath != "" && sameConfigFile(runtimeApplicationConfigPath, configPath) {
 		if err := mergeYAMLFile(cfg, configPath, effectiveValues, true); err != nil {
 			return nil, err
+		}
+	} else {
+		if err := mergeYAMLFile(cfg, runtimeApplicationConfigPath, effectiveValues, false); err != nil {
+			return nil, err
+		}
+		if configPath != "" {
+			if err := mergeYAMLFile(cfg, configPath, effectiveValues, true); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := mergeYAMLFile(cfg, resolveRuntimeConfigPath(assistConfigRelativePath, envBaseDir), effectiveValues, false); err != nil {
@@ -736,4 +750,33 @@ func dedupeStrings(items []string) []string {
 		result = append(result, item)
 	}
 	return result
+}
+
+func sameConfigFile(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
+	}
+
+	leftComparable, err := comparableConfigPath(left)
+	if err != nil {
+		return false
+	}
+	rightComparable, err := comparableConfigPath(right)
+	if err != nil {
+		return false
+	}
+	return leftComparable == rightComparable
+}
+
+func comparableConfigPath(filePath string) (string, error) {
+	if filepath.IsAbs(filePath) {
+		return filepath.Clean(filePath), nil
+	}
+	absolutePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(absolutePath), nil
 }
