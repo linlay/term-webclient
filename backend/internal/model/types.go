@@ -287,6 +287,12 @@ type TerminalClientResponse struct {
 	DefaultWorkdir string `json:"defaultWorkdir"`
 }
 
+type TerminalDefaultsResponse struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	Workdir string   `json:"workdir"`
+}
+
 type SshAuthType string
 
 const (

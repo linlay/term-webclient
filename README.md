@@ -48,9 +48,10 @@ make test-frontend
 - `configs/` 同时用于存放默认主配置、App JWT 本地公钥 PEM 文件和 Copilot runner agent 配置；仓库提供 `configs/application.example.yml`、`configs/local-public-key.example.pem` 与 `configs/agents.example.yml` 作为示例。
 - 配置优先级：内置默认值 < `configs/application.yml` < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
+- 没有 `configs/application.yml` 时，后端不会再自动暴露 `codex` / `claude` 等 CLI client；`/terminal/clients` 默认返回空列表。
 - 推荐用法：
 ```bash
-# 准备默认外层结构化配置
+# 如需启用 host 侧 CLI client 示例，再把 example 整理为真实配置
 cp configs/application.example.yml configs/application.yml
 
 # 后端本地开发（从 backend/ 目录启动，默认自动读取 ../configs/application.yml）
@@ -64,11 +65,13 @@ make dev-backend
 # CONFIG_PATH=./configs/config.prod.yml
 ```
 
-CLI client 如需单独代理，请在 `configs/application.yml` 的 `terminal.cli-clients[].env` 中显式声明；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。
+CLI client 如需单独代理，请在 `configs/application.yml` 的 `terminal.cli-clients[].env` 中显式声明；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。`configs/application.example.yml` 提供了带代理的 `codex` / `claude` / `kimi` / `glm` 示例，但只有复制或整理进真实的 `configs/application.yml` 后才会显示。
 
 示例：
 ```yaml
 terminal:
+  default-command: zsh
+  default-args: []
   cli-clients:
     - id: codex
       label: Codex
@@ -190,7 +193,7 @@ cp configs/mounts/docker-sock.example.json configs/mounts/docker-sock.json
 make docker-up
 ```
 
-`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。默认外层主配置是 `configs/application.yml`；容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。默认外层主配置是 `configs/application.yml`；容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`，并把普通 terminal 默认 shell 切到 `bash -l`。`configs/application.yml` 与 `configs/config.docker-host.yml` 不冲突：前者负责你显式维护的真实主配置，后者只负责 Docker 运行时覆盖；`configs/mounts/docker-sock.example.json` 也不冲突，它只负责把宿主机 Docker socket 挂进容器。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 挂载 JSON 固定字段：
 ```json
@@ -207,6 +210,7 @@ make docker-up
 - `readOnly` 可选，默认 `false`。
 - `kind` 可选，默认 `directory`；如果要控制宿主机 Docker，请额外提供一个 `kind=socket` 的 JSON，挂载 `/var/run/docker.sock`。
 - 生成后的 override 文件位于 `configs/generated/docker-compose.mounts.yml`，不手工维护。
+- `configs/mounts/docker-sock.example.json` 只定义挂载 `/var/run/docker.sock`，不会覆盖 `configs/config.docker-host.yml` 中的 terminal/files/workdir 配置。
 
 容器内终端执行 `docker ps`、`docker start`、`docker stop`、`docker logs` 时，实际操作的是宿主机 Docker daemon；文件浏览从 `/workspace` 开始，而单个会话的文件根取决于你创建会话时选择的具体工作目录。
 

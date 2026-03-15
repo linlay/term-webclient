@@ -124,6 +124,12 @@ export interface TerminalClientResponse {
   defaultWorkdir: string;
 }
 
+export interface TerminalDefaultsResponse {
+  command: string;
+  args: string[];
+  workdir: string;
+}
+
 export interface SshCredentialSummaryResponse {
   credentialId: string;
   title?: string | null;

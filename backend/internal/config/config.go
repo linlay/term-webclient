@@ -177,7 +177,7 @@ func defaultConfig() *Config {
 			Port:    8080,
 		},
 		Terminal: TerminalConfig{
-			DefaultCommand:         "codex",
+			DefaultCommand:         "zsh",
 			DefaultArgs:            []string{},
 			DefaultWorkdir:         ".",
 			WorkdirBrowseRoot:      home,
@@ -192,26 +192,7 @@ func defaultConfig() *Config {
 			TranscriptMaxChars:     200000,
 			RecentSessionsFile:     "data/recent-sessions.json",
 			RecentSessionsPerTool:  5,
-			CliClients: []CLIClientConfig{
-				{
-					ID:      "codex",
-					Label:   "Codex",
-					Command: "codex",
-					Args:    []string{},
-					Workdir: ".",
-					Env:     map[string]string{},
-					Shell:   "/bin/zsh",
-				},
-				{
-					ID:      "claude",
-					Label:   "Claude Code",
-					Command: "claude",
-					Args:    []string{},
-					Workdir: ".",
-					Env:     map[string]string{},
-					Shell:   "/bin/zsh",
-				},
-			},
+			CliClients:             []CLIClientConfig{},
 			Agent: AgentConfig{
 				Enabled:             true,
 				StepTimeoutSeconds:  15,

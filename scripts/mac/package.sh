@@ -11,6 +11,12 @@ APP_ENV="${APP_ENV:-production}"
 BACKEND_GOPROXY="${BACKEND_GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
 BACKEND_GOSUMDB="${BACKEND_GOSUMDB:-sum.golang.google.cn}"
 
+clear_dir_contents() {
+  local dir="$1"
+  mkdir -p "$dir"
+  find "$dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+}
+
 if [[ "$APP_ENV" != "development" && "$APP_ENV" != "production" ]]; then
   echo "[package] invalid APP_ENV: $APP_ENV (expected: development|production)"
   exit 1
@@ -20,10 +26,16 @@ command -v go >/dev/null 2>&1 || { echo "[package] go not found"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "[package] npm not found"; exit 1; }
 
 echo "[package] preparing release directory"
-mkdir -p "$OUTPUT_DIR"
-rm -rf "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/scripts" "$OUTPUT_DIR/configs"
+if [[ -z "$OUTPUT_DIR" || "$OUTPUT_DIR" = "/" ]]; then
+  echo "[package] refusing to remove unsafe output directory: $OUTPUT_DIR"
+  exit 1
+fi
+mkdir -p "$OUTPUT_DIR" "$OUTPUT_DIR/configs"
+clear_dir_contents "$OUTPUT_DIR/backend"
+clear_dir_contents "$OUTPUT_DIR/frontend"
+clear_dir_contents "$OUTPUT_DIR/run"
+clear_dir_contents "$OUTPUT_DIR/logs"
 rm -f "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
-mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend" "$OUTPUT_DIR/configs"
 
 echo "[package] building backend binary"
 (
@@ -53,7 +65,10 @@ echo "[package] installing frontend runtime dependencies"
 cp "$ROOT_DIR/.env.example" "$OUTPUT_DIR/.env.example"
 if [[ -d "$ROOT_DIR/configs" ]]; then
   while IFS= read -r config_path; do
-    cp "$config_path" "$OUTPUT_DIR/configs/"
+    target_path="$OUTPUT_DIR/configs/$(basename "$config_path")"
+    if [[ ! -e "$target_path" ]]; then
+      cp "$config_path" "$target_path"
+    fi
   done < <(find "$ROOT_DIR/configs" -maxdepth 1 -type f \( -name '*.example.pem' -o -name '*.example.yml' \) | sort)
 fi
 

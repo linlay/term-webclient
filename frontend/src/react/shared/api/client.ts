@@ -37,6 +37,7 @@ import type {
   SshPreflightResponse,
   SshCredentialSummaryResponse,
   TerminalClientResponse,
+  TerminalDefaultsResponse,
   WorkdirBrowseResponse
 } from "./types";
 
@@ -314,6 +315,10 @@ export const apiClient = {
 
   listTerminalClients(): Promise<TerminalClientResponse[]> {
     return request<TerminalClientResponse[]>("/terminal/clients");
+  },
+
+  getTerminalDefaults(): Promise<TerminalDefaultsResponse> {
+    return request<TerminalDefaultsResponse>("/terminal/defaults");
   },
 
   listSshCredentials(): Promise<SshCredentialSummaryResponse[]> {

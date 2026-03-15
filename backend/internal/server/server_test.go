@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -87,6 +88,64 @@ func TestDownloadTicketUsesModeSpecificPrefix(t *testing.T) {
 
 	assertDownloadPrefix("/webapi/sessions/s1/files/download-ticket", "/term/api/sessions/s1/files/download?ticket=")
 	assertDownloadPrefix("/appapi/sessions/s1/files/download-ticket", "/appterm/api/sessions/s1/files/download?ticket=")
+}
+
+func TestTerminalRoutesExposeDefaultsAndConfiguredClients(t *testing.T) {
+	app := newTestApp(t, func(cfg *config.Config) {
+		cfg.Terminal.DefaultCommand = "zsh"
+		cfg.Terminal.DefaultArgs = []string{}
+		cfg.Terminal.DefaultWorkdir = "/workspace"
+		cfg.Terminal.CliClients = []config.CLIClientConfig{
+			{
+				ID:      "codex",
+				Label:   "Codex",
+				Command: "codex",
+				Args:    []string{},
+				Workdir: ".",
+				Env: map[string]string{
+					"https_proxy": "http://127.0.0.1:8001",
+				},
+				Shell: "/bin/zsh",
+			},
+		}
+	})
+
+	defaultsReq := httptest.NewRequest(http.MethodGet, "/webapi/terminal/defaults", nil)
+	defaultsRecorder := httptest.NewRecorder()
+	app.Handler().ServeHTTP(defaultsRecorder, defaultsReq)
+	if defaultsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected defaults status 200, got %d", defaultsRecorder.Code)
+	}
+	var defaultsResponse map[string]any
+	if err := json.Unmarshal(defaultsRecorder.Body.Bytes(), &defaultsResponse); err != nil {
+		t.Fatalf("decode defaults response: %v", err)
+	}
+	if defaultsResponse["command"] != "zsh" {
+		t.Fatalf("expected defaults command zsh, got %#v", defaultsResponse)
+	}
+	if defaultsResponse["workdir"] != "/workspace" {
+		t.Fatalf("expected defaults workdir /workspace, got %#v", defaultsResponse)
+	}
+	if args, ok := defaultsResponse["args"].([]any); !ok || !reflect.DeepEqual(args, []any{}) {
+		t.Fatalf("expected defaults args [], got %#v", defaultsResponse["args"])
+	}
+
+	clientsReq := httptest.NewRequest(http.MethodGet, "/webapi/terminal/clients", nil)
+	clientsRecorder := httptest.NewRecorder()
+	app.Handler().ServeHTTP(clientsRecorder, clientsReq)
+	if clientsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected clients status 200, got %d", clientsRecorder.Code)
+	}
+	var clientsResponse []map[string]any
+	if err := json.Unmarshal(clientsRecorder.Body.Bytes(), &clientsResponse); err != nil {
+		t.Fatalf("decode clients response: %v", err)
+	}
+	if len(clientsResponse) != 1 {
+		t.Fatalf("expected 1 configured client, got %#v", clientsResponse)
+	}
+	if clientsResponse[0]["id"] != "codex" {
+		t.Fatalf("expected codex client, got %#v", clientsResponse)
+	}
 }
 
 func newTestApp(t *testing.T, mutate func(cfg *config.Config)) *App {

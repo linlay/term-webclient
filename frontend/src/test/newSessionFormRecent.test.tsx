@@ -43,6 +43,11 @@ beforeEach(() => {
   });
 
   vi.spyOn(apiClient, "listTerminalClients").mockResolvedValue([]);
+  vi.spyOn(apiClient, "getTerminalDefaults").mockResolvedValue({
+    command: "zsh",
+    args: [],
+    workdir: "/tmp"
+  });
   vi.spyOn(apiClient, "listSshCredentials").mockResolvedValue([]);
   vi.spyOn(apiClient, "getWorkdirTree").mockResolvedValue({
     rootPath: "/tmp",
@@ -177,8 +182,8 @@ describe("NewSessionForm recent + ssh title", () => {
       sessionType: "LOCAL_PTY",
       toolId: "terminal",
       tabTitle: "/tmp",
-      command: "bash",
-      args: ["-l"],
+      command: "zsh",
+      args: [],
       workdir: "/tmp"
     });
     expect(onCreated).toHaveBeenCalledTimes(1);

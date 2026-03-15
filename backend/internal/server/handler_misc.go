@@ -105,26 +105,37 @@ func (a *App) handleSSH(w http.ResponseWriter, r *http.Request, segments []strin
 }
 
 func (a *App) handleTerminal(w http.ResponseWriter, r *http.Request, segments []string) {
-	if len(segments) != 1 || segments[0] != "clients" || r.Method != http.MethodGet {
+	if len(segments) != 1 || r.Method != http.MethodGet {
 		http.NotFound(w, r)
 		return
 	}
-	clients := make([]model.TerminalClientResponse, 0, len(a.cfg.Terminal.CliClients))
-	for _, client := range a.cfg.Terminal.CliClients {
-		if strings.TrimSpace(client.ID) == "" {
-			continue
+	switch segments[0] {
+	case "clients":
+		clients := make([]model.TerminalClientResponse, 0, len(a.cfg.Terminal.CliClients))
+		for _, client := range a.cfg.Terminal.CliClients {
+			if strings.TrimSpace(client.ID) == "" {
+				continue
+			}
+			defaultWorkdir := client.Workdir
+			if strings.TrimSpace(defaultWorkdir) == "" {
+				defaultWorkdir = a.cfg.Terminal.DefaultWorkdir
+			}
+			clients = append(clients, model.TerminalClientResponse{
+				ID:             strings.TrimSpace(client.ID),
+				Label:          util.FallbackString(client.Label, client.ID),
+				DefaultWorkdir: defaultWorkdir,
+			})
 		}
-		defaultWorkdir := client.Workdir
-		if strings.TrimSpace(defaultWorkdir) == "" {
-			defaultWorkdir = a.cfg.Terminal.DefaultWorkdir
-		}
-		clients = append(clients, model.TerminalClientResponse{
-			ID:             strings.TrimSpace(client.ID),
-			Label:          util.FallbackString(client.Label, client.ID),
-			DefaultWorkdir: defaultWorkdir,
+		writeJSON(w, http.StatusOK, clients)
+	case "defaults":
+		writeJSON(w, http.StatusOK, model.TerminalDefaultsResponse{
+			Command: strings.TrimSpace(a.cfg.Terminal.DefaultCommand),
+			Args:    append([]string{}, a.cfg.Terminal.DefaultArgs...),
+			Workdir: util.FallbackString(a.cfg.Terminal.DefaultWorkdir, "."),
 		})
+	default:
+		http.NotFound(w, r)
 	}
-	writeJSON(w, http.StatusOK, clients)
 }
 
 func (a *App) handleWorkdir(w http.ResponseWriter, r *http.Request) {

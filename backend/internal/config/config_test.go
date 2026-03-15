@@ -39,8 +39,11 @@ func TestLoadUsesEmbeddedDefaultsWithoutExternalConfig(t *testing.T) {
 	if cfg.Server.Port != 11937 {
 		t.Fatalf("expected env override port 11937, got %d", cfg.Server.Port)
 	}
-	if len(cfg.Terminal.CliClients) != 2 {
-		t.Fatalf("expected embedded cli clients, got %d", len(cfg.Terminal.CliClients))
+	if cfg.Terminal.DefaultCommand != "zsh" {
+		t.Fatalf("expected embedded default command zsh, got %q", cfg.Terminal.DefaultCommand)
+	}
+	if len(cfg.Terminal.CliClients) != 0 {
+		t.Fatalf("expected embedded cli clients to be empty, got %d", len(cfg.Terminal.CliClients))
 	}
 	if len(cfg.Copilot.Agents) != 1 || cfg.Copilot.Agents[0].Key != "default-assist" || !cfg.Copilot.Agents[0].Default {
 		t.Fatalf("expected builtin copilot assist as only default agent, got %#v", cfg.Copilot.Agents)

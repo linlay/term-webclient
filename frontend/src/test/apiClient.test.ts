@@ -50,6 +50,19 @@ describe("apiClient", () => {
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/workdirTree?path=%2Ftmp%2Fmy+folder");
   });
 
+  it("requests terminal defaults", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockJsonResponse({
+        command: "zsh",
+        args: [],
+        workdir: "."
+      })
+    );
+
+    await apiClient.getTerminalDefaults();
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/term/api/terminal/defaults");
+  });
+
   it("builds query strings while skipping empty values", () => {
     expect(buildQuery({
       path: "/tmp/my folder",

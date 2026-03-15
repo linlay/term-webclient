@@ -1,7 +1,11 @@
 # User-editable structured config loaded automatically from `configs/application.yml`.
 # Copy this file to `configs/application.yml`, then adjust only the entries you need.
+# Ordinary `terminal` tabs use backend defaults and do not inherit proxy env.
+# Only CLI clients declared below receive explicit proxy env.
 
 terminal:
+  default-command: zsh
+  default-args: []
   default-workdir: .
   cli-clients:
     - id: codex
@@ -9,27 +13,36 @@ terminal:
       command: codex
       args: []
       workdir: .
-      env: {}
+      env:
+        http_proxy: http://127.0.0.1:8001
+        https_proxy: http://127.0.0.1:8001
       shell: /bin/zsh
     - id: claude
       label: Claude Code
       command: claude
       args: []
       workdir: .
-      env: {}
+      env:
+        http_proxy: http://127.0.0.1:8001
+        https_proxy: http://127.0.0.1:8001
+      shell: /bin/zsh
+    - id: kimi
+      label: Kimi
+      command: kimi
+      args: []
+      workdir: .
+      env:
+        http_proxy: http://127.0.0.1:8001
+        https_proxy: http://127.0.0.1:8001
+      shell: /bin/zsh
+    - id: glm
+      label: GLM
+      command: glm
+      args: []
+      workdir: .
+      env:
+        http_proxy: http://127.0.0.1:8001
+        https_proxy: http://127.0.0.1:8001
       shell: /bin/zsh
 
-# To give a specific CLI client a proxy, declare it explicitly instead of relying
-# on the backend process environment.
-#
-# terminal:
-#   cli-clients:
-#     - id: codex
-#       label: Codex
-#       command: codex
-#       args: []
-#       workdir: .
-#       env:
-#         http_proxy: http://127.0.0.1:8001
-#         https_proxy: http://127.0.0.1:8001
-#       shell: /bin/zsh
+# Remove or replace any CLI client whose command is not installed on your host.

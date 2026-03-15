@@ -3,7 +3,7 @@ server:
   port: 8080
 
 terminal:
-  default-command: codex
+  default-command: zsh
   default-args: []
   default-workdir: .
   allowed-origins:
@@ -19,21 +19,7 @@ terminal:
   transcript-max-chars: 200000
   recent-sessions-file: data/recent-sessions.json
   recent-sessions-per-tool: 5
-  cli-clients:
-    - id: codex
-      label: Codex
-      command: codex
-      args: []
-      workdir: .
-      env: {}
-      shell: /bin/zsh
-    - id: claude
-      label: Claude Code
-      command: claude
-      args: []
-      workdir: .
-      env: {}
-      shell: /bin/zsh
+  cli-clients: []
   agent:
     enabled: true
     step-timeout-seconds: 15

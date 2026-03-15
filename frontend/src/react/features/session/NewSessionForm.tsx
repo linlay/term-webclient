@@ -9,6 +9,7 @@ import type {
   SessionType,
   SshCredentialSummaryResponse,
   TerminalClientResponse,
+  TerminalDefaultsResponse,
   WorkdirEntry,
   WorkdirBrowseResponse
 } from "../../shared/api/types";
@@ -124,8 +125,11 @@ function formatRecentSessionLabel(item: RecentSessionItemResponse): string {
 }
 
 const ROOT_WORKDIR_LOADING_KEY = "__root__";
-const DEFAULT_TERMINAL_COMMAND = "bash";
-const DEFAULT_TERMINAL_ARGS = "-l";
+const EMPTY_TERMINAL_DEFAULTS: TerminalDefaultsResponse = {
+  command: "",
+  args: [],
+  workdir: "."
+};
 
 interface VisibleWorkdirEntry {
   depth: number;
@@ -136,10 +140,12 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [toolId, setToolId] = useState("terminal");
   const [terminalClients, setTerminalClients] = useState<TerminalClientResponse[]>([]);
   const [terminalClientsError, setTerminalClientsError] = useState("");
+  const [terminalDefaults, setTerminalDefaults] = useState<TerminalDefaultsResponse>(EMPTY_TERMINAL_DEFAULTS);
+  const [terminalDefaultsError, setTerminalDefaultsError] = useState("");
 
   const [title, setTitle] = useState("");
-  const [command, setCommand] = useState(DEFAULT_TERMINAL_COMMAND);
-  const [args, setArgs] = useState(DEFAULT_TERMINAL_ARGS);
+  const [command, setCommand] = useState("");
+  const [args, setArgs] = useState("");
   const [workdir, setWorkdir] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -212,6 +218,11 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     () => Object.keys(workdirLoadingMap).length > 0,
     [workdirLoadingMap]
   );
+  const terminalArgsPlaceholder = useMemo(
+    () => terminalDefaults.args.join(" "),
+    [terminalDefaults.args]
+  );
+  const terminalConfigError = terminalClientsError || terminalDefaultsError;
 
   const visibleWorkdirEntries = useMemo<VisibleWorkdirEntry[]>(() => {
     if (!workdirTree) {
@@ -242,22 +253,25 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   useEffect(() => {
     if (toolId === "terminal") {
       if (!command.trim()) {
-        setCommand(DEFAULT_TERMINAL_COMMAND);
+        setCommand(terminalDefaults.command);
       }
       if (!args.trim()) {
-        setArgs(DEFAULT_TERMINAL_ARGS);
+        setArgs(terminalArgsPlaceholder);
+      }
+      if (!workdir.trim()) {
+        setWorkdir(terminalDefaults.workdir || workdirTree?.currentPath || ".");
       }
       return;
     }
     if (selectedClient && !workdir.trim()) {
-      setWorkdir(selectedClient.defaultWorkdir || workdirTree?.currentPath || ".");
+      setWorkdir(selectedClient.defaultWorkdir || terminalDefaults.workdir || workdirTree?.currentPath || ".");
     }
-  }, [args, command, selectedClient, toolId, workdir, workdirTree]);
+  }, [args, command, selectedClient, terminalArgsPlaceholder, terminalDefaults.command, terminalDefaults.workdir, toolId, workdir, workdirTree]);
 
   useEffect(() => {
     void refreshCredentials();
     void browseWorkdir();
-    void refreshTerminalClients();
+    void refreshTerminalConfig();
     void refreshRecentSessions(toolId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -273,17 +287,29 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolId]);
 
-  async function refreshTerminalClients(): Promise<void> {
+  async function refreshTerminalConfig(): Promise<void> {
     setTerminalClientsError("");
+    setTerminalDefaultsError("");
     try {
-      const next = await apiClient.listTerminalClients();
-      setTerminalClients(next);
-      const validIds = new Set(["terminal", "ssh", ...next.map((item) => item.id)]);
+      const [nextClients, nextDefaults] = await Promise.all([
+        apiClient.listTerminalClients(),
+        apiClient.getTerminalDefaults()
+      ]);
+      setTerminalClients(nextClients);
+      setTerminalDefaults(nextDefaults);
+      if (toolId === "terminal") {
+        setCommand((prev) => prev.trim() ? prev : nextDefaults.command);
+        setArgs((prev) => prev.trim() ? prev : nextDefaults.args.join(" "));
+        setWorkdir((prev) => prev.trim() ? prev : (nextDefaults.workdir || "."));
+      }
+      const validIds = new Set(["terminal", "ssh", ...nextClients.map((item) => item.id)]);
       if (!validIds.has(toolId)) {
         setToolId("terminal");
       }
     } catch (e) {
-      setTerminalClientsError(e instanceof Error ? e.message : "Failed to load terminal clients");
+      const message = e instanceof Error ? e.message : "Failed to load terminal config";
+      setTerminalClientsError(message);
+      setTerminalDefaultsError(message);
     }
   }
 
@@ -466,12 +492,8 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
 
     const resolvedToolId = (sourceRequest.toolId || item.toolId || "").trim();
     if (resolvedToolId === "terminal") {
-      if (sourceRequest.command && sourceRequest.command.trim()) {
-        setCommand(sourceRequest.command.trim());
-      }
-      if (sourceRequest.args) {
-        setArgs(sourceRequest.args.join(" "));
-      }
+      setCommand(sourceRequest.command?.trim() || terminalDefaults.command);
+      setArgs(sourceRequest.args ? sourceRequest.args.join(" ") : terminalDefaults.args.join(" "));
     }
   }
 
@@ -533,9 +555,9 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
         sessionType: "LOCAL_PTY",
         toolId: "terminal",
         tabTitle: titleText || (workdir.trim() || workdirTree?.currentPath || "."),
-        command: command.trim() || DEFAULT_TERMINAL_COMMAND,
+        command: command.trim() || terminalDefaults.command,
         args: parsedArgs,
-        workdir: workdir.trim() || workdirTree?.currentPath || "."
+        workdir: workdir.trim() || terminalDefaults.workdir || workdirTree?.currentPath || "."
       };
     }
 
@@ -644,7 +666,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
           ))}
         </select>
       </div>
-      {terminalClientsError && <div className="tree-status error">{terminalClientsError}</div>}
+      {terminalConfigError && <div className="tree-status error">{terminalConfigError}</div>}
 
       {toolId !== "ssh" && (
         <>
@@ -757,7 +779,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
                 id="new-session-command"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
-                placeholder={DEFAULT_TERMINAL_COMMAND}
+                placeholder={terminalDefaults.command || "command"}
               />
 
               <label className="field-label" htmlFor="new-session-args">Args</label>
@@ -765,7 +787,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
                 id="new-session-args"
                 value={args}
                 onChange={(event) => setArgs(event.target.value)}
-                placeholder="-l"
+                placeholder={terminalArgsPlaceholder || "args"}
               />
             </section>
           )}
