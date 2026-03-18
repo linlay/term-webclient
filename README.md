@@ -49,6 +49,9 @@ make test-frontend
 - 配置优先级：内置默认值 < `configs/application.yml` < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
 - 没有 `configs/application.yml` 时，后端不会再自动暴露 `codex` / `claude` 等 CLI client；`/terminal/clients` 默认返回空列表。
+- `terminal.detached-session-ttl-seconds` 控制的是“最后一个 WebSocket 客户端断开后，session 还能保留多久”。
+- `terminal.detached-session-ttl-seconds` 不是 shell 自身 idle timeout，也不等于登录态过期时间。
+- Web 登录态过期由 `.env` 中的 `AUTH_SESSION_TTL_SECONDS` 控制；它与 detached session 保留时间是两套独立机制。
 - 推荐用法：
 ```bash
 # 如需启用 host 侧 CLI client 示例，再把 example 整理为真实配置
@@ -70,6 +73,7 @@ CLI client 如需单独代理，请在 `configs/application.yml` 的 `terminal.c
 示例：
 ```yaml
 terminal:
+  detached-session-ttl-seconds: 86400
   default-command: zsh
   default-args: []
   cli-clients:
@@ -83,6 +87,8 @@ terminal:
         https_proxy: http://127.0.0.1:8001
       shell: /bin/zsh
 ```
+
+如果你希望浏览器标签页、机器休眠或网络断开后，第二天还能重新接回前一晚的 terminal session，推荐把 `terminal.detached-session-ttl-seconds` 设为 `86400`（24 小时）。当前工作区已经采用这个值作为本地运行配置。
 
 ### Copilot Runner Agents
 - Copilot 内置始终保留一个 builtin assist agent；runner-backed agents 改为从固定文件 `configs/agents.yml` 加载，不依赖 `CONFIG_PATH`。

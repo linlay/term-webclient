@@ -66,6 +66,7 @@ func TestLoadAppliesRuntimeApplicationConfigWithoutConfigPath(t *testing.T) {
 	runtimeConfig := "" +
 		"server:\n  port: 22000\n" +
 		"terminal:\n" +
+		"  detached-session-ttl-seconds: 86400\n" +
 		"  recent-sessions-per-tool: 9\n" +
 		"  cli-clients:\n" +
 		"    - id: codex\n" +
@@ -100,6 +101,9 @@ func TestLoadAppliesRuntimeApplicationConfigWithoutConfigPath(t *testing.T) {
 	}
 	if cfg.Terminal.RecentSessionsPerTool != 9 {
 		t.Fatalf("expected runtime application config to override recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
+	}
+	if cfg.Terminal.DetachedSessionTTL != 86400 {
+		t.Fatalf("expected runtime application config detached session ttl override, got %d", cfg.Terminal.DetachedSessionTTL)
 	}
 	if len(cfg.Terminal.CliClients) != 1 {
 		t.Fatalf("expected runtime application config cli clients, got %d", len(cfg.Terminal.CliClients))
