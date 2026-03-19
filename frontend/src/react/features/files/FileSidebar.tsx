@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../shared/api/client";
 import type { FileTreeEntryResponse, UploadConflictPolicy } from "../../shared/api/types";
+import { createUploadId, triggerBrowserDownload } from "../../shared/utils/fileTransfer";
 import { useFileTransferStore, type UploadQueueItem } from "./useFileTransferStore";
 
 type NoticeType = "info" | "warn" | "error" | "success";
@@ -9,10 +10,6 @@ interface FileSidebarProps {
   sessionId: string;
   fileRootPath: string;
   onNotice: (message: string, type?: NoticeType) => void;
-}
-
-function createUploadId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function isDirectory(entry: FileTreeEntryResponse | undefined): boolean {
@@ -33,16 +30,6 @@ function formatBytes(size: number): string {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function triggerBrowserDownload(url: string): void {
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.rel = "noopener";
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
 }
 
 export function FileSidebar({ sessionId, fileRootPath, onNotice }: FileSidebarProps): JSX.Element {

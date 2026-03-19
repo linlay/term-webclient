@@ -1,0 +1,9 @@
+id: codex
+label: Codex
+command: codex
+args: []
+workdir: .
+env:
+  http_proxy: http://127.0.0.1:8001
+  https_proxy: http://127.0.0.1:8001
+shell: /bin/zsh

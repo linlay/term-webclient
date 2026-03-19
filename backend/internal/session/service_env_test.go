@@ -12,6 +12,7 @@ func TestBuildLocalSessionEnvOmitsProcessProxyVariables(t *testing.T) {
 	t.Setenv("LC_CTYPE", "en_US.UTF-8")
 	t.Setenv("TMPDIR", "/tmp/term-webclient")
 	t.Setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock")
+	t.Setenv("TERM", "")
 	t.Setenv("http_proxy", "http://127.0.0.1:8001")
 	t.Setenv("https_proxy", "http://127.0.0.1:8001")
 	t.Setenv("NO_PROXY", "localhost,127.0.0.1")

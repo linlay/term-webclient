@@ -25,6 +25,7 @@ var envPlaceholderPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::
 const (
 	applicationConfigRelativePath = "configs/application.yml"
 	assistConfigRelativePath      = "configs/assist.yml"
+	cliClientsConfigDirPath       = "configs/cli-clients"
 )
 
 type Config struct {
@@ -48,7 +49,7 @@ type TerminalConfig struct {
 	DefaultWorkdir         string            `yaml:"default-workdir"`
 	WorkdirBrowseRoot      string            `yaml:"workdir-browse-root"`
 	AllowedOrigins         []string          `yaml:"allowed-origins"`
-	DetachedSessionTTL     int               `yaml:"detached-session-ttl-seconds"`
+	DetachedSessionTTL     int               `yaml:"detached-session-ttl-seconds" env:"TERMINAL_DETACHED_SESSION_TTL_SECONDS"`
 	RingBufferMaxBytes     int               `yaml:"ring-buffer-max-bytes"`
 	RingBufferMaxChunks    int               `yaml:"ring-buffer-max-chunks"`
 	MaxCols                int               `yaml:"max-cols"`
@@ -259,16 +260,17 @@ func defaultConfig() *Config {
 
 func Load() (*Config, error) {
 	cfg := defaultConfig()
-	effectiveValues := envToMap(os.Environ())
+	processEnv := envToMap(os.Environ())
 
 	overrides, envBaseDir, err := loadEnvFiles()
 	if err != nil {
 		return nil, err
 	}
+	effectiveValues := map[string]string{}
 	for key, value := range overrides {
 		effectiveValues[key] = value
 	}
-	for key, value := range envToMap(os.Environ()) {
+	for key, value := range processEnv {
 		effectiveValues[key] = value
 	}
 
@@ -278,25 +280,28 @@ func Load() (*Config, error) {
 	runtimeApplicationConfigPath := resolveRuntimeConfigPath(applicationConfigRelativePath, envBaseDir)
 	configPath := strings.TrimSpace(effectiveValues["CONFIG_PATH"])
 	if configPath != "" && sameConfigFile(runtimeApplicationConfigPath, configPath) {
-		if err := mergeYAMLFile(cfg, configPath, effectiveValues, true); err != nil {
+		if err := mergeMainConfigFile(cfg, configPath, effectiveValues, true); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := mergeYAMLFile(cfg, runtimeApplicationConfigPath, effectiveValues, false); err != nil {
+		if err := mergeMainConfigFile(cfg, runtimeApplicationConfigPath, effectiveValues, false); err != nil {
 			return nil, err
 		}
 		if configPath != "" {
-			if err := mergeYAMLFile(cfg, configPath, effectiveValues, true); err != nil {
+			if err := mergeMainConfigFile(cfg, configPath, effectiveValues, true); err != nil {
 				return nil, err
 			}
 		}
 	}
-	if err := mergeYAMLFile(cfg, resolveRuntimeConfigPath(assistConfigRelativePath, envBaseDir), effectiveValues, false); err != nil {
+	if err := loadAssistConfig(cfg, envBaseDir, effectiveValues); err != nil {
+		return nil, err
+	}
+	if err := loadCLIClients(cfg, envBaseDir, effectiveValues); err != nil {
 		return nil, err
 	}
 
 	applyEnvMapFromTags(cfg, overrides)
-	applyEnvMapFromTags(cfg, envToMap(os.Environ()))
+	applyEnvMapFromTags(cfg, processEnv)
 	if err := loadCopilotAgents(cfg, envBaseDir, effectiveValues); err != nil {
 		return nil, err
 	}
@@ -320,25 +325,26 @@ func envCandidates() []string {
 }
 
 func mergeYAMLFile(cfg *Config, filePath string, placeholderValues map[string]string, required bool) error {
-	info, err := os.Stat(filePath)
+	payload, ok, err := readConfigFile(filePath, required)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if required {
-				return fmt.Errorf("required config file not found: %s", filePath)
-			}
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", filePath, err)
+		return err
 	}
-	if info.IsDir() {
-		if required {
-			return fmt.Errorf("required config path is a directory: %s", filePath)
-		}
+	if !ok {
 		return nil
 	}
-	payload, err := os.ReadFile(filePath)
+	return mergeYAMLBytes(cfg, payload, placeholderValues, filePath)
+}
+
+func mergeMainConfigFile(cfg *Config, filePath string, placeholderValues map[string]string, required bool) error {
+	payload, ok, err := readConfigFile(filePath, required)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", filePath, err)
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if err := validateLegacyStructuredConfigKeys(payload, filePath); err != nil {
+		return err
 	}
 	return mergeYAMLBytes(cfg, payload, placeholderValues, filePath)
 }
@@ -348,13 +354,53 @@ func mergeYAMLBytes(cfg *Config, payload []byte, placeholderValues map[string]st
 		return nil
 	}
 	payload = []byte(expandEnvPlaceholders(string(payload), placeholderValues))
-	if err := rejectLegacyCopilotAgentsConfig(payload, source); err != nil {
-		return err
-	}
 	if err := yaml.Unmarshal(payload, cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", source, err)
 	}
 	return nil
+}
+
+func loadAssistConfig(cfg *Config, envBaseDir string, placeholderValues map[string]string) error {
+	filePath := resolveRuntimeConfigPath(assistConfigRelativePath, envBaseDir)
+	payload, ok, err := readConfigFile(filePath, false)
+	if err != nil {
+		return err
+	}
+	if !ok || len(strings.TrimSpace(string(payload))) == 0 {
+		return nil
+	}
+	if err := validateAssistFileShape(payload, filePath); err != nil {
+		return err
+	}
+	payload = []byte(expandEnvPlaceholders(string(payload), placeholderValues))
+	if err := yaml.Unmarshal(payload, &cfg.Assist); err != nil {
+		return fmt.Errorf("parse %s: %w", filePath, err)
+	}
+	return nil
+}
+
+func readConfigFile(filePath string, required bool) ([]byte, bool, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if required {
+				return nil, false, fmt.Errorf("required config file not found: %s", filePath)
+			}
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("stat %s: %w", filePath, err)
+	}
+	if info.IsDir() {
+		if required {
+			return nil, false, fmt.Errorf("required config path is a directory: %s", filePath)
+		}
+		return nil, false, nil
+	}
+	payload, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", filePath, err)
+	}
+	return payload, true, nil
 }
 
 func loadEnvFiles() (map[string]string, string, error) {
@@ -571,6 +617,45 @@ func applyEnvValues(target reflect.Value, values map[string]string) {
 	}
 }
 
+func validateLegacyStructuredConfigKeys(payload []byte, source string) error {
+	var raw map[string]any
+	if err := yaml.Unmarshal(payload, &raw); err != nil {
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	if _, ok := raw["assist"]; ok {
+		return fmt.Errorf("%s uses removed top-level assist; move assist config to %s with a flat structure", source, assistConfigRelativePath)
+	}
+	terminalValue, ok := raw["terminal"]
+	if !ok {
+		return nil
+	}
+	terminalMap, ok := terminalValue.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if _, ok := terminalMap["cli-clients"]; ok {
+		return fmt.Errorf("%s uses removed terminal.cli-clients; move CLI clients to %s/*.yml", source, cliClientsConfigDirPath)
+	}
+	return nil
+}
+
+func validateAssistFileShape(payload []byte, source string) error {
+	var raw map[string]any
+	if err := yaml.Unmarshal(payload, &raw); err != nil {
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	if _, ok := raw["assist"]; ok {
+		return fmt.Errorf("%s must not contain top-level assist; define assist fields directly", source)
+	}
+	return nil
+}
+
 func applyTaggedEnvValue(target reflect.Value, envKey string, values map[string]string) {
 	raw, ok := values[envKey]
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -680,34 +765,6 @@ func parseRSAPublicKeyPEM(payload []byte) (*rsa.PublicKey, error) {
 		return nil, errors.New("rsa parse failed")
 	}
 	return rsaKey, nil
-}
-
-func getenvMap(values map[string]string, key, fallback string) string {
-	if raw, ok := values[key]; ok && strings.TrimSpace(raw) != "" {
-		return strings.TrimSpace(raw)
-	}
-	return fallback
-}
-
-func getenvIntMap(values map[string]string, key string, fallback int) int {
-	if raw, ok := values[key]; ok && strings.TrimSpace(raw) != "" {
-		if parsed, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
-			return parsed
-		}
-	}
-	return fallback
-}
-
-func getenvBoolMap(values map[string]string, key string, fallback bool) bool {
-	if raw, ok := values[key]; ok && strings.TrimSpace(raw) != "" {
-		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "1", "true", "yes", "on":
-			return true
-		case "0", "false", "no", "off":
-			return false
-		}
-	}
-	return fallback
 }
 
 func getenv(key, fallback string) string {

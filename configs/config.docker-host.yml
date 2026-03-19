@@ -4,7 +4,6 @@ terminal:
     - -l
   default-workdir: /workspace
   workdir-browse-root: /workspace
-  cli-clients: []
   files:
     enabled: true
     default-root-scope: SESSION_WORKDIR

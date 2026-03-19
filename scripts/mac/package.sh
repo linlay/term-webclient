@@ -35,6 +35,7 @@ clear_dir_contents "$OUTPUT_DIR/backend"
 clear_dir_contents "$OUTPUT_DIR/frontend"
 clear_dir_contents "$OUTPUT_DIR/run"
 clear_dir_contents "$OUTPUT_DIR/logs"
+mkdir -p "$OUTPUT_DIR/configs/cli-clients"
 rm -f "$OUTPUT_DIR/start.sh" "$OUTPUT_DIR/stop.sh"
 
 echo "[package] building backend binary"
@@ -70,6 +71,15 @@ if [[ -d "$ROOT_DIR/configs" ]]; then
       cp "$config_path" "$target_path"
     fi
   done < <(find "$ROOT_DIR/configs" -maxdepth 1 -type f \( -name '*.example.pem' -o -name '*.example.yml' \) | sort)
+fi
+
+if [[ -d "$ROOT_DIR/configs/cli-clients" ]]; then
+  while IFS= read -r config_path; do
+    target_path="$OUTPUT_DIR/configs/cli-clients/$(basename "$config_path")"
+    if [[ ! -e "$target_path" ]]; then
+      cp "$config_path" "$target_path"
+    fi
+  done < <(find "$ROOT_DIR/configs/cli-clients" -maxdepth 1 -type f -name '*.example.yml' | sort)
 fi
 
 cp "$SCRIPT_DIR/start.sh" "$OUTPUT_DIR/start.sh"

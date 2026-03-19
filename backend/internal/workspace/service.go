@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"bytes"
 	"net/http"
 	"os"
 	"os/exec"
@@ -205,11 +204,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func trimToMax(text []byte, maxChars int) string {
-	if len(text) <= maxChars {
-		return string(text)
-	}
-	return string(bytes.TrimSpace(text[:maxChars]))
 }

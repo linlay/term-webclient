@@ -4,8 +4,6 @@
 # local workspace
 AGENTS.md
 .env
-/application.yml
-.husky/_
 
 # dependencies
 node_modules/
@@ -14,7 +12,6 @@ frontend/node_modules/
 # backend
 backend/target/
 backend/data/
-backend/application.yml
 .gocache/
 .gomodcache/
 
@@ -31,6 +28,8 @@ configs/generated/*
 !configs/generated/.gitkeep
 configs/mounts/*.json
 !configs/mounts/*.example.json
+configs/cli-clients/*.yml
+!configs/cli-clients/*.example.yml
 configs/*.yml
 !configs/*.example.yml
 !configs/config.docker-host.yml

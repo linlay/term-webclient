@@ -44,51 +44,46 @@ make test-frontend
 ## 3. 配置说明
 - 根目录 `.env.example` 是唯一的环境变量契约；本地真实值写入根目录 `.env`，该文件不提交。
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
-- 外部结构化主配置默认从 `configs/application.yml` 自动读取；只有需要切换到其他 YAML 时，才通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不再从该 YAML 读取。
-- `configs/` 同时用于存放默认主配置、App JWT 本地公钥 PEM 文件和 Copilot runner agent 配置；仓库提供 `configs/application.example.yml`、`configs/local-public-key.example.pem` 与 `configs/agents.example.yml` 作为示例。
-- 配置优先级：内置默认值 < `configs/application.yml` < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
+- 外部结构化主配置只在需要时通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不走该 YAML，Assist 也不走该 YAML。
+- `configs/` 用于存放 CLI client 示例目录、App JWT 本地公钥 PEM 文件、Copilot runner agent 配置、Assist 配置和 Docker 挂载定义。
+- 配置优先级：内置默认值 < `CONFIG_PATH` 指向的 YAML < `.env` / 系统环境变量。
 - `.env.example` 采用“示例启用”写法：Web bcrypt 登录和 App JWT 验签都默认写成开启态，但你必须先填入真实值再运行。
-- 没有 `configs/application.yml` 时，后端不会再自动暴露 `codex` / `claude` 等 CLI client；`/terminal/clients` 默认返回空列表。
-- `terminal.detached-session-ttl-seconds` 控制的是“最后一个 WebSocket 客户端断开后，session 还能保留多久”。
-- `terminal.detached-session-ttl-seconds` 不是 shell 自身 idle timeout，也不等于登录态过期时间。
+- CLI clients 改为从 `configs/cli-clients/*.yml` 扫描；没有真实 `.yml` 文件时，`/terminal/clients` 默认返回空列表。
+- `TERMINAL_DETACHED_SESSION_TTL_SECONDS` 控制的是“最后一个 WebSocket 客户端断开后，session 还能保留多久”。
+- `TERMINAL_DETACHED_SESSION_TTL_SECONDS` 不是 shell 自身 idle timeout，也不等于登录态过期时间。
 - Web 登录态过期由 `.env` 中的 `AUTH_SESSION_TTL_SECONDS` 控制；它与 detached session 保留时间是两套独立机制。
 - 推荐用法：
 ```bash
 # 如需启用 host 侧 CLI client 示例，再把 example 整理为真实配置
-cp configs/application.example.yml configs/application.yml
+cp configs/cli-clients/codex.example.yml configs/cli-clients/codex.yml
 
-# 后端本地开发（从 backend/ 目录启动，默认自动读取 ../configs/application.yml）
+# 后端本地开发
 make dev-backend
 
 # Docker Compose 固定使用容器专用配置
 # 宿主机挂载定义写在 configs/mounts/*.json
 # make docker-up
 
-# 发布包（从 release 根启动；如需改用其他 YAML，再在 .env 中设置）
+# 发布包（从 release 根启动；如需额外结构化覆盖，再在 .env 中设置）
 # CONFIG_PATH=./configs/config.prod.yml
 ```
 
-CLI client 如需单独代理，请在 `configs/application.yml` 的 `terminal.cli-clients[].env` 中显式声明；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。`configs/application.example.yml` 提供了带代理的 `codex` / `claude` / `kimi` / `glm` 示例，但只有复制或整理进真实的 `configs/application.yml` 后才会显示。
+CLI client 如需单独代理，请在对应的 `configs/cli-clients/*.yml` 里显式声明 `env`；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。仓库提供 `configs/cli-clients/codex.example.yml` 与 `configs/cli-clients/claude.example.yml` 作为示例，只有复制成非 example 文件后才会显示。
 
 示例：
 ```yaml
-terminal:
-  detached-session-ttl-seconds: 86400
-  default-command: zsh
-  default-args: []
-  cli-clients:
-    - id: codex
-      label: Codex
-      command: codex
-      args: []
-      workdir: .
-      env:
-        http_proxy: http://127.0.0.1:8001
-        https_proxy: http://127.0.0.1:8001
-      shell: /bin/zsh
+id: codex
+label: Codex
+command: codex
+args: []
+workdir: .
+env:
+  http_proxy: http://127.0.0.1:8001
+  https_proxy: http://127.0.0.1:8001
+shell: /bin/zsh
 ```
 
-如果你希望浏览器标签页、机器休眠或网络断开后，第二天还能重新接回前一晚的 terminal session，推荐把 `terminal.detached-session-ttl-seconds` 设为 `86400`（24 小时）。当前工作区已经采用这个值作为本地运行配置。
+如果你希望浏览器标签页、机器休眠或网络断开后，第二天还能重新接回前一晚的 terminal session，推荐把 `TERMINAL_DETACHED_SESSION_TTL_SECONDS` 设为 `86400`（24 小时）。
 
 ### Copilot Runner Agents
 - Copilot 内置始终保留一个 builtin assist agent；runner-backed agents 改为从固定文件 `configs/agents.yml` 加载，不依赖 `CONFIG_PATH`。
@@ -175,14 +170,15 @@ ASSIST_API_KEY='<your-api-key>'
 
 推荐 `configs/assist.yml`：
 ```yaml
-assist:
-  enabled: true
-  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  api-key: ${ASSIST_API_KEY:}
-  model: qwen-plus
-  timeout-seconds: 30
-  max-screen-text-chars: 500
-  debug-log: false
+enabled: true
+base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+api-key: ${ASSIST_API_KEY:}
+model: qwen-plus
+timeout-seconds: 30
+max-screen-text-chars: 500
+debug-log: false
+system-prompt: |
+  You are an assistant for a terminal web client.
 ```
 
 ## 4. 界面主题
@@ -195,11 +191,10 @@ assist:
 ```bash
 cp .env.example .env
 cp configs/mounts/project-a.example.json configs/mounts/project-a.json
-cp configs/mounts/docker-sock.example.json configs/mounts/docker-sock.json
 make docker-up
 ```
 
-`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。默认外层主配置是 `configs/application.yml`；容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`，并把普通 terminal 默认 shell 切到 `bash -l`。`configs/application.yml` 与 `configs/config.docker-host.yml` 不冲突：前者负责你显式维护的真实主配置，后者只负责 Docker 运行时覆盖；`configs/mounts/docker-sock.example.json` 也不冲突，它只负责把宿主机 Docker socket 挂进容器。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`，并把普通 terminal 默认 shell 切到 `bash -l`。`configs/mounts/` 仅用于 Docker 挂载生成，不承载业务配置。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；CLI clients 请按需复制 `configs/cli-clients/*.example.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 挂载 JSON 固定字段：
 ```json
@@ -214,11 +209,9 @@ make docker-up
 - `name` 决定容器内目录名，最终挂载点始终是 `/workspace/<name>`。
 - `hostPath` 必须是宿主机绝对路径。
 - `readOnly` 可选，默认 `false`。
-- `kind` 可选，默认 `directory`；如果要控制宿主机 Docker，请额外提供一个 `kind=socket` 的 JSON，挂载 `/var/run/docker.sock`。
+- `kind` 可选，默认 `directory`；如需额外挂 socket，可自行提供 `kind=socket` 的 JSON。
 - 生成后的 override 文件位于 `configs/generated/docker-compose.mounts.yml`，不手工维护。
-- `configs/mounts/docker-sock.example.json` 只定义挂载 `/var/run/docker.sock`，不会覆盖 `configs/config.docker-host.yml` 中的 terminal/files/workdir 配置。
-
-容器内终端执行 `docker ps`、`docker start`、`docker stop`、`docker logs` 时，实际操作的是宿主机 Docker daemon；文件浏览从 `/workspace` 开始，而单个会话的文件根取决于你创建会话时选择的具体工作目录。
+- `configs/mounts/` 只影响 Compose override，不影响 `configs/config.docker-host.yml` 中的 terminal/files/workdir 配置。
 
 ### 本地打包
 ```bash
@@ -254,11 +247,12 @@ cd release
 - `release/.env.example`
 - `release/start.sh`
 - `release/stop.sh`
-- `release/configs/application.example.yml`
+- `release/configs/assist.example.yml`
 - `release/configs/agents.example.yml`
+- `release/configs/cli-clients/*.example.yml`
 - `release/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/application.example.yml` 复制为 `release/configs/application.yml`、把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/cli-clients/*.example.yml` 复制为真实 `.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
 
 发布包手工入口：
 ```bash

@@ -12,12 +12,12 @@
 ## 3. 架构设计
 - `frontend/server.js` 提供静态资源服务，并将 `/term/api`、`/appterm/api`、`/term/ws`、`/appterm/ws` 代理到 Go 后端。
 - Go 后端在 `backend/cmd/server` 启动，核心能力拆分到 `internal/auth`、`internal/session`、`internal/ssh`、`internal/files`、`internal/workdir`、`internal/workspace` 等模块。
-- 配置分两层：内置默认 YAML 位于 `backend/internal/config/application.yml`；外部结构化主配置默认读取 `configs/application.yml`，也可通过 `CONFIG_PATH` 切到其他 `configs/*.yml`；Copilot runner agents 固定从 `configs/agents.yml` 读取；Assist 固定从 `configs/assist.yml` 读取；最终再由 `.env` 和系统环境变量覆盖。
+- 配置分层：内置默认 YAML 位于 `backend/internal/config/application.yml`；可选结构化覆盖通过 `CONFIG_PATH` 指向 `configs/*.yml`；CLI clients 固定从 `configs/cli-clients/*.yml` 扫描；Copilot runner agents 固定从 `configs/agents.yml` 读取；Assist 固定从扁平 `configs/assist.yml` 读取；最终再由 `.env` 和系统环境变量覆盖。
 
 ## 4. 目录结构
 - `backend/`: Go 服务代码、模块声明和 Dockerfile
 - `frontend/`: React 源码、Vite 配置、Node 代理服务
-- `configs/`: App 公钥 PEM 示例文件、Copilot runner agents 示例文件，以及用户自行创建的外部结构化配置目录
+- `configs/`: CLI client 示例目录、App 公钥 PEM 示例文件、Copilot runner agents 示例文件、Assist 配置与 Docker 挂载定义
 - `README.md`: 使用、部署、运维入口
 - `.env.example`: 环境变量契约
 
@@ -34,13 +34,14 @@
 
 ## 7. 开发要点
 - 环境变量契约只维护在根 `.env.example`；不要在 README、CLAUDE 或前端局部 `.env` 中重复维护相同默认值。
-- 外部结构化主配置默认入口是运行根目录下的 `configs/application.yml`；`CONFIG_PATH` 只用于切换到其他 YAML；Copilot runner agents 不走 `CONFIG_PATH`，固定读取 `configs/agents.yml`。
+- 外部结构化主配置只通过 `CONFIG_PATH` 切换；CLI clients 采用 `configs/cli-clients/` 下每 client 一文件的方式；Copilot runner agents 不走 `CONFIG_PATH`，固定读取 `configs/agents.yml`。
+- detached session TTL 通过 `.env` 中的 `TERMINAL_DETACHED_SESSION_TTL_SECONDS` 控制。
 - `docker-compose.yml` 仅做本地编排，敏感项从 `.env` 注入，不在 Compose 文件或 Dockerfile 中硬编码。
 - 根 `Makefile` 是推荐命令入口；根 `package.json` scripts 保留给 Node 生态和历史兼容。
 
 ## 8. 开发流程
 - 初始化：复制 `.env.example` 为 `.env`，安装前端依赖；如需 Assist，再复制 `configs/assist.example.yml` 为 `configs/assist.yml`。
-- 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；结构化主配置默认写在 `configs/application.yml`，只有切换其他 YAML 时才设置 `CONFIG_PATH`；需要 runner agents 时创建 `configs/agents.yml`。
+- 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；只有切换额外结构化覆盖时才设置 `CONFIG_PATH`；需要 runner agents 时创建 `configs/agents.yml`；需要 CLI clients 时在 `configs/cli-clients/` 下创建真实 `.yml`。
 - 校验：Go 侧运行 `make test-backend`；前端运行 `make typecheck-frontend` 和 `make test-frontend`。
 - 打包：执行 `make package-mac` 生成 `release/` 目录；发布态运行统一在 `release/` 目录手工执行 `./start.sh` 和 `./stop.sh`。
 
@@ -48,4 +49,5 @@
 - `frontend/vite.config.ts` 本地开发默认从根 `.env` 读取前后端端口，不应再依赖 `frontend/.env`。
 - 当前仓库保留 `backend/` 与 `frontend/` 顶层目录，而不是 `apps/`；这是该全栈仓库的既定边界。
 - 外部 YAML 配置是可选能力；若 `CONFIG_PATH` 指向不存在文件，后端启动会直接失败。
+- `configs/mounts/` 仅用于 Docker 挂载生成，不再默认提供 Docker socket 示例文件。
 - 前端检查依赖 `frontend/node_modules`；未安装依赖时 `typecheck` 和 `test` 无法运行。

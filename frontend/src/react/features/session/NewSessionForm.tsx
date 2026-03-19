@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type Wh
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../shared/api/client";
 import { generateId } from "../../shared/utils/id";
+import { ROOT_WORKDIR_LOADING_KEY, WorkdirTree, type VisibleWorkdirEntry } from "./WorkdirTree";
+import { SshCredentialCreator } from "./SshCredentialCreator";
+import { SshSection } from "./SshSection";
 import type {
   CreateSessionRequest,
   CreateSshCredentialRequest,
@@ -10,7 +13,6 @@ import type {
   SshCredentialSummaryResponse,
   TerminalClientResponse,
   TerminalDefaultsResponse,
-  WorkdirEntry,
   WorkdirBrowseResponse
 } from "../../shared/api/types";
 
@@ -96,13 +98,6 @@ function formatCredential(credential: SshCredentialSummaryResponse): string {
   return `${credential.username}@${credential.host}:${credential.port} (${credential.authType})`;
 }
 
-function formatSshCredentialOptionLabel(credential: SshCredentialSummaryResponse): string {
-  if (credential.title && credential.title.trim()) {
-    return credential.title.trim();
-  }
-  return formatCredential(credential);
-}
-
 function cloneCreateSessionRequest(payload: CreateSessionRequest): CreateSessionRequest {
   return {
     ...payload,
@@ -124,17 +119,11 @@ function formatRecentSessionLabel(item: RecentSessionItemResponse): string {
   return (item.toolId || "session").trim() || "session";
 }
 
-const ROOT_WORKDIR_LOADING_KEY = "__root__";
 const EMPTY_TERMINAL_DEFAULTS: TerminalDefaultsResponse = {
   command: "",
   args: [],
   workdir: "."
 };
-
-interface VisibleWorkdirEntry {
-  depth: number;
-  entry: WorkdirEntry;
-}
 
 export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSessionFormProps): JSX.Element {
   const [toolId, setToolId] = useState("terminal");
@@ -155,7 +144,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
   const [selectedRecentSessionIndex, setSelectedRecentSessionIndex] = useState("");
 
   const [workdirTree, setWorkdirTree] = useState<WorkdirBrowseResponse | null>(null);
-  const [workdirChildrenMap, setWorkdirChildrenMap] = useState<Record<string, WorkdirEntry[]>>({});
+  const [workdirChildrenMap, setWorkdirChildrenMap] = useState<Record<string, WorkdirBrowseResponse["entries"]>>({});
   const [workdirExpandedMap, setWorkdirExpandedMap] = useState<Record<string, boolean>>({});
   const [workdirLoadingMap, setWorkdirLoadingMap] = useState<Record<string, boolean>>({});
   const [workdirError, setWorkdirError] = useState("");
@@ -407,7 +396,7 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
     }
   }
 
-  async function onSelectWorkdirEntry(entry: WorkdirEntry): Promise<void> {
+  async function onSelectWorkdirEntry(entry: VisibleWorkdirEntry["entry"]): Promise<void> {
     setWorkdir(entry.path);
     if (!entry.hasChildren) {
       return;
@@ -713,64 +702,18 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
 
       {sessionType === "LOCAL_PTY" && (
         <>
-          <section className="advanced-section">
-            <label className="field-label" htmlFor="new-session-workdir-tree">Workdir</label>
-
-            <div id="new-session-workdir-tree" className="workdir-tree" role="tree" onWheel={onWorkdirTreeWheel}>
-              {!workdirTree && workdirLoading && <div className="tree-status">Loading workdir...</div>}
-              {!workdirTree && !workdirLoading && !workdirError && <div className="tree-status">No directory data</div>}
-              {workdirError && <div className="tree-status error">{workdirError}</div>}
-
-              {workdirTree && (
-                <div className="tree-list">
-                  <button
-                    type="button"
-                    className={`tree-label tree-root ${workdir === workdirTree.rootPath ? "selected" : ""}`}
-                    title={workdirTree.rootPath}
-                    onClick={() => void onSelectRootWorkdir()}
-                  >
-                    <span className="tree-prefix">/</span>
-                    <span className="tree-name">{workdirTree.rootPath}</span>
-                  </button>
-
-                  {(workdirLoadingMap[ROOT_WORKDIR_LOADING_KEY] || workdirLoadingMap[workdirTree.rootPath]) && (
-                    <div className="tree-status tree-status-indented">Loading...</div>
-                  )}
-
-                  {visibleWorkdirEntries.length === 0 && !workdirLoading && !workdirError ? (
-                    <div className="tree-status tree-status-indented">No directories</div>
-                  ) : (
-                    visibleWorkdirEntries.map((row) => (
-                      <div key={row.entry.path}>
-                        <button
-                          type="button"
-                          className={`tree-label ${workdir === row.entry.path ? "selected" : ""}`}
-                          title={row.entry.path}
-                          style={{ paddingInlineStart: `${8 + (row.depth + 1) * 16}px` }}
-                          onClick={() => void onSelectWorkdirEntry(row.entry)}
-                        >
-                          <span className="tree-prefix">
-                            {row.entry.hasChildren ? (workdirExpandedMap[row.entry.path] ? "v" : ">") : "-"}
-                          </span>
-                          <span className="tree-name">{row.entry.name}</span>
-                        </button>
-                        {workdirLoadingMap[row.entry.path] && (
-                          <div
-                            className="tree-status tree-status-indented"
-                            style={{ paddingInlineStart: `${24 + (row.depth + 1) * 16}px` }}
-                          >
-                            Loading...
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="selected-workdir">Selected: <code>{workdir || "-"}</code></div>
-          </section>
+          <WorkdirTree
+            workdirTree={workdirTree}
+            workdirLoading={workdirLoading}
+            workdirError={workdirError}
+            workdirLoadingMap={workdirLoadingMap}
+            workdirExpandedMap={workdirExpandedMap}
+            visibleWorkdirEntries={visibleWorkdirEntries}
+            workdir={workdir}
+            onWheel={onWorkdirTreeWheel}
+            onSelectRootWorkdir={onSelectRootWorkdir}
+            onSelectWorkdirEntry={onSelectWorkdirEntry}
+          />
 
           {toolId === "terminal" && (
             <section className="advanced-section">
@@ -796,132 +739,41 @@ export function NewSessionForm({ onCreated, variant = "modal", onCancel }: NewSe
 
       {sessionType === "SSH_SHELL" && (
         <section className="advanced-section">
-          <label className="field-label" htmlFor="new-session-ssh-credential">Saved SSH Configs</label>
-          <select
-            id="new-session-ssh-credential"
-            value={sshCredentialId}
-            onChange={(event) => setSshCredentialId(event.target.value)}
-            disabled={sshCredentialsLoading}
-          >
-            {sshCredentials.length === 0 && <option value="">No credentials</option>}
-            {sshCredentials.map((credential) => (
-              <option key={credential.credentialId} value={credential.credentialId}>
-                {formatSshCredentialOptionLabel(credential)}
-              </option>
-            ))}
-          </select>
-
-          <label className="field-label" htmlFor="new-session-ssh-term">TERM</label>
-          <input
-            id="new-session-ssh-term"
-            value={sshTerm}
-            onChange={(event) => setSshTerm(event.target.value)}
-            placeholder="xterm-256color"
+          <SshSection
+            sshCredentials={sshCredentials}
+            sshCredentialsLoading={sshCredentialsLoading}
+            sshCredentialId={sshCredentialId}
+            sshTerm={sshTerm}
+            selectedCredential={selectedCredential}
+            preflightPending={preflightMutation.isPending}
+            deletePending={deleteSshCredentialMutation.isPending}
+            onCredentialChange={setSshCredentialId}
+            onTermChange={setSshTerm}
+            onRefresh={refreshCredentials}
+            onPreflight={onPreflightSelectedCredential}
+            onDelete={onDeleteSelectedCredential}
           />
 
-          <div className="agent-inline-row">
-            <button type="button" className="ghost-btn" onClick={() => void refreshCredentials()} disabled={sshCredentialsLoading}>
-              {sshCredentialsLoading ? "Loading" : "Refresh"}
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => void onPreflightSelectedCredential()}
-              disabled={!selectedCredential || preflightMutation.isPending}
-            >
-              {preflightMutation.isPending ? "Checking" : "Preflight"}
-            </button>
-            <button
-              type="button"
-              className="ghost-btn ssh-delete-btn"
-              onClick={() => void onDeleteSelectedCredential()}
-              disabled={!selectedCredential || deleteSshCredentialMutation.isPending}
-            >
-              Delete
-            </button>
-          </div>
-
-          <h3 className="modal-title">Create SSH Config</h3>
-
-          <label className="field-label" htmlFor="new-ssh-title">Title (optional)</label>
-          <input
-            id="new-ssh-title"
-            value={sshCreateTitle}
-            onChange={(event) => setSshCreateTitle(event.target.value)}
-            placeholder="prod api machine"
+          <SshCredentialCreator
+            sshAuthType={sshAuthType}
+            sshCreateTitle={sshCreateTitle}
+            sshCreateHost={sshCreateHost}
+            sshCreatePort={sshCreatePort}
+            sshCreateUsername={sshCreateUsername}
+            sshCreatePassword={sshCreatePassword}
+            sshCreatePrivateKey={sshCreatePrivateKey}
+            sshCreatePrivateKeyPassphrase={sshCreatePrivateKeyPassphrase}
+            createPending={createSshCredentialMutation.isPending}
+            onAuthTypeChange={setSshAuthType}
+            onTitleChange={setSshCreateTitle}
+            onHostChange={setSshCreateHost}
+            onPortChange={setSshCreatePort}
+            onUsernameChange={setSshCreateUsername}
+            onPasswordChange={setSshCreatePassword}
+            onPrivateKeyChange={setSshCreatePrivateKey}
+            onPassphraseChange={setSshCreatePrivateKeyPassphrase}
+            onCreate={onCreateSshCredential}
           />
-
-          <label className="field-label" htmlFor="new-ssh-host">Host</label>
-          <input
-            id="new-ssh-host"
-            value={sshCreateHost}
-            onChange={(event) => setSshCreateHost(event.target.value)}
-            placeholder="10.0.0.2"
-          />
-
-          <label className="field-label" htmlFor="new-ssh-port">Port</label>
-          <input
-            id="new-ssh-port"
-            value={sshCreatePort}
-            onChange={(event) => setSshCreatePort(event.target.value)}
-            placeholder="22"
-          />
-
-          <label className="field-label" htmlFor="new-ssh-username">Username</label>
-          <input
-            id="new-ssh-username"
-            value={sshCreateUsername}
-            onChange={(event) => setSshCreateUsername(event.target.value)}
-            placeholder="ubuntu"
-          />
-
-          <label className="field-label" htmlFor="new-ssh-auth-type">Auth Type</label>
-          <select
-            id="new-ssh-auth-type"
-            value={sshAuthType}
-            onChange={(event) => setSshAuthType(event.target.value as "password" | "privateKey")}
-          >
-            <option value="password">password</option>
-            <option value="privateKey">private key</option>
-          </select>
-
-          {sshAuthType === "password" ? (
-            <>
-              <label className="field-label" htmlFor="new-ssh-password">Password</label>
-              <input
-                id="new-ssh-password"
-                type="password"
-                value={sshCreatePassword}
-                onChange={(event) => setSshCreatePassword(event.target.value)}
-              />
-            </>
-          ) : (
-            <>
-              <label className="field-label" htmlFor="new-ssh-private-key">Private Key</label>
-              <textarea
-                id="new-ssh-private-key"
-                rows={5}
-                value={sshCreatePrivateKey}
-                onChange={(event) => setSshCreatePrivateKey(event.target.value)}
-                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-              />
-
-              <label className="field-label" htmlFor="new-ssh-private-key-passphrase">Passphrase</label>
-              <input
-                id="new-ssh-private-key-passphrase"
-                type="password"
-                value={sshCreatePrivateKeyPassphrase}
-                onChange={(event) => setSshCreatePrivateKeyPassphrase(event.target.value)}
-                placeholder="optional"
-              />
-            </>
-          )}
-
-          <div className="agent-inline-row">
-            <button type="button" className="ghost-btn" onClick={() => void onCreateSshCredential()} disabled={createSshCredentialMutation.isPending}>
-              {createSshCredentialMutation.isPending ? "Creating" : "Save SSH Config"}
-            </button>
-          </div>
         </section>
       )}
 

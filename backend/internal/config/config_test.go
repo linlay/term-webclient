@@ -21,16 +21,7 @@ func TestLoadUsesEmbeddedDefaultsWithoutExternalConfig(t *testing.T) {
 		t.Fatalf("write env: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -41,6 +32,9 @@ func TestLoadUsesEmbeddedDefaultsWithoutExternalConfig(t *testing.T) {
 	}
 	if cfg.Terminal.DefaultCommand != "zsh" {
 		t.Fatalf("expected embedded default command zsh, got %q", cfg.Terminal.DefaultCommand)
+	}
+	if cfg.Terminal.DetachedSessionTTL != 3600 {
+		t.Fatalf("expected embedded detached session ttl 3600, got %d", cfg.Terminal.DetachedSessionTTL)
 	}
 	if len(cfg.Terminal.CliClients) != 0 {
 		t.Fatalf("expected embedded cli clients to be empty, got %d", len(cfg.Terminal.CliClients))
@@ -66,31 +60,12 @@ func TestLoadAppliesRuntimeApplicationConfigWithoutConfigPath(t *testing.T) {
 	runtimeConfig := "" +
 		"server:\n  port: 22000\n" +
 		"terminal:\n" +
-		"  detached-session-ttl-seconds: 86400\n" +
-		"  recent-sessions-per-tool: 9\n" +
-		"  cli-clients:\n" +
-		"    - id: codex\n" +
-		"      label: Codex\n" +
-		"      command: codex\n" +
-		"      args: []\n" +
-		"      workdir: .\n" +
-		"      env:\n" +
-		"        https_proxy: http://127.0.0.1:8001\n" +
-		"      shell: /bin/zsh\n"
+		"  recent-sessions-per-tool: 9\n"
 	if err := os.WriteFile(filepath.Join(configsDir, "application.yml"), []byte(runtimeConfig), 0o644); err != nil {
 		t.Fatalf("write runtime config: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -102,31 +77,24 @@ func TestLoadAppliesRuntimeApplicationConfigWithoutConfigPath(t *testing.T) {
 	if cfg.Terminal.RecentSessionsPerTool != 9 {
 		t.Fatalf("expected runtime application config to override recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
 	}
-	if cfg.Terminal.DetachedSessionTTL != 86400 {
-		t.Fatalf("expected runtime application config detached session ttl override, got %d", cfg.Terminal.DetachedSessionTTL)
-	}
-	if len(cfg.Terminal.CliClients) != 1 {
-		t.Fatalf("expected runtime application config cli clients, got %d", len(cfg.Terminal.CliClients))
-	}
-	if cfg.Terminal.CliClients[0].Env["https_proxy"] != "http://127.0.0.1:8001" {
-		t.Fatalf("expected runtime application config cli env override, got %#v", cfg.Terminal.CliClients[0].Env)
-	}
 }
 
 func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	repoRoot := t.TempDir()
 	backendDir := filepath.Join(repoRoot, "backend")
 	configsDir := filepath.Join(repoRoot, "configs")
+	cliClientsDir := filepath.Join(configsDir, "cli-clients")
 	if err := os.MkdirAll(backendDir, 0o755); err != nil {
 		t.Fatalf("mkdir backend dir: %v", err)
 	}
-	if err := os.MkdirAll(configsDir, 0o755); err != nil {
-		t.Fatalf("mkdir configs dir: %v", err)
+	if err := os.MkdirAll(cliClientsDir, 0o755); err != nil {
+		t.Fatalf("mkdir cli clients dir: %v", err)
 	}
 	envContent := "" +
 		"CONFIG_PATH=../configs/config.dev.yml\n" +
 		"BACKEND_PORT=11937\n" +
 		"TERMINAL_FILES_ENABLED=true\n" +
+		"TERMINAL_DETACHED_SESSION_TTL_SECONDS=86400\n" +
 		"COPILOT_RUNNER_BASE_URL=https://runner.example\n" +
 		"COPILOT_RUNNER_TIMEOUT_SECONDS=75\n" +
 		"COPILOT_RUNNER_AUTHORIZATION_BEARER=test-runner-token\n" +
@@ -156,16 +124,29 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 	assistContent := "" +
-		"assist:\n" +
-		"  enabled: true\n" +
-		"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
-		"  api-key: ${ASSIST_API_KEY:}\n" +
-		"  model: qwen-plus\n" +
-		"  timeout-seconds: 45\n" +
-		"  max-screen-text-chars: 900\n" +
-		"  debug-log: true\n"
+		"enabled: true\n" +
+		"base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+		"api-key: ${ASSIST_API_KEY:}\n" +
+		"model: qwen-plus\n" +
+		"timeout-seconds: 45\n" +
+		"max-screen-text-chars: 900\n" +
+		"debug-log: true\n" +
+		"system-prompt: |\n" +
+		"  Use file config first.\n"
 	if err := os.WriteFile(filepath.Join(configsDir, "assist.yml"), []byte(assistContent), 0o644); err != nil {
 		t.Fatalf("write assist config: %v", err)
+	}
+	cliClientContent := "" +
+		"id: codex\n" +
+		"label: Codex\n" +
+		"command: codex\n" +
+		"args: []\n" +
+		"workdir: .\n" +
+		"env:\n" +
+		"  https_proxy: http://127.0.0.1:8001\n" +
+		"shell: /bin/zsh\n"
+	if err := os.WriteFile(filepath.Join(cliClientsDir, "codex.yml"), []byte(cliClientContent), 0o644); err != nil {
+		t.Fatalf("write cli client config: %v", err)
 	}
 	agentsContent := "" +
 		"agents:\n" +
@@ -181,16 +162,7 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	}
 	writeTestPublicKeyFile(t, filepath.Join(configsDir, "local-public-key.pem"))
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -202,8 +174,17 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 	if cfg.Terminal.RecentSessionsPerTool != 9 {
 		t.Fatalf("expected CONFIG_PATH override for recent sessions, got %d", cfg.Terminal.RecentSessionsPerTool)
 	}
+	if cfg.Terminal.DetachedSessionTTL != 86400 {
+		t.Fatalf("expected detached session ttl env override, got %d", cfg.Terminal.DetachedSessionTTL)
+	}
 	if !cfg.Terminal.Files.Enabled {
 		t.Fatal("expected env override to enable files")
+	}
+	if len(cfg.Terminal.CliClients) != 1 || cfg.Terminal.CliClients[0].ID != "codex" {
+		t.Fatalf("expected cli client from directory, got %#v", cfg.Terminal.CliClients)
+	}
+	if cfg.Terminal.CliClients[0].Env["https_proxy"] != "http://127.0.0.1:8001" {
+		t.Fatalf("expected cli client env from directory, got %#v", cfg.Terminal.CliClients[0].Env)
 	}
 	if cfg.Copilot.Runner.BaseURL != "https://runner.example" {
 		t.Fatalf("expected copilot runner base url env override, got %q", cfg.Copilot.Runner.BaseURL)
@@ -246,19 +227,189 @@ func TestLoadAppliesConfigPathAndEnvOverride(t *testing.T) {
 		t.Fatal("expected assist env override to enable assist")
 	}
 	if cfg.Assist.BaseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
-		t.Fatalf("expected assist base url env override, got %q", cfg.Assist.BaseURL)
+		t.Fatalf("expected assist base url from file, got %q", cfg.Assist.BaseURL)
 	}
 	if cfg.Assist.APIKey != "test-assist-key" || cfg.Assist.Model != "qwen-plus" {
-		t.Fatalf("expected assist credentials/model env override, got apiKey=%q model=%q", cfg.Assist.APIKey, cfg.Assist.Model)
+		t.Fatalf("expected assist credentials/model, got apiKey=%q model=%q", cfg.Assist.APIKey, cfg.Assist.Model)
 	}
 	if cfg.Assist.TimeoutSeconds != 45 || cfg.Assist.MaxScreenTextChars != 900 {
-		t.Fatalf("expected assist numeric env override, got timeout=%d maxChars=%d", cfg.Assist.TimeoutSeconds, cfg.Assist.MaxScreenTextChars)
+		t.Fatalf("expected assist numeric file values, got timeout=%d maxChars=%d", cfg.Assist.TimeoutSeconds, cfg.Assist.MaxScreenTextChars)
 	}
 	if !cfg.Assist.DebugLog {
-		t.Fatal("expected assist debug log env override")
+		t.Fatal("expected assist debug log from file")
 	}
 	if cfg.Assist.SystemPrompt != "Return JSON only." {
 		t.Fatalf("expected assist system prompt env override, got %q", cfg.Assist.SystemPrompt)
+	}
+}
+
+func TestLoadCLIClientsFromDirectory(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	cliClientsDir := filepath.Join(repoRoot, "configs", "cli-clients")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(cliClientsDir, 0o755); err != nil {
+		t.Fatalf("mkdir cli clients dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("CLI_PROXY=http://127.0.0.1:8001\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cliClientsDir, "claude.yml"), []byte(""+
+		"id: claude\n"+
+		"label: Claude Code\n"+
+		"command: claude\n"+
+		"env:\n"+
+		"  https_proxy: ${CLI_PROXY:}\n"), 0o644); err != nil {
+		t.Fatalf("write claude client: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cliClientsDir, "codex.yml"), []byte(""+
+		"id: codex\n"+
+		"label: Codex\n"+
+		"command: codex\n"+
+		"workdir: .\n"), 0o644); err != nil {
+		t.Fatalf("write codex client: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Terminal.CliClients) != 2 {
+		t.Fatalf("expected 2 cli clients, got %d", len(cfg.Terminal.CliClients))
+	}
+	if cfg.Terminal.CliClients[0].ID != "claude" || cfg.Terminal.CliClients[1].ID != "codex" {
+		t.Fatalf("expected cli clients sorted by file name, got %#v", cfg.Terminal.CliClients)
+	}
+	if cfg.Terminal.CliClients[0].Env["https_proxy"] != "http://127.0.0.1:8001" {
+		t.Fatalf("expected placeholder expansion in cli client env, got %#v", cfg.Terminal.CliClients[0].Env)
+	}
+}
+
+func TestLoadCLIClientsDirectoryMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("BACKEND_PORT=11937\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Terminal.CliClients) != 0 {
+		t.Fatalf("expected no cli clients when directory is missing, got %d", len(cfg.Terminal.CliClients))
+	}
+}
+
+func TestLoadCLIClientsSkipsExampleFiles(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	cliClientsDir := filepath.Join(repoRoot, "configs", "cli-clients")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(cliClientsDir, 0o755); err != nil {
+		t.Fatalf("mkdir cli clients dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cliClientsDir, "codex.example.yml"), []byte(""+
+		"id: codex\n"+
+		"label: Codex\n"+
+		"command: codex\n"), 0o644); err != nil {
+		t.Fatalf("write example client: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cliClientsDir, "claude.yml"), []byte(""+
+		"id: claude\n"+
+		"label: Claude\n"+
+		"command: claude\n"), 0o644); err != nil {
+		t.Fatalf("write regular client: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Terminal.CliClients) != 1 || cfg.Terminal.CliClients[0].ID != "claude" {
+		t.Fatalf("expected only non-example cli client to load, got %#v", cfg.Terminal.CliClients)
+	}
+}
+
+func TestLoadDetachedSessionTTLFromEnv(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("TERMINAL_DETACHED_SESSION_TTL_SECONDS=86400\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Terminal.DetachedSessionTTL != 86400 {
+		t.Fatalf("expected detached session ttl from env, got %d", cfg.Terminal.DetachedSessionTTL)
+	}
+}
+
+func TestLoadAssistFlatYAML(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("ASSIST_API_KEY=test-key\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	assistContent := "" +
+		"enabled: true\n" +
+		"base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+		"api-key: ${ASSIST_API_KEY:}\n" +
+		"model: qwen-plus\n" +
+		"timeout-seconds: 30\n" +
+		"max-screen-text-chars: 2000\n" +
+		"debug-log: false\n" +
+		"system-prompt: |\n" +
+		"  line one\n" +
+		"  line two\n"
+	if err := os.WriteFile(filepath.Join(configsDir, "assist.yml"), []byte(assistContent), 0o644); err != nil {
+		t.Fatalf("write assist config: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.Assist.Enabled {
+		t.Fatal("expected assist to be enabled")
+	}
+	if cfg.Assist.APIKey != "test-key" {
+		t.Fatalf("expected assist api key from env placeholder, got %q", cfg.Assist.APIKey)
+	}
+	if cfg.Assist.SystemPrompt != "line one\nline two\n" {
+		t.Fatalf("expected multi-line assist prompt, got %q", cfg.Assist.SystemPrompt)
 	}
 }
 
@@ -279,16 +430,7 @@ func TestLoadFailsWhenRuntimeApplicationConfigInvalid(t *testing.T) {
 		t.Fatalf("write invalid runtime config: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse") {
 		t.Fatalf("expected parse error for invalid runtime application config, got %v", err)
@@ -305,16 +447,7 @@ func TestLoadFailsWhenConfigPathMissing(t *testing.T) {
 		t.Fatalf("write env: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected missing CONFIG_PATH file to fail")
@@ -350,16 +483,7 @@ func TestLoadSupportsQuotedBcryptHashFromProcessEnv(t *testing.T) {
 			t.Setenv("CONFIG_PATH", "")
 			t.Setenv("AUTH_PASSWORD_HASH_BCRYPT", tc.value)
 
-			previousWD, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("getwd: %v", err)
-			}
-			t.Cleanup(func() {
-				_ = os.Chdir(previousWD)
-			})
-			if err := os.Chdir(backendDir); err != nil {
-				t.Fatalf("chdir: %v", err)
-			}
+			chdirForLoad(t, backendDir)
 
 			cfg, err := Load()
 			if err != nil {
@@ -387,16 +511,7 @@ func TestLoadResolvesLocalPublicKeyFileRelativeToEnv(t *testing.T) {
 	}
 	writeTestPublicKeyFile(t, filepath.Join(configsDir, "local-public-key.pem"))
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -418,16 +533,7 @@ func TestLoadFailsWhenLocalPublicKeyFileMissing(t *testing.T) {
 		t.Fatalf("write env: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "read app auth local public key file") {
 		t.Fatalf("expected missing local public key file error, got %v", err)
@@ -451,16 +557,7 @@ func TestLoadFailsWhenLocalPublicKeyFileInvalid(t *testing.T) {
 		t.Fatalf("write invalid key: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse app auth local public key file") {
 		t.Fatalf("expected invalid local public key file error, got %v", err)
@@ -480,17 +577,16 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 				"ASSIST_ENABLED=true\n" +
 				"ASSIST_API_KEY=test-assist-key\n" +
 				"ASSIST_MODEL=qwen-plus\n",
-			assistYAML: "assist:\n  enabled: true\n  base-url: \"\"\n  api-key: ${ASSIST_API_KEY:}\n  model: ${ASSIST_MODEL:}\n",
+			assistYAML: "enabled: true\nbase-url: \"\"\napi-key: ${ASSIST_API_KEY:}\nmodel: ${ASSIST_MODEL:}\n",
 			wantErr:    "assist base-url is required when assist is enabled",
 		},
 		{
 			name:       "missing api key",
 			envContent: "",
 			assistYAML: "" +
-				"assist:\n" +
-				"  enabled: true\n" +
-				"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
-				"  model: qwen-plus\n",
+				"enabled: true\n" +
+				"base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+				"model: qwen-plus\n",
 			wantErr: "assist api-key is required when assist is enabled",
 		},
 		{
@@ -498,10 +594,9 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 			envContent: "" +
 				"ASSIST_API_KEY=test-assist-key\n",
 			assistYAML: "" +
-				"assist:\n" +
-				"  enabled: true\n" +
-				"  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
-				"  api-key: ${ASSIST_API_KEY:}\n",
+				"enabled: true\n" +
+				"base-url: https://dashscope.aliyuncs.com/compatible-mode/v1\n" +
+				"api-key: ${ASSIST_API_KEY:}\n",
 			wantErr: "assist model is required when assist is enabled",
 		},
 	}
@@ -526,16 +621,7 @@ func TestLoadFailsWhenAssistEnabledWithoutRequiredFields(t *testing.T) {
 				t.Fatalf("write env: %v", err)
 			}
 
-			previousWD, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("getwd: %v", err)
-			}
-			t.Cleanup(func() {
-				_ = os.Chdir(previousWD)
-			})
-			if err := os.Chdir(backendDir); err != nil {
-				t.Fatalf("chdir: %v", err)
-			}
+			chdirForLoad(t, backendDir)
 
 			if _, err := Load(); err == nil || err.Error() != tc.wantErr {
 				t.Fatalf("expected error %q, got %v", tc.wantErr, err)
@@ -600,18 +686,9 @@ func TestLoadFailsWhenCopilotRunnerAgentHasInvalidConfiguration(t *testing.T) {
 				t.Fatalf("write env: %v", err)
 			}
 
-			previousWD, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("getwd: %v", err)
-			}
-			t.Cleanup(func() {
-				_ = os.Chdir(previousWD)
-			})
-			if err := os.Chdir(backendDir); err != nil {
-				t.Fatalf("chdir: %v", err)
-			}
+			chdirForLoad(t, backendDir)
 
-			_, err = Load()
+			_, err := Load()
 			if err == nil {
 				t.Fatalf("expected error %q, got nil", tc.wantErr)
 			}
@@ -645,23 +722,14 @@ func TestLoadFailsWhenCopilotAgentsFileIsInvalid(t *testing.T) {
 		t.Fatalf("write env: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	chdirForLoad(t, backendDir)
 
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "parse") {
 		t.Fatalf("expected parse error for invalid agents.yml, got %v", err)
 	}
 }
 
-func TestLoadFailsWhenLegacyCopilotAgentsConfiguredInConfigPath(t *testing.T) {
+func TestLoadFailsWhenLegacyCLIClientsConfiguredInMainConfig(t *testing.T) {
 	repoRoot := t.TempDir()
 	backendDir := filepath.Join(repoRoot, "backend")
 	configsDir := filepath.Join(repoRoot, "configs")
@@ -671,26 +739,73 @@ func TestLoadFailsWhenLegacyCopilotAgentsConfiguredInConfigPath(t *testing.T) {
 	if err := os.MkdirAll(configsDir, 0o755); err != nil {
 		t.Fatalf("mkdir configs dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte("copilot:\n  agents:\n    - key: terminal-assistant\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(""+
+		"terminal:\n"+
+		"  cli-clients:\n"+
+		"    - id: codex\n"+
+		"      command: codex\n"), 0o644); err != nil {
 		t.Fatalf("write legacy config: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("CONFIG_PATH=../configs/config.dev.yml\n"), 0o644); err != nil {
 		t.Fatalf("write env: %v", err)
 	}
 
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
+	chdirForLoad(t, backendDir)
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "uses removed terminal.cli-clients") {
+		t.Fatalf("expected legacy terminal.cli-clients error, got %v", err)
 	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatalf("chdir: %v", err)
+}
+
+func TestLoadFailsWhenAssistConfiguredInMainConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "config.dev.yml"), []byte(""+
+		"assist:\n"+
+		"  enabled: true\n"), 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("CONFIG_PATH=../configs/config.dev.yml\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
 	}
 
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "uses removed copilot.agents") {
-		t.Fatalf("expected legacy copilot.agents error, got %v", err)
+	chdirForLoad(t, backendDir)
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "uses removed top-level assist") {
+		t.Fatalf("expected legacy assist error, got %v", err)
+	}
+}
+
+func TestLoadFailsWhenAssistYAMLUsesNestedAssistKey(t *testing.T) {
+	repoRoot := t.TempDir()
+	backendDir := filepath.Join(repoRoot, "backend")
+	configsDir := filepath.Join(repoRoot, "configs")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend dir: %v", err)
+	}
+	if err := os.MkdirAll(configsDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configsDir, "assist.yml"), []byte(""+
+		"assist:\n"+
+		"  enabled: true\n"), 0o644); err != nil {
+		t.Fatalf("write nested assist config: %v", err)
+	}
+
+	chdirForLoad(t, backendDir)
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must not contain top-level assist") {
+		t.Fatalf("expected nested assist error, got %v", err)
 	}
 }
 
@@ -717,4 +832,18 @@ func mustEvalPath(t *testing.T, path string) string {
 		t.Fatalf("eval symlinks for %s: %v", path, err)
 	}
 	return resolved
+}
+
+func chdirForLoad(t *testing.T, backendDir string) {
+	t.Helper()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	if err := os.Chdir(backendDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
 }

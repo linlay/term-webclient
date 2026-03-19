@@ -143,25 +143,6 @@ func validateCopilotAgentsFileShape(payload []byte, source string) error {
 	return nil
 }
 
-func rejectLegacyCopilotAgentsConfig(payload []byte, source string) error {
-	var raw map[string]any
-	if err := yaml.Unmarshal(payload, &raw); err != nil {
-		return nil
-	}
-	copilotValue, ok := raw["copilot"]
-	if !ok {
-		return nil
-	}
-	copilotMap, ok := copilotValue.(map[string]any)
-	if !ok {
-		return nil
-	}
-	if _, ok := copilotMap["agents"]; ok {
-		return fmt.Errorf("%s uses removed copilot.agents; move runner agents to %s", source, copilotAgentsConfigRelativePath)
-	}
-	return nil
-}
-
 func resolveRuntimeConfigPath(relativePath, envBaseDir string) string {
 	baseDir := strings.TrimSpace(envBaseDir)
 	if baseDir == "" {
