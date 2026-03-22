@@ -1,4 +1,6 @@
-FROM node:22-bookworm-slim AS build
+ARG NODE_IMAGE=node:22-bookworm-slim
+
+FROM ${NODE_IMAGE} AS build
 
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -6,7 +8,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM node:22-bookworm-slim
+FROM ${NODE_IMAGE}
 
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./ 

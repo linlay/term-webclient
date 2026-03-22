@@ -17,7 +17,7 @@ npm --prefix frontend ci
 ```
 
 后端首次构建会通过 Go Modules 下载依赖，因此需要可访问的 Go 模块源网络环境。
-开发态前后端都依赖仓库根 `.env`；如果只做发布打包，前端构建阶段不要求源码根 `.env` 存在。
+开发态前后端都依赖仓库根 `.env`；如果只做正式发布打包，前端构建阶段不要求源码根 `.env` 存在。
 
 ### 本地启动
 后端：
@@ -43,6 +43,7 @@ make test-frontend
 
 ## 3. 配置说明
 - 根目录 `.env.example` 是唯一的环境变量契约；本地真实值写入根目录 `.env`，该文件不提交。
+- 根目录 `VERSION` 是正式 release 版本号的唯一来源，格式固定为 `vX.Y.Z`。
 - 后端内置默认配置位于 `backend/internal/config/application.yml`，随程序构建打包，不作为外部编辑入口。
 - 外部结构化主配置只在需要时通过 `CONFIG_PATH` 指向 `configs/*.yml`；Copilot runner agents 不走该 YAML，Assist 也不走该 YAML。
 - `configs/` 用于存放 CLI client 示例目录、App JWT 本地公钥 PEM 文件、Copilot runner agent 配置、Assist 配置和 Docker 挂载定义。
@@ -64,7 +65,7 @@ make dev-backend
 # 宿主机挂载定义写在 configs/mounts/*.json
 # make docker-up
 
-# 发布包（从 release 根启动；如需额外结构化覆盖，再在 .env 中设置）
+# 正式发布包（从解压后的 term-webclient 根启动；如需额外结构化覆盖，再在 .env 中设置）
 # CONFIG_PATH=./configs/config.prod.yml
 ```
 
@@ -213,60 +214,80 @@ make docker-up
 - 生成后的 override 文件位于 `configs/generated/docker-compose.mounts.yml`，不手工维护。
 - `configs/mounts/` 只影响 Compose override，不影响 `configs/config.docker-host.yml` 中的 terminal/files/workdir 配置。
 
-### 本地打包
+### 正式发布包
 ```bash
-make package-mac
+make release
 ```
 
-`make package-mac` 只负责生成发布产物，不要求源码根 `.env` 存在。
+`make release` 会读取根目录 `VERSION`，自动识别当前 `Darwin` 主机架构并输出单架构版本包：
 
-### 本机发布态启动
-先生成发布包：
+- `dist/release/term-webclient-vX.Y.Z-darwin-arm64.tar.gz`
+- `dist/release/term-webclient-vX.Y.Z-darwin-amd64.tar.gz`
+
+发布包是“后端宿主机进程 + 前端 Docker 镜像”的混合形态：
+
+- 部署机不需要安装 Node.js
+- 部署机需要安装并运行 Docker Desktop
+- 发布态 `/webapi/version` 会返回 release 构建时注入的正式版本、Git SHA 和构建时间
+
+### 发布态启动
+先生成正式发布包：
 ```bash
-make package-mac
+make release
 ```
 
-再进入 `release/` 目录准备运行时配置并手工启动：
+再把 bundle 解压到部署目录，进入解压后的 `term-webclient/` 目录准备运行时配置并启动：
 ```bash
-cd release
+tar -xzf dist/release/term-webclient-v0.1.0-darwin-arm64.tar.gz
+cd term-webclient
 cp .env.example .env
 ./start.sh
 ```
 
 停止时：
 ```bash
-cd release
+cd term-webclient
 ./stop.sh
 ```
 
-如果缺少 `release/.env`，失败会发生在 `release/start.sh` 启动阶段，而不是前端打包阶段。
+如果缺少 `term-webclient/.env`，失败会发生在 `term-webclient/start.sh` 启动阶段，而不是打包阶段。
 
 打包产物包含：
-- `release/backend/term-web-backend`
-- `release/frontend/`
-- `release/.env.example`
-- `release/start.sh`
-- `release/stop.sh`
-- `release/configs/assist.example.yml`
-- `release/configs/agents.example.yml`
-- `release/configs/cli-clients/*.example.yml`
-- `release/configs/local-public-key.example.pem`
+- `term-webclient/backend/term-web-backend`
+- `term-webclient/images/term-webclient-frontend.tar`
+- `term-webclient/.env.example`
+- `term-webclient/bundle.env`
+- `term-webclient/start.sh`
+- `term-webclient/stop.sh`
+- `term-webclient/README.txt`
+- `term-webclient/configs/assist.example.yml`
+- `term-webclient/configs/agents.example.yml`
+- `term-webclient/configs/cli-clients/*.example.yml`
+- `term-webclient/configs/local-public-key.example.pem`
 
-运行发布包前，至少准备 `release/.env`，并按需把 `release/configs/agents.example.yml` 复制为 `release/configs/agents.yml`、把 `release/configs/assist.example.yml` 复制为 `release/configs/assist.yml`、把 `release/configs/cli-clients/*.example.yml` 复制为真实 `.yml`、把 `release/configs/local-public-key.example.pem` 复制为 `release/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `release/configs/*.yml` 并设置 `CONFIG_PATH`。如果 `release/.env` 不存在，`release/start.sh` 会直接报错，不会自动从示例文件初始化，也不会回退使用仓库根 `.env`。
+运行发布包前，至少准备 `term-webclient/.env`，并按需把 `term-webclient/configs/agents.example.yml` 复制为 `term-webclient/configs/agents.yml`、把 `term-webclient/configs/assist.example.yml` 复制为 `term-webclient/configs/assist.yml`、把 `term-webclient/configs/cli-clients/*.example.yml` 复制为真实 `.yml`、把 `term-webclient/configs/local-public-key.example.pem` 复制为 `term-webclient/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `term-webclient/configs/*.yml` 并设置 `CONFIG_PATH`。
 
 发布包手工入口：
 ```bash
-cd release
+cd term-webclient
 ./start.sh
 ./stop.sh
 ```
 
+### 兼容的本地目录打包
+```bash
+make package-mac
+```
+
+`make package-mac` 仍会生成旧的 `release/` 目录，主要用于仓库内本机调试，不再作为正式对外交付入口。
+
 ## 6. 运维
 ### 启停
 ```bash
-make package-mac
-cd release && ./start.sh
-cd release && ./stop.sh
+make release
+tar -xzf dist/release/term-webclient-v0.1.0-darwin-arm64.tar.gz
+cd term-webclient && ./start.sh
+cd term-webclient && ./stop.sh
 ```
 
 ### 常见排查
@@ -275,10 +296,12 @@ cd release && ./stop.sh
 - 如果启用了 App JWT 本地公钥验签，确认 `APP_AUTH_LOCAL_PUBLIC_KEY_FILE` 指向的 PEM 文件存在且是合法 RSA 公钥。
 - 如果启用了 Copilot runner agents，确认 `configs/agents.yml` 存在、YAML 合法，且 `COPILOT_RUNNER_BASE_URL` 已配置。
 - 如果是首次运行后端构建或测试，确认当前环境可以访问 Go 模块源并完成依赖下载。
+- 如果是首次生成正式发布包，确认 Docker Desktop 已启动，且 `docker buildx build` 可以正常执行。
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
-- 如果是直接复制 `release/` 到其他目录运行，确认整包一起复制，而不是只拷贝二进制或空目录结构。
-- 如果你修改了 `release/.env` 或 `release/configs/*`，直接在 `release/` 目录重启，不需要重新回到仓库根执行额外启动命令。
+- 如果是直接复制 `term-webclient/` 到其他目录运行，确认整包一起复制，而不是只拷贝后端二进制或镜像 tar。
+- 如果你修改了 `term-webclient/.env` 或 `term-webclient/configs/*`，直接在 `term-webclient/` 目录重启，不需要重新回到仓库根执行额外启动命令。
+- 如果发布包前端起不来，先确认 Docker Desktop 正在运行，再执行 `docker logs term-webclient-frontend-<FRONTEND_PORT>` 查看容器日志。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
 - Docker 场景下，先运行 `make docker-generate-mounts` 或 `make docker-up`，确认 `configs/generated/docker-compose.mounts.yml` 已生成。
 - Docker 场景下，确认 `configs/mounts/*.json` 中的 `hostPath` 都是存在的宿主机绝对路径。
-- 前端代理异常时，确认 `.env` 中的 `BACKEND_HOST`、`BACKEND_PORT` 与后端监听端口一致。
+- 前端代理异常时，确认 `.env` 中的 `BACKEND_PORT` 与后端监听端口一致；正式发布包会让前端容器通过 `host.docker.internal` 访问宿主机后端。

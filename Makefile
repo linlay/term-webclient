@@ -5,7 +5,7 @@ BACKEND_GOMODCACHE := $(CURDIR)/$(BACKEND_DIR)/.gomodcache
 BACKEND_GOPROXY ?= https://goproxy.cn,https://proxy.golang.org,direct
 BACKEND_GOSUMDB ?= sum.golang.google.cn
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend typecheck-frontend docker-generate-mounts docker-config docker-up docker-down package-mac
+.PHONY: dev-backend dev-frontend test-backend test-frontend typecheck-frontend docker-generate-mounts docker-config docker-up docker-down package-mac release
 
 dev-backend:
 	cd $(BACKEND_DIR) && GOCACHE="$(BACKEND_GOCACHE)" GOMODCACHE="$(BACKEND_GOMODCACHE)" GOPROXY="$(BACKEND_GOPROXY)" GOSUMDB="$(BACKEND_GOSUMDB)" GOFLAGS=-mod=mod go run ./cmd/server
@@ -38,3 +38,6 @@ docker-down:
 
 package-mac:
 	./scripts/mac/package.sh
+
+release:
+	BACKEND_GOPROXY="$(BACKEND_GOPROXY)" BACKEND_GOSUMDB="$(BACKEND_GOSUMDB)" ./scripts/release.sh

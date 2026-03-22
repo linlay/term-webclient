@@ -14,6 +14,12 @@ import (
 	"term-webclient-go/backend/internal/server"
 )
 
+var (
+	appVersion   string
+	appGitSHA    string
+	appBuildTime string
+)
+
 func main() {
 	serverAddress := flag.String("server.address", "", "override server bind address")
 	serverPort := flag.Int("server.port", 0, "override server bind port")
@@ -28,6 +34,15 @@ func main() {
 	}
 	if *serverPort > 0 {
 		cfg.Server.Port = *serverPort
+	}
+	if appVersion != "" {
+		cfg.App.Version = appVersion
+	}
+	if appGitSHA != "" {
+		cfg.App.GitSHA = appGitSHA
+	}
+	if appBuildTime != "" {
+		cfg.App.BuildTime = appBuildTime
 	}
 
 	app, err := server.New(cfg)
