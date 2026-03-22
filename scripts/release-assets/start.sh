@@ -136,6 +136,7 @@ if ! docker run -d \
   -p "${FRONTEND_HOST}:${FRONTEND_PORT}:11947" \
   -e HOST=0.0.0.0 \
   -e PORT=11947 \
+  -e BACKEND_PORT="${BACKEND_PORT}" \
   -e BACKEND_ORIGIN="http://host.docker.internal:${BACKEND_PORT}" \
   "$FRONTEND_IMAGE_TAG" >/dev/null; then
   kill "$backend_pid" >/dev/null 2>&1 || true
