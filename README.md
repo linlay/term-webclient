@@ -195,7 +195,7 @@ cp configs/mounts/project-a.example.json configs/mounts/project-a.json
 make docker-up
 ```
 
-`docker-compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`，并把普通 terminal 默认 shell 切到 `bash -l`。`configs/mounts/` 仅用于 Docker 挂载生成，不承载业务配置。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；CLI clients 请按需复制 `configs/cli-clients/*.example.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
+`compose.yml` 现在只保留稳定服务定义：前端对外暴露 `11947`，后端只在容器网络内监听 `11937`，由前端通过服务名 `backend` 访问。宿主机挂载定义不再写在 Compose 主文件里，而是放到 `configs/mounts/*.json`，再由 `scripts/docker/generate-mount-compose.sh` 生成 `configs/generated/docker-compose.mounts.yml` 作为 override。容器专用覆盖通过 `CONFIG_PATH=./configs/config.docker-host.yml` 叠加，其值会把本地终端默认 workdir、目录浏览根和文件面板根都收敛到 `/workspace`，并把普通 terminal 默认 shell 切到 `bash -l`。`configs/mounts/` 仅用于 Docker 挂载生成，不承载业务配置。Copilot runner agents 请复制 `configs/agents.example.yml` 为 `configs/agents.yml`；Assist 请复制 `configs/assist.example.yml` 为 `configs/assist.yml`；CLI clients 请按需复制 `configs/cli-clients/*.example.yml`；App JWT 本地验签时，推荐把真实 PEM 放在 `configs/local-public-key.pem`。
 
 挂载 JSON 固定字段：
 ```json

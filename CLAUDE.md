@@ -37,7 +37,7 @@
 - 环境变量契约只维护在根 `.env.example`；不要在 README、CLAUDE 或前端局部 `.env` 中重复维护相同默认值。
 - 外部结构化主配置只通过 `CONFIG_PATH` 切换；CLI clients 采用 `configs/cli-clients/` 下每 client 一文件的方式；Copilot runner agents 不走 `CONFIG_PATH`，固定读取 `configs/agents.yml`。
 - detached session TTL 通过 `.env` 中的 `TERMINAL_DETACHED_SESSION_TTL_SECONDS` 控制。
-- `docker-compose.yml` 仅做本地编排，敏感项从 `.env` 注入，不在 Compose 文件或 Dockerfile 中硬编码。
+- `compose.yml` 仅做本地编排，敏感项从 `.env` 注入，不在 Compose 文件或 Dockerfile 中硬编码。
 - 根 `Makefile` 是推荐命令入口；根 `package.json` scripts 保留给 Node 生态和历史兼容。
 
 ## 8. 开发流程

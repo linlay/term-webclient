@@ -26,15 +26,15 @@ docker-generate-mounts:
 	./scripts/docker/generate-mount-compose.sh
 
 docker-config: docker-generate-mounts
-	docker compose -f docker-compose.yml -f configs/generated/docker-compose.mounts.yml config
+	docker compose -f compose.yml -f configs/generated/docker-compose.mounts.yml config
 
 docker-up:
 	./scripts/docker/generate-mount-compose.sh
-	docker compose -f docker-compose.yml -f configs/generated/docker-compose.mounts.yml up --build
+	docker compose -f compose.yml -f configs/generated/docker-compose.mounts.yml up --build
 
 docker-down:
 	./scripts/docker/generate-mount-compose.sh
-	docker compose -f docker-compose.yml -f configs/generated/docker-compose.mounts.yml down
+	docker compose -f compose.yml -f configs/generated/docker-compose.mounts.yml down
 
 package-mac:
 	./scripts/mac/package.sh
