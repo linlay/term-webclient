@@ -3,6 +3,8 @@ term-webclient release bundle
 
 This bundle runs the backend on macOS and the frontend inside Docker Desktop.
 The target machine does not need Node.js, but it must have Docker Desktop running.
+The bundle filename uses darwin-host-* to describe the host backend platform only.
+The frontend always runs as a linux/* Docker image recorded in bundle.env.
 
 Quick start:
 1. Copy .env.example to .env and fill in real values.

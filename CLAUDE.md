@@ -44,7 +44,7 @@
 - 初始化：复制 `.env.example` 为 `.env`，安装前端依赖；如需 Assist，再复制 `configs/assist.example.yml` 为 `configs/assist.yml`。
 - 本地开发：使用 `make dev-backend` 和 `make dev-frontend`；后端首次构建会通过 Go Modules 下载依赖，需要可访问模块源；只有切换额外结构化覆盖时才设置 `CONFIG_PATH`；需要 runner agents 时创建 `configs/agents.yml`；需要 CLI clients 时在 `configs/cli-clients/` 下创建真实 `.yml`。
 - 校验：Go 侧运行 `make test-backend`；前端运行 `make typecheck-frontend` 和 `make test-frontend`。
-- 打包：正式发布执行 `make release`，输出 `dist/release/*.tar.gz` 版本包；解压后在 `term-webclient/` 目录执行 `./start.sh` 和 `./stop.sh`。`make package-mac` 仅保留给仓库内本机目录打包。
+- 打包：正式发布执行 `make release`，输出 `dist/release/term-webclient-vX.Y.Z-darwin-host-*.tar.gz` 单包；`darwin-host-*` 只描述宿主机后端目标平台，前端仍是 `linux/*` Docker 镜像。解压后在 `term-webclient/` 目录执行 `./start.sh` 和 `./stop.sh`。`make package-mac` 仅保留给仓库内本机目录打包。
 
 ## 9. 已知约束与注意事项
 - `frontend/vite.config.ts` 本地开发默认从根 `.env` 读取前后端端口，不应再依赖 `frontend/.env`。
@@ -52,4 +52,4 @@
 - 外部 YAML 配置是可选能力；若 `CONFIG_PATH` 指向不存在文件，后端启动会直接失败。
 - `configs/mounts/` 仅用于 Docker 挂载生成，不再默认提供 Docker socket 示例文件。
 - 前端检查依赖 `frontend/node_modules`；未安装依赖时 `typecheck` 和 `test` 无法运行。
-- 正式发布包是“宿主机 Go 后端 + Docker Desktop 前端容器”的混合部署，不要求部署机安装 Node.js。
+- 正式发布包是“宿主机 Go 后端 + Docker Desktop 前端容器”的混合部署，不要求部署机安装 Node.js；bundle 元数据中的 `FRONTEND_IMAGE_PLATFORM` 会记录前端镜像实际平台。

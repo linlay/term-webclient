@@ -221,13 +221,14 @@ make release
 
 `make release` 会读取根目录 `VERSION`，自动识别当前 `Darwin` 主机架构并输出单架构版本包：
 
-- `dist/release/term-webclient-vX.Y.Z-darwin-arm64.tar.gz`
-- `dist/release/term-webclient-vX.Y.Z-darwin-amd64.tar.gz`
+- `dist/release/term-webclient-vX.Y.Z-darwin-host-arm64.tar.gz`
+- `dist/release/term-webclient-vX.Y.Z-darwin-host-amd64.tar.gz`
 
 发布包是“后端宿主机进程 + 前端 Docker 镜像”的混合形态：
 
 - 部署机不需要安装 Node.js
 - 部署机需要安装并运行 Docker Desktop
+- 包名中的 `darwin-host-*` 只描述宿主机后端目标平台；前端始终以 `linux/*` Docker 镜像运行
 - 发布态 `/webapi/version` 会返回 release 构建时注入的正式版本、Git SHA 和构建时间
 
 ### 发布态启动
@@ -238,7 +239,7 @@ make release
 
 再把 bundle 解压到部署目录，进入解压后的 `term-webclient/` 目录准备运行时配置并启动：
 ```bash
-tar -xzf dist/release/term-webclient-v0.1.0-darwin-arm64.tar.gz
+tar -xzf dist/release/term-webclient-v0.1.0-darwin-host-arm64.tar.gz
 cd term-webclient
 cp .env.example .env
 ./start.sh
@@ -265,6 +266,8 @@ cd term-webclient
 - `term-webclient/configs/cli-clients/*.example.yml`
 - `term-webclient/configs/local-public-key.example.pem`
 
+其中 `term-webclient/bundle.env` 会记录 bundle 元数据，包括宿主机后端目标平台和前端镜像实际平台；当前前端镜像平台会写成 `linux/arm64` 或 `linux/amd64`。
+
 运行发布包前，至少准备 `term-webclient/.env`，并按需把 `term-webclient/configs/agents.example.yml` 复制为 `term-webclient/configs/agents.yml`、把 `term-webclient/configs/assist.example.yml` 复制为 `term-webclient/configs/assist.yml`、把 `term-webclient/configs/cli-clients/*.example.yml` 复制为真实 `.yml`、把 `term-webclient/configs/local-public-key.example.pem` 复制为 `term-webclient/configs/local-public-key.pem`。如果需要结构化覆盖，再自行准备 `term-webclient/configs/*.yml` 并设置 `CONFIG_PATH`。
 
 发布包手工入口：
@@ -285,7 +288,7 @@ make package-mac
 ### 启停
 ```bash
 make release
-tar -xzf dist/release/term-webclient-v0.1.0-darwin-arm64.tar.gz
+tar -xzf dist/release/term-webclient-v0.1.0-darwin-host-arm64.tar.gz
 cd term-webclient && ./start.sh
 cd term-webclient && ./stop.sh
 ```
