@@ -228,6 +228,7 @@ make release
 
 - 部署机不需要安装 Node.js
 - 部署机需要安装并运行 Docker Desktop
+- 前端镜像运行时使用 Nginx；Node.js 只在构建阶段使用
 - 包名中的 `darwin-host-*` 只描述宿主机后端目标平台；前端始终以 `linux/*` Docker 镜像运行
 - 发布态 `/webapi/version` 会返回 release 构建时注入的正式版本、Git SHA 和构建时间
 
@@ -303,7 +304,7 @@ cd term-webclient && ./stop.sh
 - 如果设置了 `CONFIG_PATH`，确认目标文件存在且路径相对当前运行目录有效。
 - 如果是直接复制 `term-webclient/` 到其他目录运行，确认整包一起复制，而不是只拷贝后端二进制或镜像 tar。
 - 如果你修改了 `term-webclient/.env` 或 `term-webclient/configs/*`，直接在 `term-webclient/` 目录重启，不需要重新回到仓库根执行额外启动命令。
-- 如果发布包前端起不来，先确认 Docker Desktop 正在运行，再执行 `docker logs term-webclient-frontend-<FRONTEND_PORT>` 查看容器日志。
+- 如果发布包前端起不来，先确认 Docker Desktop 正在运行，再执行 `docker logs term-webclient-frontend-<FRONTEND_PORT>` 查看 Nginx 容器日志。
 - Docker 场景下，确认 `./data` 和 `./configs` 挂载目录可读写。
 - Docker 场景下，先运行 `make docker-generate-mounts` 或 `make docker-up`，确认 `configs/generated/docker-compose.mounts.yml` 已生成。
 - Docker 场景下，确认 `configs/mounts/*.json` 中的 `hostPath` 都是存在的宿主机绝对路径。

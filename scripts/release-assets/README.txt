@@ -3,6 +3,7 @@ term-webclient release bundle
 
 This bundle runs the backend on macOS and the frontend inside Docker Desktop.
 The target machine does not need Node.js, but it must have Docker Desktop running.
+The frontend container serves the built UI with Nginx; Node.js is only used while building the image.
 The bundle filename uses darwin-host-* to describe the host backend platform only.
 The frontend always runs as a linux/* Docker image recorded in bundle.env.
 
@@ -15,5 +16,5 @@ Quick start:
 Notes:
 - start.sh binds the backend to 0.0.0.0 by default so the frontend container can reach it through host.docker.internal.
 - Backend logs are written to logs/backend.out
-- Frontend logs are available with: docker logs <container-name>
+- Frontend Nginx logs are available with: docker logs <container-name>
 - Stop the bundle with ./stop.sh

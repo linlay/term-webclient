@@ -10,7 +10,8 @@ VERSION_FILE="$ROOT_DIR/VERSION"
 DIST_DIR="$ROOT_DIR/dist/release"
 BUILD_ROOT="$ROOT_DIR/dist/.release-build"
 ASSETS_DIR="$SCRIPT_DIR/release-assets"
-FRONTEND_NODE_IMAGE="${FRONTEND_NODE_IMAGE:-node:22-bookworm-slim}"
+FRONTEND_NODE_IMAGE="${FRONTEND_NODE_IMAGE:-node:22-alpine}"
+FRONTEND_NGINX_IMAGE="${FRONTEND_NGINX_IMAGE:-nginx:1.27-alpine}"
 BACKEND_GOPROXY="${BACKEND_GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
 BACKEND_GOSUMDB="${BACKEND_GOSUMDB:-sum.golang.google.cn}"
 
@@ -141,6 +142,7 @@ docker buildx build \
   --platform "$DOCKER_PLATFORM" \
   --file "$ROOT_DIR/frontend/Dockerfile" \
   --build-arg "NODE_IMAGE=$FRONTEND_NODE_IMAGE" \
+  --build-arg "NGINX_IMAGE=$FRONTEND_NGINX_IMAGE" \
   --tag "$FRONTEND_IMAGE_TAG" \
   --output "type=docker,dest=$FRONTEND_IMAGE_TAR" \
   "$ROOT_DIR"
