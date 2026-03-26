@@ -4,12 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="term-webclient"
-BACKEND_BINARY_NAME="term-web-backend"
-FRONTEND_IMAGE_NAME="term-webclient-frontend"
 VERSION_FILE="$ROOT_DIR/VERSION"
 DIST_DIR="$ROOT_DIR/dist/release"
 BUILD_ROOT="$ROOT_DIR/dist/.release-build"
 ASSETS_DIR="$SCRIPT_DIR/release-assets"
+WINDOWS_RELEASE_SCRIPTS_DIR="$ROOT_DIR/release-scripts/windows"
 FRONTEND_NODE_IMAGE="${FRONTEND_NODE_IMAGE:-node:22-alpine}"
 FRONTEND_NGINX_IMAGE="${FRONTEND_NGINX_IMAGE:-nginx:1.27-alpine}"
 BACKEND_GOPROXY="${BACKEND_GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
@@ -71,8 +70,14 @@ detect_arch() {
   esac
 }
 
-OS_NAME="$(uname -s)"
-[[ "$OS_NAME" == "Darwin" ]] || die "make release only supports Darwin hosts"
+detect_host_os() {
+  case "$(uname -s)" in
+    Darwin) printf 'darwin\n' ;;
+    Linux) printf 'linux\n' ;;
+    MINGW*|MSYS*|CYGWIN*) printf 'windows\n' ;;
+    *) die "unsupported host OS: $(uname -s)" ;;
+  esac
+}
 
 ARCH="${ARCH:-$(detect_arch)}"
 case "$ARCH" in
@@ -80,6 +85,15 @@ case "$ARCH" in
     ;;
   *)
     die "unsupported ARCH=$ARCH (expected arm64 or amd64)"
+    ;;
+esac
+
+TARGET_OS="${TARGET_OS:-$(detect_host_os)}"
+case "$TARGET_OS" in
+  darwin|windows)
+    ;;
+  *)
+    die "TARGET_OS must be darwin or windows (got: $TARGET_OS)"
     ;;
 esac
 
@@ -101,11 +115,15 @@ if [[ -z "$GIT_SHA" ]]; then
 fi
 BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 DOCKER_PLATFORM="linux/$ARCH"
-TARGET_OS="darwin"
+BACKEND_BINARY_NAME="term-web-backend"
+if [[ "$TARGET_OS" == "windows" ]]; then
+  BACKEND_BINARY_NAME="${BACKEND_BINARY_NAME}.exe"
+fi
 BUNDLE_BASENAME="$APP_NAME-$APP_VERSION-$TARGET_OS-host-$ARCH"
 STAGING_ROOT="$BUILD_ROOT/$BUNDLE_BASENAME"
 BUNDLE_DIR="$STAGING_ROOT/$APP_NAME"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_BASENAME.tar.gz"
+FRONTEND_IMAGE_NAME="term-webclient-frontend"
 FRONTEND_IMAGE_TAG="$FRONTEND_IMAGE_NAME:$APP_VERSION"
 FRONTEND_IMAGE_TAR="$BUNDLE_DIR/images/$FRONTEND_IMAGE_NAME.tar"
 
@@ -117,7 +135,8 @@ mkdir -p \
   "$BUNDLE_DIR/images" \
   "$BUNDLE_DIR/data" \
   "$BUNDLE_DIR/run" \
-  "$BUNDLE_DIR/logs"
+  "$BUNDLE_DIR/logs" \
+  "$BUNDLE_DIR/release-scripts/windows"
 
 echo "[release] building backend binary for $TARGET_OS/$ARCH"
 (
@@ -153,6 +172,10 @@ copy_example_configs "$BUNDLE_DIR"
 cp "$ASSETS_DIR/start.sh" "$BUNDLE_DIR/start.sh"
 cp "$ASSETS_DIR/stop.sh" "$BUNDLE_DIR/stop.sh"
 cp "$ASSETS_DIR/README.txt" "$BUNDLE_DIR/README.txt"
+cp "$WINDOWS_RELEASE_SCRIPTS_DIR/start.ps1" "$BUNDLE_DIR/release-scripts/windows/start.ps1"
+cp "$WINDOWS_RELEASE_SCRIPTS_DIR/stop.ps1" "$BUNDLE_DIR/release-scripts/windows/stop.ps1"
+cp "$WINDOWS_RELEASE_SCRIPTS_DIR/start.cmd" "$BUNDLE_DIR/release-scripts/windows/start.cmd"
+cp "$WINDOWS_RELEASE_SCRIPTS_DIR/stop.cmd" "$BUNDLE_DIR/release-scripts/windows/stop.cmd"
 chmod +x \
   "$BUNDLE_DIR/backend/$BACKEND_BINARY_NAME" \
   "$BUNDLE_DIR/start.sh" \
