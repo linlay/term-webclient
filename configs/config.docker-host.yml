@@ -2,8 +2,8 @@ terminal:
   default-command: bash
   default-args:
     - -l
-  default-workdir: /workspace
-  workdir-browse-root: /workspace
+  default-workdir: /home/feiyu912
+  workdir-browse-root: /home/feiyu912
   files:
     enabled: true
     default-root-scope: SESSION_WORKDIR

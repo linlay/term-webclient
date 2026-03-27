@@ -138,6 +138,8 @@ mkdir -p \
   "$BUNDLE_DIR/logs" \
   "$BUNDLE_DIR/release-scripts/windows"
 
+BACKEND_OUTPUT_NAME="$BACKEND_BINARY_NAME"
+
 echo "[release] building backend binary for $TARGET_OS/$ARCH"
 (
   cd "$ROOT_DIR/backend"
@@ -152,7 +154,7 @@ echo "[release] building backend binary for $TARGET_OS/$ARCH"
   GOARCH="$ARCH" \
   go build \
     -ldflags "-X main.appVersion=$APP_VERSION -X main.appGitSHA=$GIT_SHA -X main.appBuildTime=$BUILD_TIME" \
-    -o "$BUNDLE_DIR/backend/$BACKEND_BINARY_NAME" \
+    -o "$BUNDLE_DIR/backend/$BACKEND_OUTPUT_NAME" \
     ./cmd/server
 )
 
@@ -176,10 +178,12 @@ cp "$WINDOWS_RELEASE_SCRIPTS_DIR/start.ps1" "$BUNDLE_DIR/release-scripts/windows
 cp "$WINDOWS_RELEASE_SCRIPTS_DIR/stop.ps1" "$BUNDLE_DIR/release-scripts/windows/stop.ps1"
 cp "$WINDOWS_RELEASE_SCRIPTS_DIR/start.cmd" "$BUNDLE_DIR/release-scripts/windows/start.cmd"
 cp "$WINDOWS_RELEASE_SCRIPTS_DIR/stop.cmd" "$BUNDLE_DIR/release-scripts/windows/stop.cmd"
-chmod +x \
-  "$BUNDLE_DIR/backend/$BACKEND_BINARY_NAME" \
-  "$BUNDLE_DIR/start.sh" \
-  "$BUNDLE_DIR/stop.sh"
+if [[ "$TARGET_OS" != "windows" ]]; then
+  chmod +x \
+    "$BUNDLE_DIR/backend/$BACKEND_OUTPUT_NAME" \
+    "$BUNDLE_DIR/start.sh" \
+    "$BUNDLE_DIR/stop.sh"
+fi
 
 cat >"$BUNDLE_DIR/bundle.env" <<EOF
 APP_NAME=$APP_NAME
@@ -193,7 +197,7 @@ FRONTEND_IMAGE_TAG=$FRONTEND_IMAGE_TAG
 FRONTEND_IMAGE_PLATFORM=$DOCKER_PLATFORM
 FRONTEND_IMAGE_ARCHIVE=images/$FRONTEND_IMAGE_NAME.tar
 FRONTEND_CONTAINER_NAME_PREFIX=$APP_NAME-frontend
-BACKEND_BINARY=backend/$BACKEND_BINARY_NAME
+BACKEND_BINARY=backend/$BACKEND_OUTPUT_NAME
 EOF
 
 echo "[release] creating bundle $BUNDLE_PATH"
