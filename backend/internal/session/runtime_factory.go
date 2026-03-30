@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"term-webclient-go/backend/internal/config"
@@ -146,7 +147,11 @@ func (f *RuntimeFactory) normalizeCLISession(request model.CreateSessionRequest,
 
 	fullCommand := append([]string{command}, client.Args...)
 	if preCommands := trimNonEmpty(client.PreCommands); len(preCommands) > 0 {
-		shell := util.FallbackString(client.Shell, "/bin/zsh")
+		defaultCLIShell := "/bin/zsh"
+		if runtime.GOOS == "windows" {
+			defaultCLIShell = "cmd"
+		}
+		shell := util.FallbackString(client.Shell, defaultCLIShell)
 		script := strings.Join(preCommands, "; ") + "; exec " + shellJoin(fullCommand)
 		fullCommand = []string{shell, "-lc", script}
 	}

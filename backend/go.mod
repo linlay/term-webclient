@@ -3,6 +3,7 @@ module term-webclient-go/backend
 go 1.26.0
 
 require (
+	github.com/UserExistsError/conpty v0.1.4
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
 	github.com/pkg/sftp v1.13.7

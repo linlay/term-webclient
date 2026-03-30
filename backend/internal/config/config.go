@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -27,6 +29,14 @@ const (
 	assistConfigRelativePath      = "configs/assist.yml"
 	cliClientsConfigDirPath       = "configs/cli-clients"
 )
+
+// defaultShell returns a platform-appropriate interactive shell command.
+func defaultShell() string {
+	if runtime.GOOS == "windows" {
+		return "cmd"
+	}
+	return "zsh"
+}
 
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
@@ -178,7 +188,7 @@ func defaultConfig() *Config {
 			Port:    8080,
 		},
 		Terminal: TerminalConfig{
-			DefaultCommand:         "zsh",
+			DefaultCommand:         defaultShell(),
 			DefaultArgs:            []string{},
 			DefaultWorkdir:         ".",
 			WorkdirBrowseRoot:      home,
@@ -306,10 +316,26 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// On Windows the embedded YAML default "zsh" is not available;
+	// fall back to a platform-appropriate shell when the configured
+	// command does not exist on PATH.
+	if runtime.GOOS == "windows" {
+		cmd := strings.TrimSpace(cfg.Terminal.DefaultCommand)
+		if cmd == "" || !commandExists(cmd) {
+			cfg.Terminal.DefaultCommand = defaultShell()
+		}
+	}
+
 	if err := validate(cfg, envBaseDir); err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// commandExists reports whether name is found on the system PATH.
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 func (c *Config) BindAddr() string {
