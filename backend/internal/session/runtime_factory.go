@@ -196,10 +196,7 @@ func buildLocalSessionEnv(overrides map[string]string) map[string]string {
 	for key, value := range overrides {
 		result[key] = value
 	}
-	if strings.TrimSpace(result["TERM"]) == "" {
-		result["TERM"] = "xterm-256color"
-	}
-	return result
+	return applyLocalSessionEnvDefaults(result)
 }
 
 func buildCLIClientSessionEnv(clientEnv, requestEnv map[string]string) map[string]string {
@@ -210,10 +207,17 @@ func buildCLIClientSessionEnv(clientEnv, requestEnv map[string]string) map[strin
 	for key, value := range requestEnv {
 		result[key] = value
 	}
-	if strings.TrimSpace(result["TERM"]) == "" {
-		result["TERM"] = "xterm-256color"
+	return applyLocalSessionEnvDefaults(result)
+}
+
+func applyLocalSessionEnvDefaults(env map[string]string) map[string]string {
+	if _, ok := env["NO_STARSHIP"]; !ok {
+		env["NO_STARSHIP"] = "1"
 	}
-	return result
+	if strings.TrimSpace(env["TERM"]) == "" {
+		env["TERM"] = "xterm-256color"
+	}
+	return env
 }
 
 func localSessionBaseEnv() map[string]string {

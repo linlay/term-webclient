@@ -69,7 +69,7 @@ make dev-backend
 # CONFIG_PATH=./configs/config.prod.yml
 ```
 
-CLI client 如需单独代理，请在对应的 `configs/cli-clients/*.yml` 里显式声明 `env`；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。仓库提供 `configs/cli-clients/codex.example.yml` 与 `configs/cli-clients/claude.example.yml` 作为示例，只有复制成非 example 文件后才会显示。
+CLI client 如需单独代理，请在对应的 `configs/cli-clients/*.yml` 里显式声明 `env`；普通 terminal tab 不会再自动继承后端进程里的 `http_proxy` / `https_proxy`。后端为所有本地 PTY 默认注入 `NO_STARSHIP=1`，便于你在 shell 启动脚本里按该变量跳过 `starship init`；如果 CLI client 配置或建会话请求里显式传了 `NO_STARSHIP`，则以显式值为准。仓库提供 `configs/cli-clients/codex.example.yml` 与 `configs/cli-clients/claude.example.yml` 作为示例，只有复制成非 example 文件后才会显示。
 
 示例：
 ```yaml

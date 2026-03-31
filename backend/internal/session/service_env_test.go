@@ -32,6 +32,9 @@ func TestBuildLocalSessionEnvOmitsProcessProxyVariables(t *testing.T) {
 	if env["TERM"] != "xterm-256color" {
 		t.Fatalf("expected TERM fallback, got %q", env["TERM"])
 	}
+	if env["NO_STARSHIP"] != "1" {
+		t.Fatalf("expected NO_STARSHIP default, got %q", env["NO_STARSHIP"])
+	}
 	if _, ok := env["http_proxy"]; ok {
 		t.Fatalf("expected http_proxy to be omitted, got %#v", env)
 	}
@@ -52,9 +55,10 @@ func TestBuildLocalSessionEnvAllowsExplicitRequestEnvOverrides(t *testing.T) {
 	t.Setenv("http_proxy", "http://127.0.0.1:8001")
 
 	env := buildLocalSessionEnv(map[string]string{
-		"http_proxy": "http://127.0.0.1:9001",
-		"TERM":       "vt100",
-		"CUSTOM_VAR": "enabled",
+		"http_proxy":  "http://127.0.0.1:9001",
+		"TERM":        "vt100",
+		"CUSTOM_VAR":  "enabled",
+		"NO_STARSHIP": "0",
 	})
 
 	if env["http_proxy"] != "http://127.0.0.1:9001" {
@@ -65,6 +69,25 @@ func TestBuildLocalSessionEnvAllowsExplicitRequestEnvOverrides(t *testing.T) {
 	}
 	if env["CUSTOM_VAR"] != "enabled" {
 		t.Fatalf("expected explicit custom env, got %q", env["CUSTOM_VAR"])
+	}
+	if env["NO_STARSHIP"] != "0" {
+		t.Fatalf("expected explicit NO_STARSHIP override, got %q", env["NO_STARSHIP"])
+	}
+}
+
+func TestBuildLocalSessionEnvPreservesExplicitEmptyNoStarship(t *testing.T) {
+	t.Setenv("PATH", "/usr/local/bin:/usr/bin")
+
+	env := buildLocalSessionEnv(map[string]string{
+		"NO_STARSHIP": "",
+	})
+
+	value, ok := env["NO_STARSHIP"]
+	if !ok {
+		t.Fatalf("expected NO_STARSHIP key to be preserved, got %#v", env)
+	}
+	if value != "" {
+		t.Fatalf("expected explicit empty NO_STARSHIP to be preserved, got %q", value)
 	}
 }
 
@@ -78,10 +101,12 @@ func TestBuildCLIClientSessionEnvOnlyUsesExplicitClientAndRequestEnv(t *testing.
 			"https_proxy":             "http://127.0.0.1:9001",
 			"CLAUDE_CODE_USE_BEDROCK": "1",
 			"TERM":                    "screen-256color",
+			"NO_STARSHIP":             "0",
 		},
 		map[string]string{
 			"https_proxy": "http://127.0.0.1:9101",
 			"CODER":       "true",
+			"NO_STARSHIP": "1",
 		},
 	)
 
@@ -99,5 +124,22 @@ func TestBuildCLIClientSessionEnvOnlyUsesExplicitClientAndRequestEnv(t *testing.
 	}
 	if env["TERM"] != "screen-256color" {
 		t.Fatalf("expected explicit client TERM to be preserved, got %q", env["TERM"])
+	}
+	if env["NO_STARSHIP"] != "1" {
+		t.Fatalf("expected request NO_STARSHIP to override client env, got %q", env["NO_STARSHIP"])
+	}
+}
+
+func TestBuildCLIClientSessionEnvDefaultsNoStarshipWhenUnset(t *testing.T) {
+	t.Setenv("PATH", "/usr/local/bin:/usr/bin")
+	t.Setenv("TERM", "screen-256color")
+
+	env := buildCLIClientSessionEnv(nil, nil)
+
+	if env["NO_STARSHIP"] != "1" {
+		t.Fatalf("expected NO_STARSHIP default, got %q", env["NO_STARSHIP"])
+	}
+	if env["TERM"] != "screen-256color" {
+		t.Fatalf("expected TERM to preserve inherited value, got %q", env["TERM"])
 	}
 }
