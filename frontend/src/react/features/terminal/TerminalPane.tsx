@@ -133,7 +133,6 @@ export function TerminalPane({
       fontSize: getTerminalFontSize(),
       fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
       scrollback: 5000,
-      convertEol: true,
       theme: terminalTheme(themeMode)
     });
     const fitAddon = new FitAddon();
