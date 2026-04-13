@@ -38,6 +38,7 @@ func StartLocal(command []string, env map[string]string, workdir string, cols, r
 	if err != nil {
 		return nil, err
 	}
+	configurePTYTermios(file)
 	runtime := &LocalPTYRuntime{
 		cmd:      cmd,
 		file:     file,

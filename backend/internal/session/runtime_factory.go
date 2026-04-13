@@ -15,15 +15,16 @@ import (
 )
 
 var localSessionAllowedEnvKeys = map[string]struct{}{
-	"HOME":          {},
-	"LANG":          {},
-	"LOGNAME":       {},
-	"PATH":          {},
-	"SHELL":         {},
-	"SSH_AUTH_SOCK": {},
-	"TERM":          {},
-	"TMPDIR":        {},
-	"USER":          {},
+	"HOME":           {},
+	"LANG":           {},
+	"LOGNAME":        {},
+	"PATH":           {},
+	"SHELL":          {},
+	"SSH_AUTH_SOCK":  {},
+	"TERM":           {},
+	"TERMINFO_DIRS":  {},
+	"TMPDIR":         {},
+	"USER":           {},
 }
 
 var localSessionBlockedEnvKeys = map[string]struct{}{

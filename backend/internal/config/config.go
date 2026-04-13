@@ -189,7 +189,7 @@ func defaultConfig() *Config {
 		},
 		Terminal: TerminalConfig{
 			DefaultCommand:         defaultShell(),
-			DefaultArgs:            []string{},
+			DefaultArgs:            []string{"-l"},
 			DefaultWorkdir:         ".",
 			WorkdirBrowseRoot:      home,
 			AllowedOrigins:         []string{"http://*", "https://*"},
